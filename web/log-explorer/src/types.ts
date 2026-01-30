@@ -57,11 +57,20 @@ export interface ErrorSignature {
 }
 
 // Run Configuration Types
+export type AuthType = 'none' | 'bearer_token';
+
+export interface AuthConfig {
+  type: AuthType;
+  tokens?: string[];
+  activeTokenIndex?: number;
+}
+
 export interface TargetConfig {
   kind: 'server' | 'gateway';
   url: string;
   transport: 'streamable_http' | 'stdio';
   headers?: Record<string, string>;
+  auth?: AuthConfig;
 }
 
 export interface StopCondition {

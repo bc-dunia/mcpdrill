@@ -1,7 +1,8 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import type { TargetConfig as TargetConfigType, ServerTelemetryConfig, AgentInfo } from '../types';
+import type { TargetConfig as TargetConfigType, ServerTelemetryConfig, AgentInfo, AuthConfig } from '../types';
 import { Icon } from './Icon';
 import { AgentDetailModal } from './AgentDetailModal';
+import { AuthConfigSection } from './AuthConfigSection';
 import { testConnection, ConnectionTestResult, fetchAgents } from '../api';
 
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'failed';
@@ -12,6 +13,8 @@ interface Props {
   onConnectionStatusChange?: (status: ConnectionStatus, result?: ConnectionTestResult) => void;
   serverTelemetry?: ServerTelemetryConfig;
   onServerTelemetryChange?: (config: ServerTelemetryConfig | undefined) => void;
+  authConfig?: AuthConfig;
+  onAuthConfigChange?: (config: AuthConfig | undefined) => void;
 }
 
 interface HeaderEntry {
@@ -46,7 +49,7 @@ function generateHeaderId(): string {
   return `header_${Date.now()}_${++headerIdCounter}`;
 }
 
-export function TargetConfig({ config, onChange, onConnectionStatusChange, serverTelemetry, onServerTelemetryChange }: Props) {
+export function TargetConfig({ config, onChange, onConnectionStatusChange, serverTelemetry, onServerTelemetryChange, authConfig, onAuthConfigChange }: Props) {
   const [urlTouched, setUrlTouched] = useState(false);
   const urlError = urlTouched && !isValidUrl(config.url) ? 'Please enter a valid HTTP or HTTPS URL' : null;
   
@@ -71,40 +74,47 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
     setConnectionStatus('idle');
     setConnectionResult(null);
     onConnectionStatusChange?.('idle');
-  }, [config.url, config.transport, config.headers, onConnectionStatusChange]);
+  }, [config.url, config.transport, config.headers, authConfig, onConnectionStatusChange]);
 
-  const handleTestConnection = useCallback(async () => {
-    if (!isValidUrl(config.url)) {
-      setUrlTouched(true);
-      return;
-    }
-    
-    setConnectionStatus('testing');
-    setConnectionResult(null);
-    onConnectionStatusChange?.('testing');
-    
-    try {
-      const result = await testConnection(config.url, config.headers);
-      setConnectionResult(result);
-      
-      if (result.success) {
-        setConnectionStatus('success');
-        onConnectionStatusChange?.('success', result);
-      } else {
-        setConnectionStatus('failed');
-        onConnectionStatusChange?.('failed', result);
-      }
-    } catch (err) {
-      const errorResult: ConnectionTestResult = {
-        success: false,
-        error: err instanceof Error ? err.message : 'Connection test failed',
-        error_code: 'NETWORK_ERROR',
-      };
-      setConnectionResult(errorResult);
-      setConnectionStatus('failed');
-      onConnectionStatusChange?.('failed', errorResult);
-    }
-  }, [config.url, config.headers, onConnectionStatusChange]);
+   const handleTestConnection = useCallback(async () => {
+     if (!isValidUrl(config.url)) {
+       setUrlTouched(true);
+       return;
+     }
+     
+     setConnectionStatus('testing');
+     setConnectionResult(null);
+     onConnectionStatusChange?.('testing');
+     
+     try {
+       const headers = { ...config.headers };
+       if (authConfig?.type === 'bearer_token' && authConfig.tokens && authConfig.tokens.length > 0) {
+         const tokenIndex = authConfig.activeTokenIndex ?? 0;
+         const safeIndex = Math.min(Math.max(0, tokenIndex), authConfig.tokens.length - 1);
+         headers['Authorization'] = `Bearer ${authConfig.tokens[safeIndex]}`;
+       }
+       
+       const result = await testConnection(config.url, headers);
+       setConnectionResult(result);
+       
+       if (result.success) {
+         setConnectionStatus('success');
+         onConnectionStatusChange?.('success', result);
+       } else {
+         setConnectionStatus('failed');
+         onConnectionStatusChange?.('failed', result);
+       }
+     } catch (err) {
+       const errorResult: ConnectionTestResult = {
+         success: false,
+         error: err instanceof Error ? err.message : 'Connection test failed',
+         error_code: 'NETWORK_ERROR',
+       };
+       setConnectionResult(errorResult);
+       setConnectionStatus('failed');
+       onConnectionStatusChange?.('failed', errorResult);
+     }
+   }, [config.url, config.headers, authConfig, onConnectionStatusChange]);
 
   const headerCollisions = useMemo(() => {
     const collisions = new Set<string>();
@@ -419,6 +429,13 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
           <p className="empty-hint">No custom headers configured</p>
         )}
       </div>
+
+      {onAuthConfigChange && (
+        <AuthConfigSection
+          authConfig={authConfig}
+          onChange={onAuthConfigChange}
+        />
+      )}
 
       {onServerTelemetryChange && (
         <div className="form-section">

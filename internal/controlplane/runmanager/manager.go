@@ -803,10 +803,16 @@ type parsedRedirectPolicy struct {
 	Allowlist    []string `json:"allowlist,omitempty"`
 }
 
+type parsedAuth struct {
+	Type   string   `json:"type"`
+	Tokens []string `json:"tokens,omitempty"`
+}
+
 type parsedTarget struct {
 	URL            string                `json:"url"`
 	Transport      string                `json:"transport"`
 	Headers        map[string]string     `json:"headers,omitempty"`
+	Auth           *parsedAuth           `json:"auth,omitempty"`
 	Identification *parsedIdentification `json:"identification,omitempty"`
 	RedirectPolicy *parsedRedirectPolicy `json:"redirect_policy,omitempty"`
 }
@@ -1016,6 +1022,16 @@ func buildRedirectPolicy(policy *parsedRedirectPolicy) *types.RedirectPolicyConf
 		Mode:         policy.Mode,
 		MaxRedirects: policy.MaxRedirects,
 		Allowlist:    policy.Allowlist,
+	}
+}
+
+func buildAuthConfig(auth *parsedAuth) *types.AuthConfig {
+	if auth == nil || auth.Type == "" || auth.Type == "none" {
+		return nil
+	}
+	return &types.AuthConfig{
+		Type:   auth.Type,
+		Tokens: auth.Tokens,
 	}
 }
 

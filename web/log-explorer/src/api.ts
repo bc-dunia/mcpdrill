@@ -73,7 +73,7 @@ interface BackendRunConfig {
     headers: Record<string, string>;
     auth: {
       type: string;
-      bearer_token_ref?: string | null;
+      tokens?: string[];
     };
     identification: {
       run_id_header: {
@@ -235,7 +235,8 @@ function convertToBackendConfig(config: RunConfig): BackendRunConfig {
       transport: config.target.transport,
       headers: config.target.headers || {},
       auth: {
-        type: 'none',
+        type: config.target.auth?.type || 'none',
+        tokens: config.target.auth?.tokens,
       },
       identification: {
         run_id_header: {

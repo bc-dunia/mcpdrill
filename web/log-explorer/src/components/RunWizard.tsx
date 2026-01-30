@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { RunConfig, WizardStep, TargetConfig as TargetConfigType, StageConfig as StageConfigType, WorkloadConfig as WorkloadConfigType, FetchedTool, ServerTelemetryConfig } from '../types';
+import type { RunConfig, WizardStep, TargetConfig as TargetConfigType, StageConfig as StageConfigType, WorkloadConfig as WorkloadConfigType, FetchedTool, ServerTelemetryConfig, AuthConfig } from '../types';
 import { createRun, startRun, ConnectionTestResult } from '../api';
 import { TargetConfig } from './TargetConfig';
 import { StageConfig } from './StageConfig';
@@ -123,6 +123,7 @@ export function RunWizard({ onRunStarted }: Props) {
   const [hasRestoredProgress, setHasRestoredProgress] = useState(() => loadWizardProgress() !== null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
   const [discoveredTools, setDiscoveredTools] = useState<FetchedTool[]>([]);
+  const [authConfig, setAuthConfig] = useState<AuthConfig | undefined>(undefined);
   const { showToast } = useToast();
 
   const handleConnectionStatusChange = useCallback((status: ConnectionStatus, result?: ConnectionTestResult) => {
@@ -200,6 +201,10 @@ export function RunWizard({ onRunStarted }: Props) {
     setConfig(prev => ({ ...prev, server_telemetry: serverTelemetry }));
   }, []);
 
+  const handleAuthConfigChange = useCallback((config: AuthConfig | undefined) => {
+    setAuthConfig(config);
+  }, []);
+
   const handleNext = useCallback(() => {
     const nextIndex = currentStepIndex + 1;
     if (nextIndex < STEPS.length) {
@@ -249,7 +254,14 @@ export function RunWizard({ onRunStarted }: Props) {
     setError(null);
 
     try {
-      const runId = await createRun(config);
+      const configWithAuth: RunConfig = {
+        ...config,
+        target: {
+          ...config.target,
+          auth: authConfig,
+        },
+      };
+      const runId = await createRun(configWithAuth);
       await startRun(runId);
       clearWizardProgress();
       showToast(`Run ${runId} started successfully!`, 'success');
@@ -334,6 +346,8 @@ export function RunWizard({ onRunStarted }: Props) {
               onConnectionStatusChange={handleConnectionStatusChange}
               serverTelemetry={config.server_telemetry}
               onServerTelemetryChange={handleServerTelemetryChange}
+              authConfig={authConfig}
+              onAuthConfigChange={handleAuthConfigChange}
             />
             {isValidUrl(config.target.url) && connectionStatus !== 'success' && (
               <div className="validation-feedback validation-info" role="status">
@@ -360,7 +374,13 @@ export function RunWizard({ onRunStarted }: Props) {
               config={config.workload} 
               onChange={handleWorkloadChange} 
               targetUrl={config.target.url}
-              headers={config.target.headers}
+              headers={(() => {
+                const h = { ...config.target.headers };
+                if (authConfig?.type === 'bearer_token' && authConfig.tokens && authConfig.tokens.length > 0) {
+                  h['Authorization'] = `Bearer ${authConfig.tokens[0]}`;
+                }
+                return h;
+              })()}
               fetchedTools={discoveredTools}
               onToolsFetched={setDiscoveredTools}
             />

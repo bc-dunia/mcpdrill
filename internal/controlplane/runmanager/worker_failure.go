@@ -281,6 +281,7 @@ func (rm *RunManager) handleReplaceIfPossibleLocked(record *RunRecord, workerID 
 				Transport:      parsedConfig.Target.Transport,
 				Headers:        buildTargetHeaders(record.RunID, &parsedConfig.Target),
 				RedirectPolicy: buildRedirectPolicy(parsedConfig.Target.RedirectPolicy),
+				Auth:           buildAuthConfig(parsedConfig.Target.Auth),
 			},
 			Workload: types.WorkloadConfig{
 				OpMix: convertOpMix(parsedConfig.Workload.OpMix),

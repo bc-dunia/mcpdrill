@@ -8,12 +8,19 @@ type RedirectPolicyConfig struct {
 	Allowlist    []string `json:"allowlist,omitempty"`
 }
 
+// AuthConfig contains authentication configuration for the target.
+type AuthConfig struct {
+	Type   string   `json:"type"`
+	Tokens []string `json:"tokens,omitempty"`
+}
+
 // TargetConfig contains the target configuration for an assignment.
 type TargetConfig struct {
 	URL            string                `json:"url"`
 	Transport      string                `json:"transport"`
 	Headers        map[string]string     `json:"headers,omitempty"`
 	RedirectPolicy *RedirectPolicyConfig `json:"redirect_policy,omitempty"`
+	Auth           *AuthConfig           `json:"auth,omitempty"`
 }
 
 // WorkloadConfig contains the workload configuration for an assignment.
@@ -37,6 +44,20 @@ type SessionPolicyConfig struct {
 	PoolSize  int    `json:"pool_size,omitempty"`
 	TTLMs     int64  `json:"ttl_ms,omitempty"`
 	MaxIdleMs int64  `json:"max_idle_ms,omitempty"`
+}
+
+// GetHeadersWithAuth returns the target headers with auth token injected if configured.
+// If auth is configured with bearer_token type and has tokens, the first token is used
+// as the Authorization header value.
+func (t *TargetConfig) GetHeadersWithAuth() map[string]string {
+	headers := make(map[string]string)
+	for k, v := range t.Headers {
+		headers[k] = v
+	}
+	if t.Auth != nil && t.Auth.Type == "bearer_token" && len(t.Auth.Tokens) > 0 {
+		headers["Authorization"] = "Bearer " + t.Auth.Tokens[0]
+	}
+	return headers
 }
 
 // WorkerAssignment represents a work assignment for a worker.

@@ -164,6 +164,7 @@ func (rm *RunManager) createAndDispatchAssignmentsForStage(runID, executionID st
 				Transport:      parsedConfig.Target.Transport,
 				Headers:        buildTargetHeaders(runID, &parsedConfig.Target),
 				RedirectPolicy: buildRedirectPolicy(parsedConfig.Target.RedirectPolicy),
+				Auth:           buildAuthConfig(parsedConfig.Target.Auth),
 			},
 			Workload: types.WorkloadConfig{
 				OpMix: convertOpMix(parsedConfig.Workload.OpMix),
@@ -300,6 +301,7 @@ func (rm *RunManager) dispatchRampAssignments(runID, executionID string, config 
 				Transport:      parsedConfig.Target.Transport,
 				Headers:        buildTargetHeaders(runID, &parsedConfig.Target),
 				RedirectPolicy: buildRedirectPolicy(parsedConfig.Target.RedirectPolicy),
+				Auth:           buildAuthConfig(parsedConfig.Target.Auth),
 			},
 			Workload: types.WorkloadConfig{
 				OpMix: convertOpMix(parsedConfig.Workload.OpMix),

@@ -45,26 +45,13 @@
           "required": ["type"],
           "properties": {
             "type": {"type": "string", "enum": ["none", "bearer_token", "api_key_header", "plugin"]},
+            "tokens": {"type": "array", "items": {"type": "string", "maxLength": 4096}, "maxItems": 10000},
             "bearer_token_ref": {"type": ["string", "null"], "maxLength": 512},
             "api_key_header_name": {"type": ["string", "null"], "maxLength": 100},
             "api_key_ref": {"type": ["string", "null"], "maxLength": 512},
             "plugin_id": {"type": ["string", "null"], "maxLength": 200},
             "plugin_config": {"type": ["object", "null"]}
-          },
-          "allOf": [
-            {
-              "if": {"properties": {"type": {"const": "bearer_token"}}},
-              "then": {"required": ["bearer_token_ref"]}
-            },
-            {
-              "if": {"properties": {"type": {"const": "api_key_header"}}},
-              "then": {"required": ["api_key_header_name", "api_key_ref"]}
-            },
-            {
-              "if": {"properties": {"type": {"const": "plugin"}}},
-              "then": {"required": ["plugin_id", "plugin_config"]}
-            }
-          ]
+          }
         },
         "identification": {
           "type": "object",
