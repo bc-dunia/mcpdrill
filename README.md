@@ -170,7 +170,10 @@ go build -o mcpdrill-agent ./cmd/agent
 }
 ```
 
-The `pair_key` links agent metrics with your test runs. See [Agent Telemetry Guide](docs/agent-telemetry.md) for full details.
+> **What is `pair_key`?**  
+> The pair key links metrics from a specific server with your test runs. Use the **same value** for `--pair-key` when starting the agent and in your run config's `server_telemetry.pair_key` to correlate server-side resource metrics (CPU, memory) with client-side load test results.
+
+See [Agent Telemetry Guide](docs/agent-telemetry.md) for full details.
 
 ## Documentation
 
