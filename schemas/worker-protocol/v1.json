@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcpdrill.local/schemas/worker-protocol/v1.json",
+  "title": "WorkerProtocol (worker-protocol/v1)",
+  "description": "Schema definitions for worker-to-control-plane protocol messages",
+  "oneOf": [
+    {"$ref": "#/$defs/WorkerRegistration"},
+    {"$ref": "#/$defs/WorkerHeartbeat"},
+    {"$ref": "#/$defs/WorkerHeartbeatResponse"},
+    {"$ref": "#/$defs/AssignmentLease"},
+    {"$ref": "#/$defs/TelemetryBatch"}
+  ],
+  "$defs": {
+    "WorkerRegistration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "message_type", "worker_id", "advertised_capacity", "software_version", "plugins"],
+      "properties": {
+        "schema_version": {"type": "string", "const": "worker-protocol/v1"},
+        "message_type": {"type": "string", "const": "registration"},
+        "worker_id": {"type": ["string", "null"], "maxLength": 128},
+        "advertised_capacity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_vus", "max_connections", "max_rps"],
+          "properties": {
+            "max_vus": {"type": "integer", "minimum": 1, "maximum": 100000000},
+            "max_connections": {"type": ["integer", "null"], "minimum": 0, "maximum": 100000000},
+            "max_rps": {"type": ["number", "null"], "minimum": 0, "maximum": 100000000}
+          }
+        },
+        "software_version": {"type": "string", "minLength": 1, "maxLength": 100},
+        "plugins": {
+          "type": "array",
+          "items": {"type": "string", "maxLength": 200},
+          "maxItems": 100
+        }
+      }
+    },
+    "WorkerHeartbeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "message_type", "worker_id", "ts_ms", "active_leases", "health"],
+      "properties": {
+        "schema_version": {"type": "string", "const": "worker-protocol/v1"},
+        "message_type": {"type": "string", "const": "heartbeat"},
+        "worker_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "ts_ms": {"type": "integer", "minimum": 0},
+        "active_leases": {
+          "type": "array",
+          "items": {"type": "string", "maxLength": 128},
+          "maxItems": 1000
+        },
+        "health": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cpu_pct", "mem_bytes", "fd_open", "socket_open", "event_loop_lag_ms", "telemetry_queue_depth", "request_queue_depth"],
+          "properties": {
+            "cpu_pct": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+            "mem_bytes": {"type": ["integer", "null"], "minimum": 0},
+            "fd_open": {"type": ["integer", "null"], "minimum": 0},
+            "socket_open": {"type": ["integer", "null"], "minimum": 0},
+            "event_loop_lag_ms": {"type": ["integer", "null"], "minimum": 0},
+            "telemetry_queue_depth": {"type": ["integer", "null"], "minimum": 0},
+            "request_queue_depth": {"type": ["integer", "null"], "minimum": 0}
+          }
+        }
+      }
+    },
+    "WorkerHeartbeatResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "message_type", "ok", "instructions"],
+      "properties": {
+        "schema_version": {"type": "string", "const": "worker-protocol/v1"},
+        "message_type": {"type": "string", "const": "heartbeat_response"},
+        "ok": {"type": "boolean"},
+        "instructions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "payload"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["new_assignment", "update_assignment", "stop_assignment", "stop_all", "update_config"]
+              },
+              "payload": {"type": "object"}
+            }
+          },
+          "maxItems": 100
+        }
+      }
+    },
+    "AssignmentLease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "message_type", "lease_id", "assignment", "issued_at_ms", "expires_at_ms"],
+      "properties": {
+        "schema_version": {"type": "string", "const": "worker-protocol/v1"},
+        "message_type": {"type": "string", "const": "assignment_lease"},
+        "lease_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "assignment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["assignment_id", "run_id", "stage_id", "scenario_id", "shard", "load", "config_ref"],
+          "properties": {
+            "assignment_id": {"type": "string", "minLength": 1, "maxLength": 128},
+            "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+            "stage_id": {"type": "string", "minLength": 1, "maxLength": 128},
+            "scenario_id": {"type": "string", "minLength": 1, "maxLength": 128},
+            "shard": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["vu_id_start", "vu_id_end", "seed"],
+              "properties": {
+                "vu_id_start": {"type": "integer", "minimum": 0},
+                "vu_id_end": {"type": "integer", "minimum": 0},
+                "seed": {"type": "integer"}
+              }
+            },
+            "load": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["target_vus", "target_rps"],
+              "properties": {
+                "target_vus": {"type": "integer", "minimum": 0, "maximum": 100000000},
+                "target_rps": {"type": ["number", "null"], "minimum": 0, "maximum": 100000000}
+              }
+            },
+            "config_ref": {"type": "string", "minLength": 1, "maxLength": 200},
+            "constraints": {"type": "object"}
+          }
+        },
+        "issued_at_ms": {"type": "integer", "minimum": 0},
+        "expires_at_ms": {"type": "integer", "minimum": 0}
+      }
+    },
+    "TelemetryBatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "message_type", "run_id", "execution_id", "worker_id", "seq", "sent_at_ms", "operations", "worker_health"],
+      "properties": {
+        "schema_version": {"type": "string", "const": "worker-protocol/v1"},
+        "message_type": {"type": "string", "const": "telemetry_batch"},
+        "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "execution_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "worker_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "seq": {"type": "integer", "minimum": 0},
+        "sent_at_ms": {"type": "integer", "minimum": 0},
+        "operations": {
+          "type": "array",
+          "items": {"$ref": "https://mcpdrill.local/schemas/op-log/v1.json"},
+          "maxItems": 10000
+        },
+        "worker_health": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "ts_ms": {"type": "integer", "minimum": 0},
+            "cpu_pct": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+            "mem_bytes": {"type": ["integer", "null"], "minimum": 0},
+            "fd_open": {"type": ["integer", "null"], "minimum": 0},
+            "socket_open": {"type": ["integer", "null"], "minimum": 0},
+            "event_loop_lag_ms": {"type": ["integer", "null"], "minimum": 0},
+            "telemetry_queue_depth": {"type": ["integer", "null"], "minimum": 0},
+            "request_queue_depth": {"type": ["integer", "null"], "minimum": 0},
+            "local_error_counters": {
+              "type": "object",
+              "additionalProperties": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    }
+  }
+}

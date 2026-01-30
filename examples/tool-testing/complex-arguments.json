@@ -1,0 +1,99 @@
+{
+  "scenario_id": "complex-arguments-test",
+  "target": {
+    "kind": "server",
+    "url": "http://localhost:3000",
+    "transport": "streamable_http",
+    "timeout_ms": 30000
+  },
+  "stages": [
+    {
+      "stage_id": "stg_0000000000000001",
+      "stage": "baseline",
+      "enabled": true,
+      "duration_ms": 20000,
+      "load": {
+        "target_vus": 5
+      }
+    },
+    {
+      "stage_id": "stg_0000000000000002",
+      "stage": "ramp",
+      "enabled": true,
+      "duration_ms": 40000,
+      "load": {
+        "target_vus": 20
+      }
+    }
+  ],
+  "workload": {
+    "op_mix": [
+      {
+        "operation": "tools/call",
+        "weight": 3,
+        "tool_name": "json_transform",
+        "arguments": {
+          "operation": "uppercase_keys",
+          "data": {
+            "user": {
+              "name": "Alice",
+              "email": "alice@example.com",
+              "profile": {
+                "age": 30,
+                "city": "San Francisco",
+                "preferences": {
+                  "theme": "dark",
+                  "notifications": true
+                }
+              }
+            },
+            "metadata": {
+              "created_at": "2026-01-29T10:00:00Z",
+              "updated_at": "2026-01-29T12:00:00Z"
+            }
+          }
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 2,
+        "tool_name": "geocode",
+        "arguments": {
+          "address": "1600 Amphitheatre Parkway, Mountain View, CA 94043"
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 2,
+        "tool_name": "list_operations",
+        "arguments": {
+          "list": [15, 42, 8, 23, 16, 4, 108, 50],
+          "operation": "sort"
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 1,
+        "tool_name": "weather_api",
+        "arguments": {
+          "city": "Tokyo",
+          "units": "celsius"
+        }
+      }
+    ],
+    "think_time": {
+      "base_ms": 200,
+      "jitter_ms": 100
+    }
+  },
+  "session_policy": {
+    "mode": "reuse"
+  },
+  "safety": {
+    "hard_caps": {
+      "max_vus": 100,
+      "max_duration_ms": 120000,
+      "max_errors": 200
+    }
+  }
+}

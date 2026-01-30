@@ -1,0 +1,4 @@
+data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"tc_001","progress":50,"total":100}}
+
+data: {"jsonrpc":"2.0","id":"tc_001","result":{"content":[{"type":"text","text":"hello world"}]}}
+

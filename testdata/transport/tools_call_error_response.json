@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": "tc_002",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Error: tool execution failed"
+      }
+    ],
+    "isError": true
+  }
+}

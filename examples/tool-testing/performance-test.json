@@ -1,0 +1,118 @@
+{
+  "scenario_id": "performance-test",
+  "target": {
+    "kind": "server",
+    "url": "http://localhost:3000",
+    "transport": "streamable_http",
+    "timeout_ms": 60000
+  },
+  "stages": [
+    {
+      "stage_id": "stg_0000000000000001",
+      "stage": "preflight",
+      "enabled": true,
+      "duration_ms": 10000,
+      "load": {
+        "target_vus": 1
+      }
+    },
+    {
+      "stage_id": "stg_0000000000000002",
+      "stage": "ramp",
+      "enabled": true,
+      "duration_ms": 60000,
+      "load": {
+        "target_vus": 50
+      },
+      "stop_conditions": [
+        {
+          "metric": "error_rate",
+          "threshold": 0.05,
+          "window_ms": 15000
+        },
+        {
+          "metric": "latency_p99_ms",
+          "threshold": 2000,
+          "window_ms": 15000
+        }
+      ]
+    },
+    {
+      "stage_id": "stg_0000000000000003",
+      "stage": "spike",
+      "enabled": true,
+      "duration_ms": 30000,
+      "load": {
+        "target_vus": 100
+      }
+    }
+  ],
+  "workload": {
+    "op_mix": [
+      {
+        "operation": "tools/call",
+        "weight": 5,
+        "tool_name": "large_payload",
+        "arguments": {
+          "size_kb": 10
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 3,
+        "tool_name": "large_payload",
+        "arguments": {
+          "size_kb": 50
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 1,
+        "tool_name": "large_payload",
+        "arguments": {
+          "size_kb": 100
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 4,
+        "tool_name": "random_latency",
+        "arguments": {
+          "min_ms": 50,
+          "max_ms": 200
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 2,
+        "tool_name": "random_latency",
+        "arguments": {
+          "min_ms": 200,
+          "max_ms": 500
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 3,
+        "tool_name": "slow_echo",
+        "arguments": {
+          "message": "Testing slow response"
+        }
+      }
+    ],
+    "think_time": {
+      "base_ms": 50,
+      "jitter_ms": 25
+    }
+  },
+  "session_policy": {
+    "mode": "reuse"
+  },
+  "safety": {
+    "hard_caps": {
+      "max_vus": 200,
+      "max_duration_ms": 180000,
+      "max_errors": 500
+    }
+  }
+}

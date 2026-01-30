@@ -1,0 +1,555 @@
+{
+  "dashboard": {
+    "title": "MCP Drill - System Health",
+    "uid": "mcpdrill-system-health",
+    "version": 1,
+    "timezone": "browser",
+    "refresh": "30s",
+    "editable": true,
+    "graphTooltip": 1,
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "run_id",
+          "type": "query",
+          "label": "Run ID",
+          "query": "label_values(mcpdrill_stage_duration_seconds, run_id)",
+          "datasource": "Prometheus",
+          "refresh": 1,
+          "multi": false,
+          "includeAll": false,
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          }
+        },
+        {
+          "name": "stage_id",
+          "type": "query",
+          "label": "Stage",
+          "query": "label_values(mcpdrill_stage_duration_seconds{run_id=\"$run_id\"}, stage_id)",
+          "datasource": "Prometheus",
+          "refresh": 1,
+          "multi": true,
+          "includeAll": true,
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          }
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "System Overview",
+        "type": "text",
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 24,
+          "h": 3
+        },
+        "options": {
+          "mode": "markdown",
+          "content": "# MCP Drill System Health Dashboard\n\nThis dashboard provides system-level metrics for MCP Drill. Some metrics are placeholders for future instrumentation.\n\n**Available Metrics:**\n- Stage duration and VU allocation (per run)\n\n**Planned Metrics (Not Yet Instrumented):**\n- Control plane CPU/memory usage\n- Event emission rate\n- Telemetry ingestion rate\n- API request latency"
+        },
+        "transparent": true
+      },
+      {
+        "id": 2,
+        "title": "Stage Duration",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 3,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "mcpdrill_stage_duration_seconds{run_id=\"$run_id\",stage_id=~\"$stage_id\"}",
+            "refId": "A",
+            "legendFormat": "{{stage_id}}"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "s",
+            "label": "Duration",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": true,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "Duration of each stage in the selected run (preflight, baseline, ramp)"
+      },
+      {
+        "id": 3,
+        "title": "Stage VUs",
+        "type": "graph",
+        "gridPos": {
+          "x": 12,
+          "y": 3,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "mcpdrill_stage_vus{run_id=\"$run_id\",stage_id=~\"$stage_id\"}",
+            "refId": "A",
+            "legendFormat": "{{stage_id}}"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "short",
+            "label": "VUs",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": true,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "Number of VUs allocated to each stage in the selected run"
+      },
+      {
+        "id": 4,
+        "title": "Control Plane CPU (Placeholder)",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 11,
+          "w": 8,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "# Placeholder: Control plane CPU metrics not yet instrumented\n# Future: process_cpu_seconds_total or similar",
+            "refId": "A",
+            "legendFormat": "CPU %"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "percent",
+            "label": "CPU %",
+            "logBase": 1,
+            "show": true,
+            "min": 0,
+            "max": 100
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "PLACEHOLDER: Control plane CPU usage. Requires instrumentation of server process metrics."
+      },
+      {
+        "id": 5,
+        "title": "Control Plane Memory (Placeholder)",
+        "type": "graph",
+        "gridPos": {
+          "x": 8,
+          "y": 11,
+          "w": 8,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "# Placeholder: Control plane memory metrics not yet instrumented\n# Future: process_resident_memory_bytes or similar",
+            "refId": "A",
+            "legendFormat": "Memory MB"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "decmbytes",
+            "label": "Memory",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "PLACEHOLDER: Control plane memory usage. Requires instrumentation of server process metrics."
+      },
+      {
+        "id": 6,
+        "title": "Goroutines (Placeholder)",
+        "type": "graph",
+        "gridPos": {
+          "x": 16,
+          "y": 11,
+          "w": 8,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "# Placeholder: Goroutine count not yet instrumented\n# Future: go_goroutines",
+            "refId": "A",
+            "legendFormat": "Goroutines"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "short",
+            "label": "Count",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "PLACEHOLDER: Number of goroutines in the control plane. Requires Go runtime metrics instrumentation."
+      },
+      {
+        "id": 7,
+        "title": "Event Emission Rate (Placeholder)",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 17,
+          "w": 12,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "# Placeholder: Event emission metrics not yet instrumented\n# Future: rate(mcpdrill_events_total[5m])",
+            "refId": "A",
+            "legendFormat": "Events/sec"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "ops",
+            "label": "Events/sec",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "PLACEHOLDER: Rate of event emissions from the control plane. Requires event system instrumentation."
+      },
+      {
+        "id": 8,
+        "title": "Telemetry Ingestion Rate (Placeholder)",
+        "type": "graph",
+        "gridPos": {
+          "x": 12,
+          "y": 17,
+          "w": 12,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "# Placeholder: Telemetry ingestion metrics not yet instrumented\n# Future: rate(mcpdrill_telemetry_batches_total[5m])",
+            "refId": "A",
+            "legendFormat": "Batches/sec"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "ops",
+            "label": "Batches/sec",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "PLACEHOLDER: Rate of telemetry batch ingestion. Requires telemetry store instrumentation."
+      },
+      {
+        "id": 9,
+        "title": "API Request Latency (Placeholder)",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 23,
+          "w": 12,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "# Placeholder: API request latency not yet instrumented\n# Future: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+            "refId": "A",
+            "legendFormat": "p95"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "s",
+            "label": "Latency",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "PLACEHOLDER: API request latency percentiles. Requires HTTP handler instrumentation."
+      },
+      {
+        "id": 10,
+        "title": "API Request Rate (Placeholder)",
+        "type": "graph",
+        "gridPos": {
+          "x": 12,
+          "y": 23,
+          "w": 12,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "# Placeholder: API request rate not yet instrumented\n# Future: rate(http_requests_total[5m])",
+            "refId": "A",
+            "legendFormat": "Requests/sec"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "ops",
+            "label": "Requests/sec",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "PLACEHOLDER: API request rate. Requires HTTP handler instrumentation."
+      }
+    ]
+  }
+}

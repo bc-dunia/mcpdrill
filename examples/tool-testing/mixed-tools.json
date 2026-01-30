@@ -1,0 +1,132 @@
+{
+  "scenario_id": "mixed-tools-test",
+  "target": {
+    "kind": "server",
+    "url": "http://localhost:3000",
+    "transport": "streamable_http",
+    "timeout_ms": 30000
+  },
+  "stages": [
+    {
+      "stage_id": "stg_0000000000000001",
+      "stage": "preflight",
+      "enabled": true,
+      "duration_ms": 10000,
+      "load": {
+        "target_vus": 2
+      }
+    },
+    {
+      "stage_id": "stg_0000000000000002",
+      "stage": "ramp",
+      "enabled": true,
+      "duration_ms": 60000,
+      "load": {
+        "target_vus": 30
+      },
+      "stop_conditions": [
+        {
+          "metric": "error_rate",
+          "threshold": 0.1,
+          "window_ms": 15000
+        },
+        {
+          "metric": "latency_p95_ms",
+          "threshold": 500,
+          "window_ms": 15000
+        }
+      ]
+    },
+    {
+      "stage_id": "stg_0000000000000003",
+      "stage": "soak",
+      "enabled": true,
+      "duration_ms": 120000,
+      "load": {
+        "target_vus": 30
+      }
+    }
+  ],
+  "workload": {
+    "op_mix": [
+      {
+        "operation": "tools/list",
+        "weight": 1
+      },
+      {
+        "operation": "tools/call",
+        "weight": 5,
+        "tool_name": "fast_echo",
+        "arguments": {
+          "message": "Quick response test"
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 3,
+        "tool_name": "validate_email",
+        "arguments": {
+          "email": "user@domain.com"
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 4,
+        "tool_name": "calculate",
+        "arguments": {
+          "expression": "2 + 2 * 3"
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 2,
+        "tool_name": "hash_generator",
+        "arguments": {
+          "data": "test data for hashing",
+          "algorithm": "sha256"
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 3,
+        "tool_name": "text_processor",
+        "arguments": {
+          "text": "Hello World from MCP Drill",
+          "operation": "uppercase"
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 2,
+        "tool_name": "currency_convert",
+        "arguments": {
+          "amount": 100,
+          "from": "USD",
+          "to": "EUR"
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 1,
+        "tool_name": "read_file",
+        "arguments": {
+          "path": "/etc/config.json"
+        }
+      }
+    ],
+    "think_time": {
+      "base_ms": 150,
+      "jitter_ms": 75
+    }
+  },
+  "session_policy": {
+    "mode": "reuse"
+  },
+  "safety": {
+    "hard_caps": {
+      "max_vus": 100,
+      "max_duration_ms": 300000,
+      "max_errors": 500
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcpdrill.local/schemas/metrics-window/v1.json",
+  "title": "MetricsWindow (metrics-window/v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "ts_ms", "window_ms", "run_id", "execution_id", "stage", "stage_id", "metrics"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "metrics-window/v1"},
+    "ts_ms": {"type": "integer", "minimum": 0, "description": "Window end timestamp (UNIX ms)"},
+    "window_ms": {"type": "integer", "minimum": 1000, "maximum": 3600000, "description": "Aggregation window duration"},
+    "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "execution_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "stage": {"type": "string", "enum": ["preflight", "baseline", "ramp", "soak", "spike", "custom"]},
+    "stage_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "metrics": {
+      "type": "object",
+      "description": "Aggregated metrics for this window",
+      "properties": {
+        "rps": {"type": "number", "minimum": 0, "description": "Requests per second"},
+        "error_rate": {"type": "number", "minimum": 0, "maximum": 1, "description": "Error rate (ratio 0..1)"},
+        "latency_p50_ms": {"type": "number", "minimum": 0},
+        "latency_p95_ms": {"type": "number", "minimum": 0},
+        "latency_p99_ms": {"type": "number", "minimum": 0},
+        "active_vus": {"type": "integer", "minimum": 0},
+        "active_sessions": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": {"type": "number"}
+    },
+    "breakdowns": {
+      "type": "object",
+      "description": "Metrics broken down by dimension (operation, tool_name, etc.)",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "rps": {"type": "number"},
+            "error_rate": {"type": "number", "minimum": 0, "maximum": 1}
+          },
+          "additionalProperties": {"type": "number"}
+        }
+      }
+    }
+  }
+}

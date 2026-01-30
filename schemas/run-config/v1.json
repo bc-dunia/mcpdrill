@@ -1,0 +1,512 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcpdrill.local/schemas/run-config/v1.json",
+  "title": "RunConfig (run-config/v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scenario_id", "target", "environment", "session_policy", "workload", "stages", "safety", "reporting", "telemetry"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "run-config/v1"},
+    "scenario_id": {"type": "string", "minLength": 3, "maxLength": 128},
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "created_by", "tags"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 200},
+        "description": {"type": "string", "maxLength": 4000},
+        "created_by": {"type": "string", "minLength": 1, "maxLength": 200},
+        "tags": {
+          "type": "object",
+          "additionalProperties": {"type": "string", "maxLength": 200},
+          "maxProperties": 64
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "url", "transport", "headers", "auth", "identification", "timeouts", "tls", "redirect_policy"],
+      "properties": {
+        "kind": {"type": "string", "enum": ["gateway", "server"]},
+        "url": {"type": "string", "minLength": 1, "maxLength": 2048},
+        "transport": {"type": "string", "minLength": 1, "maxLength": 100},
+        "headers": {
+          "type": "object",
+          "patternProperties": {
+            "^[A-Za-z0-9-]+$": {"type": "string", "maxLength": 4096}
+          },
+          "additionalProperties": false,
+          "maxProperties": 64
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": {"type": "string", "enum": ["none", "bearer_token", "api_key_header", "plugin"]},
+            "bearer_token_ref": {"type": ["string", "null"], "maxLength": 512},
+            "api_key_header_name": {"type": ["string", "null"], "maxLength": 100},
+            "api_key_ref": {"type": ["string", "null"], "maxLength": 512},
+            "plugin_id": {"type": ["string", "null"], "maxLength": 200},
+            "plugin_config": {"type": ["object", "null"]}
+          },
+          "allOf": [
+            {
+              "if": {"properties": {"type": {"const": "bearer_token"}}},
+              "then": {"required": ["bearer_token_ref"]}
+            },
+            {
+              "if": {"properties": {"type": {"const": "api_key_header"}}},
+              "then": {"required": ["api_key_header_name", "api_key_ref"]}
+            },
+            {
+              "if": {"properties": {"type": {"const": "plugin"}}},
+              "then": {"required": ["plugin_id", "plugin_config"]}
+            }
+          ]
+        },
+        "identification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["run_id_header", "user_agent"],
+          "properties": {
+            "run_id_header": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "value_template"],
+              "properties": {
+                "name": {"type": "string", "minLength": 1, "maxLength": 100},
+                "value_template": {"type": "string", "minLength": 1, "maxLength": 200}
+              }
+            },
+            "user_agent": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["value"],
+              "properties": {
+                "value": {"type": "string", "minLength": 1, "maxLength": 512}
+              }
+            }
+          }
+        },
+        "timeouts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["connect_timeout_ms", "request_timeout_ms", "stream_stall_timeout_ms"],
+          "properties": {
+            "connect_timeout_ms": {"type": "integer", "minimum": 1, "maximum": 600000},
+            "request_timeout_ms": {"type": "integer", "minimum": 1, "maximum": 3600000},
+            "stream_stall_timeout_ms": {"type": "integer", "minimum": 1, "maximum": 3600000}
+          }
+        },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["verify", "ca_bundle_ref"],
+          "properties": {
+            "verify": {"type": "boolean"},
+            "ca_bundle_ref": {"type": ["string", "null"], "maxLength": 512}
+          }
+        },
+        "redirect_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "max_redirects"],
+          "properties": {
+            "mode": {"type": "string", "enum": ["deny", "same_origin", "allowlist_only"], "default": "deny"},
+            "max_redirects": {"type": "integer", "minimum": 0, "maximum": 3, "default": 3},
+            "allowlist": {"type": "array", "items": {"type": "string", "format": "uri"}, "maxItems": 50}
+          }
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowlist", "forbidden_patterns"],
+      "properties": {
+        "allowlist": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "allowed_targets"],
+          "properties": {
+            "mode": {"type": "string", "enum": ["deny_by_default", "allow_all"]},
+            "allowed_targets": {
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 200,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "value"],
+                "properties": {
+                  "kind": {"type": "string", "enum": ["exact", "suffix", "regex", "cidr"]},
+                  "value": {"type": "string", "minLength": 1, "maxLength": 2048}
+                }
+              }
+            }
+          }
+        },
+        "forbidden_patterns": {"type": "array", "items": {"type": "string", "maxLength": 200}, "maxItems": 50}
+      }
+    },
+    "session_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "pool_size", "ttl_ms", "max_idle_ms"],
+      "properties": {
+        "mode": {"type": "string", "enum": ["reuse", "pool", "per_request", "churn"]},
+        "pool_size": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+        "ttl_ms": {"type": ["integer", "null"], "minimum": 0, "maximum": 86400000},
+        "max_idle_ms": {"type": ["integer", "null"], "minimum": 0, "maximum": 86400000},
+        "churn_interval_ops": {"type": ["integer", "null"], "minimum": 1, "maximum": 1000000}
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["in_flight_per_vu", "think_time", "operation_mix", "tools", "payload_profiles"],
+      "properties": {
+        "in_flight_per_vu": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "think_time": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "base_ms", "jitter_ms"],
+          "properties": {
+            "mode": {"type": "string", "enum": ["none", "fixed", "jitter"]},
+            "base_ms": {"type": "integer", "minimum": 0, "maximum": 600000},
+            "jitter_ms": {"type": "integer", "minimum": 0, "maximum": 600000}
+          }
+        },
+        "user_journey": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "startup_sequence": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "properties": {
+                "run_tools_list_on_start": {"type": "boolean", "default": true}
+              }
+            },
+            "periodic_ops": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "properties": {
+                "tools_list_interval_ms": {"type": "integer", "minimum": 0, "maximum": 86400000, "default": 300000},
+                "tools_list_after_errors": {"type": "integer", "minimum": 0, "maximum": 1000, "default": 3}
+              }
+            },
+            "reconnect_policy": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {"type": "boolean", "default": true},
+                "initial_delay_ms": {"type": "integer", "minimum": 1, "maximum": 60000, "default": 100},
+                "max_delay_ms": {"type": "integer", "minimum": 1, "maximum": 300000, "default": 30000},
+                "multiplier": {"type": "number", "minimum": 1.0, "maximum": 10.0, "default": 2.0},
+                "jitter_fraction": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.2},
+                "max_retries": {"type": "integer", "minimum": 0, "maximum": 100, "default": 10}
+              }
+            }
+          }
+        },
+        "operation_mix": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["operation", "weight"],
+            "properties": {
+              "operation": {"type": "string", "enum": ["tools_list", "tools_call", "ping", "custom", "initialize"]},
+              "custom_operation_name": {"type": ["string", "null"], "maxLength": 200},
+              "weight": {"type": "integer", "exclusiveMinimum": 0, "maximum": 100000}
+            }
+          }
+        },
+        "tools": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["selection", "templates"],
+          "properties": {
+            "selection": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["mode"],
+              "properties": {
+                "mode": {"type": "string", "enum": ["weighted", "round_robin", "single"]},
+                "single_template_id": {"type": ["string", "null"], "maxLength": 200}
+              }
+            },
+            "templates": {
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 500,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["template_id", "tool_name", "weight", "arguments"],
+                "properties": {
+                  "template_id": {"type": "string", "minLength": 1, "maxLength": 200},
+                  "tool_name": {"type": "string", "minLength": 1, "maxLength": 200},
+                  "weight": {"type": "integer", "exclusiveMinimum": 0, "maximum": 100000},
+                  "arguments": {"type": "object"},
+                  "expects_streaming": {"type": "boolean", "default": false}
+                }
+              }
+            }
+          }
+        },
+        "payload_profiles": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["profile_id", "kind", "size_bytes"],
+            "properties": {
+              "profile_id": {"type": "string", "minLength": 1, "maxLength": 200},
+              "kind": {"type": "string", "enum": ["text", "json", "binary"]},
+              "size_bytes": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["distribution"],
+                "properties": {
+                  "distribution": {"type": "string", "enum": ["fixed", "uniform"]},
+                  "fixed": {"type": ["integer", "null"], "minimum": 0, "maximum": 104857600},
+                  "min": {"type": ["integer", "null"], "minimum": 0, "maximum": 104857600},
+                  "max": {"type": ["integer", "null"], "minimum": 0, "maximum": 104857600}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["stage_id", "stage", "enabled", "duration_ms", "load", "stop_conditions"],
+        "properties": {
+          "stage_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "stage": {"type": "string", "enum": ["preflight", "baseline", "ramp", "soak", "spike", "custom"]},
+          "enabled": {"type": "boolean"},
+          "duration_ms": {"type": "integer", "minimum": 0, "maximum": 86400000},
+          "max_duration_ms": {"type": ["integer", "null"], "minimum": 60000, "maximum": 86400000},
+          "load": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["target_vus", "target_rps"],
+            "properties": {
+              "target_vus": {"type": "integer", "minimum": 0, "maximum": 100000000},
+              "target_rps": {"type": ["number", "null"], "minimum": 0, "maximum": 100000000}
+            }
+          },
+          "ramp": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["mode", "step_every_ms", "step_vus", "step_rps", "max_vus", "max_rps", "hold_ms"],
+            "properties": {
+              "mode": {"type": "string", "enum": ["step"]},
+              "step_every_ms": {"type": "integer", "minimum": 1000, "maximum": 3600000},
+              "step_vus": {"type": "integer", "minimum": 0, "maximum": 100000000},
+              "step_rps": {"type": ["number", "null"], "minimum": 0, "maximum": 100000000},
+              "max_vus": {"type": "integer", "minimum": 0, "maximum": 100000000},
+              "max_rps": {"type": ["number", "null"], "minimum": 0, "maximum": 100000000},
+              "hold_ms": {"type": "integer", "minimum": 0, "maximum": 3600000}
+            }
+          },
+           "stop_conditions": {
+             "type": "array",
+             "minItems": 0,
+             "maxItems": 50,
+             "items": {
+               "type": "object",
+               "additionalProperties": false,
+               "required": ["id", "metric", "comparator", "threshold", "window_ms", "sustain_windows", "scope"],
+               "properties": {
+                 "id": {"type": "string", "minLength": 1, "maxLength": 200},
+                 "metric": {"type": "string", "minLength": 1, "maxLength": 200},
+                 "comparator": {"type": "string", "enum": [">", ">=", "<", "<="]},
+                 "threshold": {"type": "number"},
+                 "window_ms": {"type": "integer", "minimum": 1000, "maximum": 3600000},
+                 "sustain_windows": {"type": "integer", "minimum": 1, "maximum": 1000},
+                 "scope": {"type": "object", "additionalProperties": {"type": "string", "maxLength": 200}}
+               }
+             }
+           },
+           "streaming_stop_conditions": {
+             "type": ["object", "null"],
+             "additionalProperties": false,
+             "properties": {
+              "stream_stall_seconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 3600
+                },
+                 "min_events_per_second": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+              }
+            }
+          }
+        }
+      }
+    ,
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ramp_by_default", "emergency_stop_enabled", "hard_caps", "stop_policy", "identification_required", "worker_failure_policy"],
+      "properties": {
+        "ramp_by_default": {"type": "boolean"},
+        "emergency_stop_enabled": {"type": "boolean"},
+        "identification_required": {"type": "boolean"},
+        "worker_failure_policy": {"type": "string", "enum": ["fail_fast", "replace_if_possible", "best_effort"], "default": "fail_fast"},
+        "analysis_timeout_ms": {"type": "integer", "minimum": 60000, "maximum": 7200000, "default": 1800000},
+        "streaming_stop_conditions": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "stream_stall_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
+            "min_events_per_second": {"type": "number", "minimum": 0, "maximum": 1000000}
+          }
+        },
+        "hard_caps": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_vus", "max_rps", "max_connections", "max_duration_ms", "max_in_flight_per_vu", "max_telemetry_q_depth"],
+          "properties": {
+            "max_vus": {"type": "integer", "minimum": 1, "maximum": 100000000},
+            "max_rps": {"type": "number", "minimum": 0, "maximum": 100000000},
+            "max_connections": {"type": "integer", "minimum": 0, "maximum": 100000000},
+            "max_duration_ms": {"type": "integer", "minimum": 1000, "maximum": 604800000},
+            "max_in_flight_per_vu": {"type": "integer", "minimum": 1, "maximum": 10000},
+            "max_telemetry_q_depth": {"type": "integer", "minimum": 1000, "maximum": 100000000}
+          }
+        },
+        "stop_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "drain_timeout_ms"],
+          "properties": {
+            "mode": {"type": "string", "enum": ["drain", "immediate"]},
+            "drain_timeout_ms": {"type": "integer", "minimum": 0, "maximum": 3600000}
+          }
+        }
+      }
+    },
+    "reporting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formats", "retention", "include", "redaction"],
+      "properties": {
+        "formats": {"type": "array", "minItems": 1, "items": {"type": "string", "enum": ["json", "html"]}, "uniqueItems": true},
+        "retention": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["raw_logs_days", "metrics_days", "reports_days"],
+          "properties": {
+            "raw_logs_days": {"type": "integer", "minimum": 0, "maximum": 3650},
+            "metrics_days": {"type": "integer", "minimum": 0, "maximum": 3650},
+            "reports_days": {"type": "integer", "minimum": 0, "maximum": 3650}
+          }
+        },
+        "include": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["store_raw_logs", "store_metrics_snapshot", "store_event_log"],
+          "properties": {
+            "store_raw_logs": {"type": "boolean"},
+            "store_metrics_snapshot": {"type": "boolean"},
+            "store_event_log": {"type": "boolean"}
+          }
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["redact_headers"],
+          "properties": {
+            "redact_headers": {"type": "array", "items": {"type": "string", "maxLength": 100}, "maxItems": 50}
+          }
+        }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["structured_logs", "traces"],
+      "properties": {
+        "structured_logs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "sample_rate"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "sample_rate": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        },
+        "traces": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "propagation"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "propagation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["accept_incoming_traceparent"],
+              "properties": {
+                "accept_incoming_traceparent": {"type": "boolean"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "server_telemetry": {
+      "type": "object",
+      "description": "Optional configuration for server-side telemetry collection via mcpdrill-agent",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether to collect server telemetry",
+          "default": false
+        },
+        "pair_key": {
+          "type": "string",
+          "description": "Key to pair with mcpdrill-agent instances",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "require_agent": {
+          "type": "boolean",
+          "description": "If true, fail run if no agent is connected within grace_period_ms",
+          "default": false
+        },
+        "grace_period_ms": {
+          "type": "integer",
+          "description": "Time to wait for agent connection when require_agent is true",
+          "minimum": 0,
+          "maximum": 300000,
+          "default": 60000
+        },
+        "expected_min_agents": {
+          "type": "integer",
+          "description": "Minimum number of agents expected for this pair_key",
+          "minimum": 0,
+          "default": 1
+        }
+      }
+    }
+  }
+}

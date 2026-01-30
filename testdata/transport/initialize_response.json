@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": "init_001",
+  "result": {
+    "protocolVersion": "2025-03-26",
+    "capabilities": {
+      "tools": { "listChanged": true },
+      "resources": {}
+    },
+    "serverInfo": {
+      "name": "test-server",
+      "version": "1.0.0"
+    }
+  }
+}

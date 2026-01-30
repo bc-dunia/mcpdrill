@@ -1,0 +1,40 @@
+{
+  "schema_version": "run-config/v1",
+  "scenario_id": "scn_missing_stop_conditions_baseline",
+  "metadata": {"name": "Missing Stop Conditions Baseline", "description": "Baseline stage without stop conditions", "created_by": "test@example.com", "tags": {}},
+  "target": {
+    "kind": "gateway",
+    "url": "https://staging.example.com/mcp",
+    "transport": "streamable_http",
+    "headers": {},
+    "auth": {"type": "none"},
+    "identification": {"run_id_header": {"name": "X-Test-Run-Id", "value_template": "${run_id}"}, "user_agent": {"value": "mcpdrill/1.0 (run=${run_id})"}},
+    "timeouts": {"connect_timeout_ms": 5000, "request_timeout_ms": 30000, "stream_stall_timeout_ms": 15000},
+    "tls": {"verify": true, "ca_bundle_ref": null},
+    "redirect_policy": {"mode": "deny", "max_redirects": 3}
+  },
+  "environment": {"allowlist": {"mode": "deny_by_default", "allowed_targets": []}, "forbidden_patterns": []},
+  "session_policy": {"mode": "reuse", "pool_size": null, "ttl_ms": null, "max_idle_ms": null},
+  "workload": {
+    "in_flight_per_vu": 1,
+    "think_time": {"mode": "none", "base_ms": 0, "jitter_ms": 0},
+    "operation_mix": [{"operation": "tools_list", "weight": 1}],
+    "tools": {"selection": {"mode": "weighted"}, "templates": []},
+    "payload_profiles": []
+  },
+  "stages": [
+    {"stage_id": "stg_000000000001", "stage": "preflight", "enabled": true, "duration_ms": 30000, "load": {"target_vus": 1, "target_rps": 1}, "stop_conditions": []},
+    {"stage_id": "stg_000000000002", "stage": "baseline", "enabled": true, "duration_ms": 60000, "load": {"target_vus": 10, "target_rps": 10}, "stop_conditions": []},
+    {"stage_id": "stg_000000000003", "stage": "ramp", "enabled": true, "duration_ms": 120000, "load": {"target_vus": 10, "target_rps": 10}, "stop_conditions": [{"id": "ramp_error_rate", "metric": "error_rate", "comparator": ">", "threshold": 0.05, "window_ms": 30000, "sustain_windows": 2, "scope": {}}]}
+  ],
+  "safety": {
+    "ramp_by_default": true,
+    "emergency_stop_enabled": true,
+    "worker_failure_policy": "fail_fast",
+    "hard_caps": {"max_vus": 100, "max_rps": 100, "max_connections": 100, "max_duration_ms": 600000, "max_in_flight_per_vu": 5, "max_telemetry_q_depth": 10000},
+    "stop_policy": {"mode": "drain", "drain_timeout_ms": 10000},
+    "identification_required": true
+  },
+  "reporting": {"formats": ["json"], "retention": {"raw_logs_days": 7, "metrics_days": 30, "reports_days": 90}, "include": {"store_raw_logs": true, "store_metrics_snapshot": true, "store_event_log": true}, "redaction": {"redact_headers": []}},
+  "telemetry": {"structured_logs": {"enabled": true, "sample_rate": 1.0}, "traces": {"enabled": false, "propagation": {"accept_incoming_traceparent": false}}}
+}

@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcpdrill.local/schemas/op-log/v1.json",
+  "title": "OperationLogLine (op-log/v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_type",
+    "ts_ms",
+    "run_id",
+    "execution_id",
+    "stage",
+    "stage_id",
+    "scenario_id",
+    "worker_id",
+    "assignment_id",
+    "lease_id",
+    "vu_id",
+    "session_id",
+    "op_id",
+    "attempt",
+    "operation",
+    "operation_name",
+    "tool_name",
+    "latency_ms",
+    "first_byte_ms",
+    "bytes_in",
+    "bytes_out",
+    "transport",
+    "http_status",
+    "content_type",
+    "jsonrpc_id",
+    "jsonrpc_error_code",
+    "mcp_error_code",
+    "stream",
+    "ok",
+    "error",
+    "retries",
+    "reconnects",
+    "origin_classification",
+    "origin_confidence",
+    "origin_evidence",
+    "trace_id",
+    "span_id"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "const": "op-log/v1"},
+    "record_type": {"type": "string", "const": "op"},
+    "ts_ms": {"type": "integer", "minimum": 0},
+    "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "execution_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "stage": {"type": "string", "enum": ["preflight", "baseline", "ramp", "soak", "spike", "custom"]},
+    "stage_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "scenario_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "worker_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "assignment_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "lease_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "vu_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "session_id": {"type": ["string", "null"], "maxLength": 256},
+    "op_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "attempt": {"type": "integer", "minimum": 1, "maximum": 1000},
+    "operation": {"type": "string", "enum": ["initialize", "tools_list", "tools_call", "ping", "custom"]},
+    "operation_name": {"type": ["string", "null"], "maxLength": 200},
+    "tool_name": {"type": ["string", "null"], "maxLength": 200},
+    "latency_ms": {"type": "integer", "minimum": 0, "maximum": 3600000},
+    "first_byte_ms": {"type": ["integer", "null"], "minimum": 0, "maximum": 3600000},
+    "bytes_in": {"type": ["integer", "null"], "minimum": 0, "maximum": 1099511627776},
+    "bytes_out": {"type": ["integer", "null"], "minimum": 0, "maximum": 1099511627776},
+    "transport": {"type": "string", "minLength": 1, "maxLength": 100},
+    "http_status": {"type": ["integer", "null"], "minimum": 100, "maximum": 599},
+    "content_type": {"type": ["string", "null"], "maxLength": 200},
+    "jsonrpc_id": {"type": ["string", "null"], "maxLength": 128},
+    "jsonrpc_error_code": {"type": ["integer", "null"], "minimum": -32768, "maximum": 32767},
+    "mcp_error_code": {"type": ["string", "null"], "maxLength": 200},
+    "stream": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["is_streaming", "events_count", "ended_normally", "stalled", "stall_duration_ms"],
+      "properties": {
+        "is_streaming": {"type": "boolean"},
+        "events_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 100000000},
+        "ended_normally": {"type": ["boolean", "null"]},
+        "stalled": {"type": ["boolean", "null"]},
+        "stall_duration_ms": {"type": ["integer", "null"], "minimum": 0, "maximum": 3600000}
+      }
+    },
+    "ok": {"type": "boolean"},
+    "error": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["error_type", "error_code", "error_message", "retryable", "details"],
+      "properties": {
+        "error_type": {
+          "type": "string",
+          "enum": [
+            "timeout",
+            "connect_error",
+            "tls_error",
+            "dns_error",
+            "protocol_error",
+            "http_error",
+            "mcp_error",
+            "jsonrpc_error",
+            "tool_error",
+            "rate_limited",
+            "resource_exhausted",
+            "internal",
+            "unknown"
+          ]
+        },
+        "error_code": {"type": "string", "minLength": 1, "maxLength": 200},
+        "error_message": {"type": "string", "minLength": 1, "maxLength": 4000},
+        "retryable": {"type": "boolean"},
+        "details": {"type": "object"}
+      }
+    },
+    "retries": {"type": "integer", "minimum": 0, "maximum": 1000},
+    "reconnects": {"type": "integer", "minimum": 0, "maximum": 1000000},
+    "origin_classification": {"type": "string", "enum": ["client_network", "gateway", "mcp_server", "upstream_api", "unknown"]},
+    "origin_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "origin_evidence": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule_id", "weight", "note", "refs"],
+        "properties": {
+          "rule_id": {"type": "string", "minLength": 1, "maxLength": 200},
+          "weight": {"type": "number"},
+          "note": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "refs": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 500}, "maxItems": 50}
+        }
+      }
+    },
+    "trace_id": {"type": ["string", "null"], "maxLength": 128},
+    "span_id": {"type": ["string", "null"], "maxLength": 128}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"operation": {"const": "tools_call"}}},
+      "then": {"properties": {"tool_name": {"type": "string", "minLength": 1}}}
+    },
+    {
+      "if": {"properties": {"operation": {"const": "custom"}}},
+      "then": {"properties": {"operation_name": {"type": "string", "minLength": 1}}}
+    },
+    {
+      "if": {"properties": {"ok": {"const": false}}},
+      "then": {"required": ["error"]}
+    }
+  ]
+}

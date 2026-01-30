@@ -1,0 +1,9 @@
+id: evt_00000001
+data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"tc_001","progress":25,"total":100}}
+
+id: evt_00000002
+data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"tc_001","progress":75,"total":100}}
+
+id: evt_00000003
+data: {"jsonrpc":"2.0","id":"tc_001","result":{"content":[{"type":"text","text":"completed"}]}}
+

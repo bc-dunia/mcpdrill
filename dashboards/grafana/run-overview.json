@@ -1,0 +1,492 @@
+{
+  "dashboard": {
+    "title": "MCP Drill - Run Overview",
+    "uid": "mcpdrill-run-overview",
+    "version": 1,
+    "timezone": "browser",
+    "refresh": "10s",
+    "editable": true,
+    "graphTooltip": 1,
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "scenario_id",
+          "type": "query",
+          "label": "Scenario",
+          "query": "label_values(mcpdrill_runs_total, scenario_id)",
+          "datasource": "Prometheus",
+          "refresh": 1,
+          "multi": false,
+          "includeAll": false,
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          }
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Active Runs",
+        "type": "stat",
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "sum(mcpdrill_run_state{scenario_id=\"$scenario_id\",state=~\"running|draining\"})",
+            "refId": "A",
+            "legendFormat": "Active Runs"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "green"
+                },
+                {
+                  "value": 5,
+                  "color": "yellow"
+                },
+                {
+                  "value": 10,
+                  "color": "red"
+                }
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "description": "Number of runs currently in running or draining state"
+      },
+      {
+        "id": 2,
+        "title": "Run State Distribution",
+        "type": "piechart",
+        "gridPos": {
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "sum by (state) (mcpdrill_run_state{scenario_id=\"$scenario_id\"})",
+            "refId": "A",
+            "legendFormat": "{{state}}"
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "values": ["value", "percent"]
+          },
+          "pieType": "pie",
+          "tooltip": {
+            "mode": "single"
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short"
+          }
+        },
+        "description": "Distribution of runs across different states (pending, running, completed, failed, etc.)"
+      },
+      {
+        "id": 3,
+        "title": "Total Runs Created",
+        "type": "stat",
+        "gridPos": {
+          "x": 12,
+          "y": 0,
+          "w": 6,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "sum(mcpdrill_runs_total{scenario_id=\"$scenario_id\"})",
+            "refId": "A",
+            "legendFormat": "Total Runs"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "blue"
+                }
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "description": "Total number of runs created for this scenario"
+      },
+      {
+        "id": 4,
+        "title": "Success Rate",
+        "type": "stat",
+        "gridPos": {
+          "x": 18,
+          "y": 0,
+          "w": 6,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "sum(mcpdrill_run_state{scenario_id=\"$scenario_id\",state=\"completed\"}) / (sum(mcpdrill_run_state{scenario_id=\"$scenario_id\",state=\"completed\"}) + sum(mcpdrill_run_state{scenario_id=\"$scenario_id\",state=\"failed\"}))",
+            "refId": "A",
+            "legendFormat": "Success Rate"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "red"
+                },
+                {
+                  "value": 0.8,
+                  "color": "yellow"
+                },
+                {
+                  "value": 0.95,
+                  "color": "green"
+                }
+              ]
+            },
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        },
+        "description": "Percentage of runs that completed successfully (completed / (completed + failed))"
+      },
+      {
+        "id": 5,
+        "title": "Run Duration Over Time",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 4,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(mcpdrill_run_duration_seconds_sum{scenario_id=\"$scenario_id\"}[5m])) / sum(rate(mcpdrill_run_duration_seconds_count{scenario_id=\"$scenario_id\"}[5m]))",
+            "refId": "A",
+            "legendFormat": "Average Duration"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "s",
+            "label": "Duration",
+            "logBase": 1,
+            "show": true
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": true,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "Average run duration over time (5-minute rolling average)"
+      },
+      {
+        "id": 6,
+        "title": "Run State Timeline",
+        "type": "graph",
+        "gridPos": {
+          "x": 12,
+          "y": 4,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "mcpdrill_run_state{scenario_id=\"$scenario_id\",state=\"pending\"}",
+            "refId": "A",
+            "legendFormat": "Pending"
+          },
+          {
+            "expr": "mcpdrill_run_state{scenario_id=\"$scenario_id\",state=\"running\"}",
+            "refId": "B",
+            "legendFormat": "Running"
+          },
+          {
+            "expr": "mcpdrill_run_state{scenario_id=\"$scenario_id\",state=\"draining\"}",
+            "refId": "C",
+            "legendFormat": "Draining"
+          },
+          {
+            "expr": "mcpdrill_run_state{scenario_id=\"$scenario_id\",state=\"completed\"}",
+            "refId": "D",
+            "legendFormat": "Completed"
+          },
+          {
+            "expr": "mcpdrill_run_state{scenario_id=\"$scenario_id\",state=\"failed\"}",
+            "refId": "E",
+            "legendFormat": "Failed"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "short",
+            "label": "Count",
+            "logBase": 1,
+            "show": true
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 0,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": false,
+          "current": true,
+          "max": false,
+          "min": false,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "Timeline of run states showing how many runs are in each state over time"
+      },
+      {
+        "id": 7,
+        "title": "Run Creation Rate",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 12,
+          "w": 12,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(mcpdrill_runs_total{scenario_id=\"$scenario_id\"}[5m]))",
+            "refId": "A",
+            "legendFormat": "Runs/sec"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "ops",
+            "label": "Rate",
+            "logBase": 1,
+            "show": true
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": true,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "Rate at which new runs are being created (runs per second, 5-minute rolling average)"
+      },
+      {
+        "id": 8,
+        "title": "Run Completion Rate",
+        "type": "graph",
+        "gridPos": {
+          "x": 12,
+          "y": 12,
+          "w": 12,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(mcpdrill_run_state{scenario_id=\"$scenario_id\",state=\"completed\"}[5m]))",
+            "refId": "A",
+            "legendFormat": "Completed/sec"
+          },
+          {
+            "expr": "sum(rate(mcpdrill_run_state{scenario_id=\"$scenario_id\",state=\"failed\"}[5m]))",
+            "refId": "B",
+            "legendFormat": "Failed/sec"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "ops",
+            "label": "Rate",
+            "logBase": 1,
+            "show": true
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": true,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "Rate at which runs are completing (successfully or with failure, 5-minute rolling average)"
+      }
+    ]
+  }
+}

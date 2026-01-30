@@ -1,0 +1,86 @@
+{
+  "scenario_id": "error-testing",
+  "target": {
+    "kind": "server",
+    "url": "http://localhost:3000",
+    "transport": "streamable_http",
+    "timeout_ms": 30000
+  },
+  "stages": [
+    {
+      "stage_id": "stg_0000000000000001",
+      "stage": "baseline",
+      "enabled": true,
+      "duration_ms": 15000,
+      "load": {
+        "target_vus": 5
+      }
+    },
+    {
+      "stage_id": "stg_0000000000000002",
+      "stage": "ramp",
+      "enabled": true,
+      "duration_ms": 45000,
+      "load": {
+        "target_vus": 15
+      },
+      "stop_conditions": [
+        {
+          "metric": "error_rate",
+          "threshold": 0.6,
+          "window_ms": 10000
+        }
+      ]
+    }
+  ],
+  "workload": {
+    "op_mix": [
+      {
+        "operation": "tools/call",
+        "weight": 3,
+        "tool_name": "conditional_error",
+        "arguments": {
+          "error_probability": 0.3
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 2,
+        "tool_name": "conditional_error",
+        "arguments": {
+          "error_probability": 0.5
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 1,
+        "tool_name": "error_tool",
+        "arguments": {
+          "error_message": "Simulated error for testing"
+        }
+      },
+      {
+        "operation": "tools/call",
+        "weight": 4,
+        "tool_name": "fast_echo",
+        "arguments": {
+          "message": "Success case"
+        }
+      }
+    ],
+    "think_time": {
+      "base_ms": 100,
+      "jitter_ms": 50
+    }
+  },
+  "session_policy": {
+    "mode": "reuse"
+  },
+  "safety": {
+    "hard_caps": {
+      "max_vus": 50,
+      "max_duration_ms": 120000,
+      "max_errors": 1000
+    }
+  }
+}

@@ -1,0 +1,216 @@
+{
+  "schema_version": "run-config/v1",
+  "scenario_id": "scn_minimal_test",
+  "metadata": {
+    "name": "Minimal Test Config",
+    "description": "A minimal valid configuration with preflight, baseline, and ramp stages",
+    "created_by": "test@example.com",
+    "tags": {
+      "env": "test"
+    }
+  },
+  "target": {
+    "kind": "gateway",
+    "url": "https://staging-gateway.example.com/mcp",
+    "transport": "streamable_http",
+    "headers": {},
+    "auth": {
+      "type": "bearer_token",
+      "bearer_token_ref": "env://MCPDRILL_TARGET_TOKEN"
+    },
+    "identification": {
+      "run_id_header": {
+        "name": "X-Test-Run-Id",
+        "value_template": "${run_id}"
+      },
+      "user_agent": {
+        "value": "mcpdrill/1.0 (run=${run_id})"
+      }
+    },
+    "timeouts": {
+      "connect_timeout_ms": 5000,
+      "request_timeout_ms": 30000,
+      "stream_stall_timeout_ms": 15000
+    },
+    "tls": {
+      "verify": true,
+      "ca_bundle_ref": null
+    },
+    "redirect_policy": {
+      "mode": "deny",
+      "max_redirects": 3
+    }
+  },
+  "environment": {
+    "allowlist": {
+      "mode": "deny_by_default",
+      "allowed_targets": [
+        {
+          "kind": "suffix",
+          "value": ".example.com"
+        }
+      ]
+    },
+    "forbidden_patterns": ["prod"]
+  },
+  "session_policy": {
+    "mode": "reuse",
+    "pool_size": 100,
+    "ttl_ms": 900000,
+    "max_idle_ms": 60000
+  },
+  "workload": {
+    "in_flight_per_vu": 2,
+    "think_time": {
+      "mode": "jitter",
+      "base_ms": 50,
+      "jitter_ms": 50
+    },
+    "operation_mix": [
+      {
+        "operation": "tools_list",
+        "weight": 1
+      },
+      {
+        "operation": "tools_call",
+        "weight": 10
+      }
+    ],
+    "tools": {
+      "selection": {
+        "mode": "weighted"
+      },
+      "templates": [
+        {
+          "template_id": "echo_small",
+          "tool_name": "echo",
+          "weight": 10,
+          "arguments": {
+            "message": "test"
+          }
+        }
+      ]
+    },
+    "payload_profiles": []
+  },
+  "stages": [
+    {
+      "stage_id": "stg_000000000001",
+      "stage": "preflight",
+      "enabled": true,
+      "duration_ms": 60000,
+      "load": {
+        "target_vus": 5,
+        "target_rps": 2
+      },
+      "stop_conditions": [
+        {
+          "id": "preflight_any_failure",
+          "metric": "error_rate",
+          "comparator": ">",
+          "threshold": 0,
+          "window_ms": 30000,
+          "sustain_windows": 1,
+          "scope": {}
+        }
+      ]
+    },
+    {
+      "stage_id": "stg_000000000002",
+      "stage": "baseline",
+      "enabled": true,
+      "duration_ms": 300000,
+      "load": {
+        "target_vus": 50,
+        "target_rps": 100
+      },
+      "stop_conditions": [
+        {
+          "id": "baseline_error_rate",
+          "metric": "error_rate",
+          "comparator": ">",
+          "threshold": 0.01,
+          "window_ms": 60000,
+          "sustain_windows": 2,
+          "scope": {}
+        }
+      ]
+    },
+    {
+      "stage_id": "stg_000000000003",
+      "stage": "ramp",
+      "enabled": true,
+      "duration_ms": 1800000,
+      "load": {
+        "target_vus": 50,
+        "target_rps": 100
+      },
+      "ramp": {
+        "mode": "step",
+        "step_every_ms": 120000,
+        "step_vus": 25,
+        "step_rps": 50,
+        "max_vus": 500,
+        "max_rps": 1000,
+        "hold_ms": 60000
+      },
+      "stop_conditions": [
+        {
+          "id": "ramp_p99",
+          "metric": "latency_p99_ms",
+          "comparator": ">",
+          "threshold": 3000,
+          "window_ms": 60000,
+          "sustain_windows": 2,
+          "scope": {}
+        }
+      ]
+    }
+  ],
+  "safety": {
+    "ramp_by_default": true,
+    "emergency_stop_enabled": true,
+    "worker_failure_policy": "fail_fast",
+    "hard_caps": {
+      "max_vus": 1000,
+      "max_rps": 2000,
+      "max_connections": 2000,
+      "max_duration_ms": 7200000,
+      "max_in_flight_per_vu": 5,
+      "max_telemetry_q_depth": 200000
+    },
+    "stop_policy": {
+      "mode": "drain",
+      "drain_timeout_ms": 30000
+    },
+    "identification_required": true
+  },
+  "reporting": {
+    "formats": ["json", "html"],
+    "retention": {
+      "raw_logs_days": 7,
+      "metrics_days": 30,
+      "reports_days": 90
+    },
+    "include": {
+      "store_raw_logs": true,
+      "store_metrics_snapshot": true,
+      "store_event_log": true
+    },
+    "redaction": {
+      "redact_headers": ["Authorization"]
+    }
+  },
+  "telemetry": {
+    "structured_logs": {
+      "enabled": true,
+      "sample_rate": 1.0
+    },
+    "traces": {
+      "enabled": false,
+      "propagation": {
+        "accept_incoming_traceparent": true
+      }
+    }
+  }
+}

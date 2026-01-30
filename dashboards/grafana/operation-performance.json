@@ -1,0 +1,710 @@
+{
+  "dashboard": {
+    "title": "MCP Drill - Operation Performance",
+    "uid": "mcpdrill-operation-performance",
+    "version": 1,
+    "timezone": "browser",
+    "refresh": "10s",
+    "editable": true,
+    "graphTooltip": 1,
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "operation",
+          "type": "query",
+          "label": "Operation",
+          "query": "label_values(mcpdrill_operations_total, operation)",
+          "datasource": "Prometheus",
+          "refresh": 1,
+          "multi": true,
+          "includeAll": true,
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          }
+        },
+        {
+          "name": "tool_name",
+          "type": "query",
+          "label": "Tool",
+          "query": "label_values(mcpdrill_operations_total, tool_name)",
+          "datasource": "Prometheus",
+          "refresh": 1,
+          "multi": true,
+          "includeAll": true,
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          }
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Operation Throughput",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "sum by (operation) (rate(mcpdrill_operations_total{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m]))",
+            "refId": "A",
+            "legendFormat": "{{operation}}"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "ops",
+            "label": "Operations/sec",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": false,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 2,
+          "value_type": "individual"
+        },
+        "description": "Rate of operations per second by operation type (5-minute rolling average)"
+      },
+      {
+        "id": 2,
+        "title": "Total Operations",
+        "type": "stat",
+        "gridPos": {
+          "x": 12,
+          "y": 0,
+          "w": 6,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "sum(mcpdrill_operations_total{operation=~\"$operation\",tool_name=~\"$tool_name\"})",
+            "refId": "A",
+            "legendFormat": "Total Ops"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "blue"
+                }
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "description": "Total number of operations executed across all selected operations and tools"
+      },
+      {
+        "id": 3,
+        "title": "Current Throughput",
+        "type": "stat",
+        "gridPos": {
+          "x": 18,
+          "y": 0,
+          "w": 6,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(mcpdrill_operations_total{operation=~\"$operation\",tool_name=~\"$tool_name\"}[1m]))",
+            "refId": "A",
+            "legendFormat": "Ops/sec"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "green"
+                },
+                {
+                  "value": 10,
+                  "color": "yellow"
+                },
+                {
+                  "value": 50,
+                  "color": "orange"
+                }
+              ]
+            },
+            "unit": "ops",
+            "decimals": 2
+          }
+        },
+        "description": "Current operation throughput (1-minute rolling average)"
+      },
+      {
+        "id": 4,
+        "title": "Error Rate",
+        "type": "stat",
+        "gridPos": {
+          "x": 12,
+          "y": 4,
+          "w": 6,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(mcpdrill_operation_errors_total{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m])) / sum(rate(mcpdrill_operations_total{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m]))",
+            "refId": "A",
+            "legendFormat": "Error Rate"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "green"
+                },
+                {
+                  "value": 0.01,
+                  "color": "yellow"
+                },
+                {
+                  "value": 0.05,
+                  "color": "red"
+                }
+              ]
+            },
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        },
+        "description": "Percentage of operations that resulted in errors (errors / total operations)"
+      },
+      {
+        "id": 5,
+        "title": "Total Errors",
+        "type": "stat",
+        "gridPos": {
+          "x": 18,
+          "y": 4,
+          "w": 6,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "sum(mcpdrill_operation_errors_total{operation=~\"$operation\",tool_name=~\"$tool_name\"})",
+            "refId": "A",
+            "legendFormat": "Total Errors"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "green"
+                },
+                {
+                  "value": 1,
+                  "color": "yellow"
+                },
+                {
+                  "value": 10,
+                  "color": "red"
+                }
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "description": "Total number of operation errors"
+      },
+      {
+        "id": 6,
+        "title": "Latency Percentiles",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 8,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum by (le, operation) (rate(mcpdrill_operation_duration_seconds_bucket{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m])))",
+            "refId": "A",
+            "legendFormat": "p50 - {{operation}}"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(mcpdrill_operation_duration_seconds_bucket{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m])))",
+            "refId": "B",
+            "legendFormat": "p95 - {{operation}}"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum by (le, operation) (rate(mcpdrill_operation_duration_seconds_bucket{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m])))",
+            "refId": "C",
+            "legendFormat": "p99 - {{operation}}"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "s",
+            "label": "Duration",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 0,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": false,
+          "current": true,
+          "max": true,
+          "min": false,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 2,
+          "value_type": "individual"
+        },
+        "description": "Operation latency at p50, p95, and p99 percentiles by operation type"
+      },
+      {
+        "id": 7,
+        "title": "Average Latency by Operation",
+        "type": "graph",
+        "gridPos": {
+          "x": 12,
+          "y": 8,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "sum by (operation) (rate(mcpdrill_operation_duration_seconds_sum{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m])) / sum by (operation) (rate(mcpdrill_operation_duration_seconds_count{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m]))",
+            "refId": "A",
+            "legendFormat": "{{operation}}"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "s",
+            "label": "Duration",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": true,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 2,
+          "value_type": "individual"
+        },
+        "description": "Average operation duration by operation type (5-minute rolling average)"
+      },
+      {
+        "id": 8,
+        "title": "Error Rate by Operation",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 16,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "sum by (operation) (rate(mcpdrill_operation_errors_total{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m])) / sum by (operation) (rate(mcpdrill_operations_total{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m]))",
+            "refId": "A",
+            "legendFormat": "{{operation}}"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "percentunit",
+            "label": "Error Rate",
+            "logBase": 1,
+            "show": true,
+            "min": 0,
+            "max": 1
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": false,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 2,
+          "value_type": "individual"
+        },
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {
+                "params": [0.05],
+                "type": "gt"
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": ["A", "5m", "now"]
+              },
+              "reducer": {
+                "params": [],
+                "type": "avg"
+              },
+              "type": "query"
+            }
+          ],
+          "executionErrorState": "alerting",
+          "frequency": "60s",
+          "handler": 1,
+          "name": "Operation Error Rate High",
+          "noDataState": "no_data",
+          "notifications": []
+        },
+        "description": "Error rate by operation type. Alert triggers when error rate > 5% for 5 minutes."
+      },
+      {
+        "id": 9,
+        "title": "Error Rate by Tool",
+        "type": "graph",
+        "gridPos": {
+          "x": 12,
+          "y": 16,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "sum by (tool_name) (rate(mcpdrill_operation_errors_total{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m])) / sum by (tool_name) (rate(mcpdrill_operations_total{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m]))",
+            "refId": "A",
+            "legendFormat": "{{tool_name}}"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "percentunit",
+            "label": "Error Rate",
+            "logBase": 1,
+            "show": true,
+            "min": 0,
+            "max": 1
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": false,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 2,
+          "value_type": "individual"
+        },
+        "description": "Error rate by tool name. Helps identify which tools are experiencing issues."
+      },
+      {
+        "id": 10,
+        "title": "Operations by Tool",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 24,
+          "w": 12,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "sum by (tool_name) (rate(mcpdrill_operations_total{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m]))",
+            "refId": "A",
+            "legendFormat": "{{tool_name}}"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "ops",
+            "label": "Operations/sec",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": true,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": false,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 2,
+          "value_type": "individual"
+        },
+        "description": "Operation throughput by tool name. Stacked to show total throughput."
+      },
+      {
+        "id": 11,
+        "title": "Latency Heatmap",
+        "type": "heatmap",
+        "gridPos": {
+          "x": 12,
+          "y": 24,
+          "w": 12,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(mcpdrill_operation_duration_seconds_bucket{operation=~\"$operation\",tool_name=~\"$tool_name\"}[5m])) by (le)",
+            "refId": "A",
+            "format": "heatmap",
+            "legendFormat": "{{le}}"
+          }
+        ],
+        "xaxis": {
+          "show": true
+        },
+        "yaxis": {
+          "format": "s",
+          "logBase": 1,
+          "show": true
+        },
+        "cards": {
+          "cardPadding": null,
+          "cardRound": null
+        },
+        "color": {
+          "cardColor": "#b4ff00",
+          "colorScale": "sqrt",
+          "colorScheme": "interpolateSpectral",
+          "exponent": 0.5,
+          "mode": "spectrum"
+        },
+        "dataFormat": "tsbuckets",
+        "hideZeroBuckets": false,
+        "highlightCards": true,
+        "legend": {
+          "show": true
+        },
+        "tooltip": {
+          "show": true,
+          "showHistogram": false
+        },
+        "description": "Heatmap showing the distribution of operation latencies over time"
+      }
+    ]
+  }
+}

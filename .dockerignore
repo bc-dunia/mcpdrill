@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*_test.go
+test/
+coverage.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node modules
+node_modules/
+web/log-explorer/node_modules/
+
+# Temporary files
+*.log
+*.tmp
+tmp/
+
+# Documentation (not needed in image)
+docs/
+*.md
+!README.md
+
+# Examples
+examples/
+
+# Sisyphus
+.sisyphus/

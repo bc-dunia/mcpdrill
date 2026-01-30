@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcpdrill.local/schemas/event/v1.json",
+  "title": "RunEvent (event/v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "ts_ms",
+    "run_id",
+    "execution_id",
+    "type",
+    "actor",
+    "correlation",
+    "payload",
+    "evidence"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "const": "event/v1"},
+    "event_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "ts_ms": {"type": "integer", "minimum": 0},
+    "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "execution_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "type": {
+      "type": "string",
+      "enum": [
+        "RUN_CREATED",
+        "VALIDATION_COMPLETED",
+        "STATE_TRANSITION",
+        "ALLOCATION_FAILED",
+        "STAGE_STARTED",
+        "STAGE_COMPLETED",
+        "STAGE_FAILED",
+        "SCHEDULER_TARGET_SET",
+        "WORKER_REGISTERED",
+        "WORKER_ASSIGNED",
+        "WORKER_HEARTBEAT",
+        "WORKER_CAPACITY_LOST",
+        "STOP_REQUESTED",
+        "EMERGENCY_STOP",
+        "STOP_CONDITION_TRIGGERED",
+        "STAGE_TIMEOUT",
+        "DECISION",
+        "ANALYSIS_STARTED",
+        "ANALYSIS_COMPLETED",
+        "REPORT_GENERATED",
+        "ARTIFACT_STORED"
+      ]
+    },
+    "actor": {
+      "type": "string",
+      "enum": ["system", "user", "scheduler", "autoramp", "analysis", "worker"]
+    },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "stage_id", "worker_id", "vu_id", "session_id"],
+      "properties": {
+        "stage": {"type": ["string", "null"], "enum": ["preflight", "baseline", "ramp", "soak", "spike", "custom", null]},
+        "stage_id": {"type": ["string", "null"], "maxLength": 128},
+        "worker_id": {"type": ["string", "null"], "maxLength": 128},
+        "vu_id": {"type": ["string", "null"], "maxLength": 128},
+        "session_id": {"type": ["string", "null"], "maxLength": 256}
+      }
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-specific payload data"
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "ref"],
+        "properties": {
+          "kind": {"type": "string", "minLength": 1, "maxLength": 100},
+          "ref": {"type": "string", "minLength": 1, "maxLength": 500},
+          "note": {"type": "string", "maxLength": 2000}
+        }
+      }
+    }
+  }
+}

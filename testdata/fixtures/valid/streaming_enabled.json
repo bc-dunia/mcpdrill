@@ -1,0 +1,69 @@
+{
+  "schema_version": "run-config/v1",
+  "scenario_id": "scn_streaming_enabled",
+  "metadata": {
+    "name": "Streaming Enabled Config",
+    "description": "Configuration with streaming tools and stream stall stop condition",
+    "created_by": "test@example.com",
+    "tags": {"test": "streaming"}
+  },
+  "target": {
+    "kind": "gateway",
+    "url": "https://staging.example.com/mcp",
+    "transport": "streamable_http",
+    "headers": {},
+    "auth": {"type": "none"},
+    "identification": {
+      "run_id_header": {"name": "X-Test-Run-Id", "value_template": "${run_id}"},
+      "user_agent": {"value": "mcpdrill/1.0 (run=${run_id})"}
+    },
+    "timeouts": {"connect_timeout_ms": 5000, "request_timeout_ms": 30000, "stream_stall_timeout_ms": 15000},
+    "tls": {"verify": true, "ca_bundle_ref": null},
+    "redirect_policy": {"mode": "deny", "max_redirects": 3}
+  },
+  "environment": {
+    "allowlist": {"mode": "deny_by_default", "allowed_targets": [{"kind": "suffix", "value": ".example.com"}]},
+    "forbidden_patterns": []
+  },
+  "session_policy": {
+    "mode": "reuse",
+    "pool_size": 50,
+    "ttl_ms": 900000,
+    "max_idle_ms": 60000
+  },
+  "workload": {
+    "in_flight_per_vu": 1,
+    "think_time": {"mode": "none", "base_ms": 0, "jitter_ms": 0},
+    "operation_mix": [{"operation": "tools_call", "weight": 1}],
+    "tools": {
+      "selection": {"mode": "weighted"},
+      "templates": [
+        {"template_id": "stream_tool", "tool_name": "stream_echo", "weight": 1, "arguments": {"msg": "test"}, "expects_streaming": true}
+      ]
+    },
+    "payload_profiles": []
+  },
+  "stages": [
+    {"stage_id": "stg_000000000001", "stage": "preflight", "enabled": true, "duration_ms": 30000, "load": {"target_vus": 1, "target_rps": 1}, "stop_conditions": [{"id": "pf_err", "metric": "error_rate", "comparator": ">", "threshold": 0, "window_ms": 10000, "sustain_windows": 1, "scope": {}}]},
+    {"stage_id": "stg_000000000002", "stage": "baseline", "enabled": true, "duration_ms": 60000, "load": {"target_vus": 10, "target_rps": 10}, "stop_conditions": [{"id": "bl_err", "metric": "error_rate", "comparator": ">", "threshold": 0.05, "window_ms": 30000, "sustain_windows": 2, "scope": {}}, {"id": "bl_stream_stall", "metric": "stream_stalls_per_sec", "comparator": ">", "threshold": 1, "window_ms": 30000, "sustain_windows": 2, "scope": {}}]},
+    {"stage_id": "stg_000000000003", "stage": "ramp", "enabled": true, "duration_ms": 120000, "load": {"target_vus": 10, "target_rps": 10}, "stop_conditions": [{"id": "ramp_err", "metric": "error_rate", "comparator": ">", "threshold": 0.05, "window_ms": 30000, "sustain_windows": 2, "scope": {}}, {"id": "ramp_stream_stall", "metric": "stream_stalls_per_sec", "comparator": ">", "threshold": 1, "window_ms": 30000, "sustain_windows": 2, "scope": {}}]}
+  ],
+  "safety": {
+    "ramp_by_default": true,
+    "emergency_stop_enabled": true,
+    "worker_failure_policy": "fail_fast",
+    "hard_caps": {"max_vus": 100, "max_rps": 100, "max_connections": 100, "max_duration_ms": 600000, "max_in_flight_per_vu": 5, "max_telemetry_q_depth": 10000},
+    "stop_policy": {"mode": "drain", "drain_timeout_ms": 10000},
+    "identification_required": true
+  },
+  "reporting": {
+    "formats": ["json"],
+    "retention": {"raw_logs_days": 7, "metrics_days": 30, "reports_days": 90},
+    "include": {"store_raw_logs": true, "store_metrics_snapshot": true, "store_event_log": true},
+    "redaction": {"redact_headers": ["Authorization"]}
+  },
+  "telemetry": {
+    "structured_logs": {"enabled": true, "sample_rate": 1.0},
+    "traces": {"enabled": false, "propagation": {"accept_incoming_traceparent": false}}
+  }
+}

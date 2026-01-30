@@ -1,0 +1,116 @@
+# ===================
+# Compiled Binaries
+# ===================
+mcpdrill
+mcpdrill-server
+mcpdrill-worker
+mcpdrill-agent
+mcpdrill-mockserver
+server
+worker
+agent
+mockserver
+mock-server
+validate
+validate_bin
+*.exe
+
+# ===================
+# Build Outputs
+# ===================
+dist/
+build/
+*.log
+coverage/
+*.out
+
+# ===================
+# Dependencies
+# ===================
+node_modules/
+vendor/
+
+# ===================
+# Environment
+# ===================
+.env
+.env.local
+.env.*.local
+*.env
+
+# ===================
+# IDE / Editor
+# ===================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ===================
+# OS Generated
+# ===================
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ===================
+# Working / Intermediate Files
+# ===================
+# AI assistant working directories
+.sisyphus/
+.omc/
+.claude/
+
+# MCP Drill local state/artifacts
+.mcpdrill/
+
+# QA and testing reports (internal use)
+.qa-reports/
+
+# Reference/design documents (internal)
+ref/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# ===================
+# Test Artifacts
+# ===================
+*.test
+*.spec
+__snapshots__/
+.nyc_output/
+
+# ===================
+# Go Specific
+# ===================
+*.test
+*.prof
+*.pprof
+cpu.out
+mem.out
+trace.out
+
+# ===================
+# Local Config
+# ===================
+*.local.json
+*.local.yaml
+config.local.*
+
+# ===================
+# Root-level test/temp files
+# ===================
+test-*.json
+stress-test.json
+screenshots/

@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: worker
+  labels:
+    app: mcpdrill-worker
+spec:
+  serviceName: worker
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mcpdrill-worker
+  template:
+    metadata:
+      labels:
+        app: mcpdrill-worker
+    spec:
+      containers:
+      - name: worker
+        image: mcpdrill/worker:latest
+        args:
+        - --control-plane=http://control-plane:8080
+        - --heartbeat-interval=10s
+        - --assignment-poll-interval=5s
+        - --telemetry-interval=10s
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace

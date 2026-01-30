@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcpdrill.local/schemas/report/v1.json",
+  "title": "RunReport (report/v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "generated_at_ms",
+    "final_state",
+    "duration_ms",
+    "config_snapshot",
+    "stage_results",
+    "latency_distributions",
+    "throughput",
+    "errors",
+    "sessions",
+    "attribution",
+    "stop_reason",
+    "recommendations",
+    "data_quality",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "const": "report/v1"},
+    "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "generated_at_ms": {"type": "integer", "minimum": 0},
+    "final_state": {"type": "string", "enum": ["COMPLETED", "FAILED", "ABORTED"]},
+    "duration_ms": {"type": "integer", "minimum": 0},
+    "config_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["config_hash", "schema_version", "redacted"],
+      "properties": {
+        "config_hash": {"type": "string", "minLength": 1, "maxLength": 200},
+        "schema_version": {"type": "string", "const": "run-config/v1"},
+        "redacted": {"type": "object"}
+      }
+    },
+    "stage_results": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["stage", "stage_id", "started_at_ms", "ended_at_ms", "achieved_throughput_rps", "stable_load", "collapse_point"],
+        "properties": {
+          "stage": {"type": "string", "enum": ["preflight", "baseline", "ramp", "soak", "spike", "custom"]},
+          "stage_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "started_at_ms": {"type": "integer", "minimum": 0},
+          "ended_at_ms": {"type": "integer", "minimum": 0},
+          "achieved_throughput_rps": {"type": ["number", "null"], "minimum": 0},
+          "stable_load": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stable", "at_vus", "at_rps"],
+            "properties": {
+              "stable": {"type": "boolean"},
+              "at_vus": {"type": ["integer", "null"], "minimum": 0},
+              "at_rps": {"type": ["number", "null"], "minimum": 0}
+            }
+          },
+          "collapse_point": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["trigger", "at_vus", "at_rps", "evidence_refs"],
+            "properties": {
+              "trigger": {"type": "string", "minLength": 1, "maxLength": 200},
+              "at_vus": {"type": ["integer", "null"], "minimum": 0},
+              "at_rps": {"type": ["number", "null"], "minimum": 0},
+              "evidence_refs": {"type": "array", "items": {"type": "string", "maxLength": 500}, "maxItems": 100}
+            }
+          }
+        }
+      }
+    },
+    "latency_distributions": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 20000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["stage", "stage_id", "operation", "tool_name", "p50_ms", "p95_ms", "p99_ms", "max_ms"],
+        "properties": {
+          "stage": {"type": "string"},
+          "stage_id": {"type": "string"},
+          "operation": {"type": "string"},
+          "tool_name": {"type": ["string", "null"], "maxLength": 200},
+          "p50_ms": {"type": "integer", "minimum": 0},
+          "p95_ms": {"type": "integer", "minimum": 0},
+          "p99_ms": {"type": "integer", "minimum": 0},
+          "max_ms": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "throughput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requests_total", "successes_total", "failures_total", "achieved_rps"],
+      "properties": {
+        "requests_total": {"type": "integer", "minimum": 0},
+        "successes_total": {"type": "integer", "minimum": 0},
+        "failures_total": {"type": "integer", "minimum": 0},
+        "achieved_rps": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "errors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["by_category", "by_http_family", "top_signatures"],
+      "properties": {
+        "by_category": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "by_http_family": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "top_signatures": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["signature_id", "count", "example", "origin_breakdown"],
+            "properties": {
+              "signature_id": {"type": "string", "minLength": 1, "maxLength": 200},
+              "count": {"type": "integer", "minimum": 0},
+              "example": {"type": "object"},
+              "origin_breakdown": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}
+            }
+          }
+        }
+      }
+    },
+    "sessions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "active_sessions_peak", "churn_rate", "reconnects_total"],
+      "properties": {
+        "policy": {"type": "object"},
+        "active_sessions_peak": {"type": "integer", "minimum": 0},
+        "churn_rate": {"type": ["number", "null"], "minimum": 0},
+        "reconnects_total": {"type": "integer", "minimum": 0}
+      }
+    },
+    "attribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin_totals", "origin_confidence_summary", "evidence"],
+      "properties": {
+        "origin_totals": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "origin_confidence_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["avg", "p50", "p95"],
+          "properties": {
+            "avg": {"type": "number", "minimum": 0, "maximum": 1},
+            "p50": {"type": "number", "minimum": 0, "maximum": 1},
+            "p95": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        },
+        "evidence": {"type": "array", "items": {"type": "object"}, "maxItems": 10000}
+      }
+    },
+    "stop_reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "message", "evidence_refs"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "completed",
+            "stop_condition_met",
+            "stop_requested",
+            "emergency_stop",
+            "worker_capacity_lost",
+            "system_error",
+            "preflight_failed",
+            "allocation_failed",
+            "stage_timeout",
+            "analysis_timeout",
+            "preflight_passed_timeout",
+            "ramp_complete_soak_invalid"
+          ]
+        },
+        "message": {"type": "string", "minLength": 1, "maxLength": 4000},
+        "evidence_refs": {"type": "array", "items": {"type": "string", "maxLength": 500}, "maxItems": 200}
+      }
+    },
+    "recommendations": {"type": "array", "items": {"type": "string", "maxLength": 2000}, "maxItems": 100},
+    "data_quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logs_complete", "metrics_complete", "traces_present", "worker_coverage_pct", "notes"],
+      "properties": {
+        "logs_complete": {"type": "boolean"},
+        "metrics_complete": {"type": "boolean"},
+        "traces_present": {"type": "boolean"},
+        "worker_coverage_pct": {"type": "number", "minimum": 0, "maximum": 100},
+        "notes": {"type": "array", "items": {"type": "string", "maxLength": 2000}, "maxItems": 200}
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["config_snapshot", "raw_logs", "metrics_snapshot", "event_log", "report_json", "report_html"],
+      "properties": {
+        "config_snapshot": {"type": "string", "minLength": 1, "maxLength": 200},
+        "raw_logs": {"type": ["string", "null"], "maxLength": 200},
+        "metrics_snapshot": {"type": ["string", "null"], "maxLength": 200},
+        "event_log": {"type": ["string", "null"], "maxLength": 200},
+        "report_json": {"type": "string", "minLength": 1, "maxLength": 200},
+        "report_html": {"type": ["string", "null"], "maxLength": 200}
+      }
+    }
+  }
+}

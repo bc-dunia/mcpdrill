@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane
+  labels:
+    app: mcpdrill-control-plane
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcpdrill-control-plane
+  template:
+    metadata:
+      labels:
+        app: mcpdrill-control-plane
+    spec:
+      containers:
+      - name: server
+        image: mcpdrill/server:latest
+        args:
+        - --addr=:8080
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 250m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane
+  labels:
+    app: mcpdrill-control-plane
+spec:
+  type: ClusterIP
+  selector:
+    app: mcpdrill-control-plane
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http

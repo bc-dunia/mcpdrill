@@ -1,0 +1,585 @@
+{
+  "dashboard": {
+    "title": "MCP Drill - Worker Health",
+    "uid": "mcpdrill-worker-health",
+    "version": 1,
+    "timezone": "browser",
+    "refresh": "10s",
+    "editable": true,
+    "graphTooltip": 1,
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "worker_id",
+          "type": "query",
+          "label": "Worker",
+          "query": "label_values(mcpdrill_worker_health_cpu_percent, worker_id)",
+          "datasource": "Prometheus",
+          "refresh": 1,
+          "multi": true,
+          "includeAll": true,
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          }
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Total Workers",
+        "type": "stat",
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "mcpdrill_workers_total",
+            "refId": "A",
+            "legendFormat": "Workers"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "red"
+                },
+                {
+                  "value": 1,
+                  "color": "yellow"
+                },
+                {
+                  "value": 3,
+                  "color": "green"
+                }
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "description": "Total number of registered workers in the pool"
+      },
+      {
+        "id": 2,
+        "title": "Average CPU Usage",
+        "type": "stat",
+        "gridPos": {
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "avg(mcpdrill_worker_health_cpu_percent{worker_id=~\"$worker_id\"})",
+            "refId": "A",
+            "legendFormat": "Avg CPU"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "green"
+                },
+                {
+                  "value": 70,
+                  "color": "yellow"
+                },
+                {
+                  "value": 90,
+                  "color": "red"
+                }
+              ]
+            },
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        },
+        "description": "Average CPU usage across all selected workers"
+      },
+      {
+        "id": 3,
+        "title": "Average Memory Usage",
+        "type": "stat",
+        "gridPos": {
+          "x": 12,
+          "y": 0,
+          "w": 6,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "avg(mcpdrill_worker_health_memory_mb{worker_id=~\"$worker_id\"})",
+            "refId": "A",
+            "legendFormat": "Avg Memory"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "green"
+                },
+                {
+                  "value": 1024,
+                  "color": "yellow"
+                },
+                {
+                  "value": 2048,
+                  "color": "red"
+                }
+              ]
+            },
+            "unit": "decmbytes"
+          }
+        },
+        "description": "Average memory usage across all selected workers"
+      },
+      {
+        "id": 4,
+        "title": "Saturated Workers",
+        "type": "stat",
+        "gridPos": {
+          "x": 18,
+          "y": 0,
+          "w": 6,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "count(mcpdrill_worker_health_cpu_percent{worker_id=~\"$worker_id\"} > 90)",
+            "refId": "A",
+            "legendFormat": "Saturated"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "green"
+                },
+                {
+                  "value": 1,
+                  "color": "yellow"
+                },
+                {
+                  "value": 3,
+                  "color": "red"
+                }
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "description": "Number of workers with CPU usage > 90% (saturation threshold)"
+      },
+      {
+        "id": 5,
+        "title": "CPU Usage by Worker",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 4,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "mcpdrill_worker_health_cpu_percent{worker_id=~\"$worker_id\"}",
+            "refId": "A",
+            "legendFormat": "{{worker_id}}"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "percent",
+            "label": "CPU %",
+            "logBase": 1,
+            "show": true,
+            "min": 0,
+            "max": 100
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": true,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 2,
+          "value_type": "individual"
+        },
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {
+                "params": [90],
+                "type": "gt"
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": ["A", "5m", "now"]
+              },
+              "reducer": {
+                "params": [],
+                "type": "avg"
+              },
+              "type": "query"
+            }
+          ],
+          "executionErrorState": "alerting",
+          "frequency": "60s",
+          "handler": 1,
+          "name": "Worker CPU High",
+          "noDataState": "no_data",
+          "notifications": []
+        },
+        "description": "CPU usage percentage for each worker over time. Alert triggers when CPU > 90% for 5 minutes."
+      },
+      {
+        "id": 6,
+        "title": "Memory Usage by Worker",
+        "type": "graph",
+        "gridPos": {
+          "x": 12,
+          "y": 4,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "mcpdrill_worker_health_memory_mb{worker_id=~\"$worker_id\"}",
+            "refId": "A",
+            "legendFormat": "{{worker_id}}"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "decmbytes",
+            "label": "Memory",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": true,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 2,
+          "value_type": "individual"
+        },
+        "description": "Memory usage in megabytes for each worker over time"
+      },
+      {
+        "id": 7,
+        "title": "Active VUs by Worker",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 12,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "mcpdrill_worker_health_active_vus{worker_id=~\"$worker_id\"}",
+            "refId": "A",
+            "legendFormat": "{{worker_id}}"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "short",
+            "label": "VUs",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": true,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": true,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 2,
+          "value_type": "individual"
+        },
+        "description": "Number of active virtual users (VUs) running on each worker. Stacked to show total VU count."
+      },
+      {
+        "id": 8,
+        "title": "VU Utilization Rate",
+        "type": "graph",
+        "gridPos": {
+          "x": 12,
+          "y": 12,
+          "w": 12,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "sum(mcpdrill_worker_health_active_vus{worker_id=~\"$worker_id\"})",
+            "refId": "A",
+            "legendFormat": "Total Active VUs"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "short",
+            "label": "VUs",
+            "logBase": 1,
+            "show": true,
+            "min": 0
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": true,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "Total number of active VUs across all selected workers"
+      },
+      {
+        "id": 9,
+        "title": "Worker Saturation Rate",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 20,
+          "w": 24,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "count(mcpdrill_worker_health_cpu_percent{worker_id=~\"$worker_id\"} > 90) / count(mcpdrill_worker_health_cpu_percent{worker_id=~\"$worker_id\"})",
+            "refId": "A",
+            "legendFormat": "Saturation Rate"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "yaxes": [
+          {
+            "format": "percentunit",
+            "label": "Saturation %",
+            "logBase": 1,
+            "show": true,
+            "min": 0,
+            "max": 1
+          },
+          {
+            "format": "short",
+            "logBase": 1,
+            "show": true
+          }
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "points": false,
+        "pointradius": 5,
+        "bars": false,
+        "stack": false,
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": true,
+          "current": true,
+          "max": true,
+          "min": true,
+          "values": true
+        },
+        "nullPointMode": "null",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "description": "Percentage of workers with CPU > 90%. High saturation indicates the worker pool may need scaling."
+      }
+    ]
+  }
+}

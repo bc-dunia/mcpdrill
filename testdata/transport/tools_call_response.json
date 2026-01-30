@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": "tc_001",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "hello world"
+      }
+    ]
+  }
+}
