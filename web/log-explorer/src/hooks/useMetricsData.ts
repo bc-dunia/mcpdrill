@@ -7,10 +7,17 @@ import { CONFIG, STORAGE_KEYS } from '../config';
 
 const API_BASE = '';
 
+interface CachedTotals {
+  total_ops: number;
+  success_ops: number;
+  failed_ops: number;
+}
+
 interface CachedMetricsData {
   dataPoints: MetricsDataPoint[];
   durationMs?: number;
   stability: StabilityMetrics | null;
+  latestTotals?: CachedTotals;
   lastUpdated: number;
 }
 
@@ -62,6 +69,12 @@ interface UseMetricsDataOptions {
   run?: RunInfo;
 }
 
+export interface LatestTotals {
+  total_ops: number;
+  success_ops: number;
+  failed_ops: number;
+}
+
 interface UseMetricsDataResult {
   dataPoints: MetricsDataPoint[];
   loading: boolean;
@@ -77,6 +90,7 @@ interface UseMetricsDataResult {
   currentStage: string | null;
   isRunActive: boolean;
   elapsedMs: number;
+  latestTotals: LatestTotals;
   handleManualRefresh: () => void;
   loadMetrics: () => Promise<void>;
   loadStability: () => Promise<void>;
@@ -96,14 +110,20 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
   const [sseConnected, setSseConnected] = useState(false);
   const [currentStage, setCurrentStage] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState<number>(0);
+  const [latestTotals, setLatestTotals] = useState<LatestTotals>({ total_ops: 0, success_ops: 0, failed_ops: 0 });
 
   const intervalRef = useRef<number | null>(null);
   const elapsedIntervalRef = useRef<number | null>(null);
   const isLoadingRef = useRef(false);
   const debounceTimeoutRef = useRef<number | null>(null);
   const sseCleanupRef = useRef<(() => void) | null>(null);
+  const requestIdRef = useRef(0);
+  const stabilityRequestIdRef = useRef(0);
+  const runStateRequestIdRef = useRef(0);
+  const currentRunIdRef = useRef(runId);
+  const isFirstRenderAfterRunChangeRef = useRef(false);
 
-  const isRunActive = currentRunState != null && !['completed', 'failed', 'aborted', 'stopping'].includes(currentRunState);
+  const isRunActive = currentRunState != null && !['completed', 'failed', 'aborted', 'stopping', 'stopped'].includes(currentRunState);
 
   useEffect(() => {
     setCurrentRunState(run?.state);
@@ -115,9 +135,23 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
     isLoadingRef.current = true;
     setLoading(true);
     
+    const thisRequestId = ++requestIdRef.current;
+    const thisRunId = runId;
+    
     try {
       const includeTimeSeries = !isRunActive;
-      const metrics = await fetchMetrics(runId, includeTimeSeries);
+      const metrics = await fetchMetrics(thisRunId, includeTimeSeries);
+      
+      if (currentRunIdRef.current !== thisRunId || requestIdRef.current !== thisRequestId) {
+        return;
+      }
+      
+      const successOps = metrics.success_ops ?? (metrics.total_ops - metrics.failed_ops);
+      setLatestTotals({
+        total_ops: metrics.total_ops,
+        success_ops: successOps,
+        failed_ops: metrics.failed_ops,
+      });
       
       if (metrics.time_series && metrics.time_series.length > 0) {
         setDataPoints(convertTimeSeriestoDataPoints(metrics.time_series));
@@ -131,9 +165,9 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
           latency_p50_ms: metrics.latency_p50_ms,
           latency_p95_ms: metrics.latency_p95_ms,
           latency_p99_ms: metrics.latency_p99_ms,
-          latency_mean: metrics.latency_mean || (metrics.latency_p50_ms + metrics.latency_p95_ms) / 2,
+          latency_mean: metrics.latency_mean ?? (metrics.latency_p50_ms + metrics.latency_p95_ms) / 2,
           error_rate: metrics.error_rate,
-          success_ops: metrics.success_ops || (metrics.total_ops - metrics.failed_ops),
+          success_ops: successOps,
           failed_ops: metrics.failed_ops,
         };
 
@@ -148,32 +182,48 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
       }
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load metrics');
+      if (currentRunIdRef.current === thisRunId) {
+        setError(err instanceof Error ? err.message : 'Failed to load metrics');
+      }
     } finally {
-      setLoading(false);
-      isLoadingRef.current = false;
+      if (currentRunIdRef.current === thisRunId && requestIdRef.current === thisRequestId) {
+        setLoading(false);
+        isLoadingRef.current = false;
+      }
     }
   }, [runId, isRunActive]);
 
   const loadRunState = useCallback(async () => {
+    const thisRunId = runId;
+    const thisRequestId = ++runStateRequestIdRef.current;
     try {
-      const runInfo = await fetchRun(runId);
+      const runInfo = await fetchRun(thisRunId);
+      if (currentRunIdRef.current !== thisRunId || runStateRequestIdRef.current !== thisRequestId) return;
       setCurrentRunState(runInfo.state);
       setCurrentRunInfo(runInfo);
     } catch (err) {
-      console.warn('Failed to load run state:', err);
+      if (currentRunIdRef.current === thisRunId && runStateRequestIdRef.current === thisRequestId) {
+        console.warn('Failed to load run state:', err);
+      }
     }
   }, [runId]);
 
   const loadStability = useCallback(async () => {
+    const thisRunId = runId;
+    const thisRequestId = ++stabilityRequestIdRef.current;
     setStabilityLoading(true);
     try {
-      const data = await fetchStability(runId);
+      const data = await fetchStability(thisRunId);
+      if (currentRunIdRef.current !== thisRunId || stabilityRequestIdRef.current !== thisRequestId) return;
       setStability(data);
     } catch {
-      setStability(null);
+      if (currentRunIdRef.current === thisRunId && stabilityRequestIdRef.current === thisRequestId) {
+        setStability(null);
+      }
     } finally {
-      setStabilityLoading(false);
+      if (currentRunIdRef.current === thisRunId && stabilityRequestIdRef.current === thisRequestId) {
+        setStabilityLoading(false);
+      }
     }
   }, [runId]);
 
@@ -189,17 +239,36 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
   }, [loadMetrics, loadStability]);
 
   useEffect(() => {
+    currentRunIdRef.current = runId;
+    isFirstRenderAfterRunChangeRef.current = true;
+    
+    setError(null);
+    setCurrentStage(null);
+    
     const cached = loadMetricsFromStorage(runId);
     if (cached && cached.dataPoints.length > 0) {
       setDataPoints(cached.dataPoints);
       setDurationMs(cached.durationMs);
       setStability(cached.stability);
+      if (cached.latestTotals) {
+        setLatestTotals(cached.latestTotals);
+      } else if (cached.dataPoints.length > 0) {
+        const lastPoint = cached.dataPoints[cached.dataPoints.length - 1];
+        setLatestTotals({
+          total_ops: lastPoint.success_ops + lastPoint.failed_ops,
+          success_ops: lastPoint.success_ops,
+          failed_ops: lastPoint.failed_ops,
+        });
+      }
       setLoading(false);
       setStabilityLoading(false);
     } else {
       setDataPoints([]);
       setDurationMs(undefined);
+      setLatestTotals({ total_ops: 0, success_ops: 0, failed_ops: 0 });
+      setStability(null);
       setLoading(true);
+      setStabilityLoading(true);
     }
     isLoadingRef.current = false;
     loadMetrics();
@@ -211,7 +280,9 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
       intervalRef.current = null;
     }
 
-    if (isAutoRefresh && isRunActive) {
+    // Only poll when auto-refresh is on, run is active, AND SSE is not connected
+    // SSE provides real-time updates, so polling is redundant when connected
+    if (isAutoRefresh && isRunActive && !sseConnected) {
       intervalRef.current = window.setInterval(() => loadMetrics(), CONFIG.REFRESH_INTERVALS.METRICS);
     }
 
@@ -225,7 +296,7 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
         debounceTimeoutRef.current = null;
       }
     };
-  }, [isAutoRefresh, isRunActive, loadMetrics]);
+  }, [isAutoRefresh, isRunActive, sseConnected, loadMetrics]);
 
   useEffect(() => {
     loadStability();
@@ -272,6 +343,8 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
   }, [isRunActive, currentRunInfo?.started_at, run?.started_at, durationMs]);
 
   const handleSseEvent = useCallback((event: RunEvent) => {
+    if (currentRunIdRef.current !== runId) return;
+    
     const eventType = event.type?.toUpperCase();
     
     switch (eventType) {
@@ -284,7 +357,7 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
         break;
       case 'STATE_TRANSITION': {
         const toState = event.payload?.to_state || event.data.to_state;
-        if (toState === 'completed' || toState === 'failed' || toState === 'stopped') {
+        if (toState === 'completed' || toState === 'failed' || toState === 'stopped' || toState === 'aborted') {
           setCurrentRunState(toState as string);
           loadMetrics();
           loadStability();
@@ -295,18 +368,28 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
         const metrics = event.payload?.metrics || event.data.metrics;
         if (metrics && typeof metrics === 'object') {
           const m = metrics as Record<string, unknown>;
-          const timestamp = (m.timestamp as number) || Date.now();
+          const timestamp = (m.timestamp as number) ?? Date.now();
+          const totalOps = (m.total_ops as number) ?? 0;
+          const failedOps = (m.failed_ops as number) ?? 0;
+          const successOps = (m.success_ops as number) ?? (totalOps - failedOps);
+          
+          setLatestTotals({
+            total_ops: totalOps,
+            success_ops: successOps,
+            failed_ops: failedOps,
+          });
+          
           const newPoint: MetricsDataPoint = {
             timestamp,
             time: formatTime(timestamp),
-            throughput: (m.throughput as number) || 0,
-            latency_p50_ms: (m.latency_p50_ms as number) || 0,
-            latency_p95_ms: (m.latency_p95_ms as number) || 0,
-            latency_p99_ms: (m.latency_p99_ms as number) || 0,
-            latency_mean: (m.latency_mean as number) || 0,
-            error_rate: (m.error_rate as number) || 0,
-            success_ops: (m.success_ops as number) || 0,
-            failed_ops: (m.failed_ops as number) || 0,
+            throughput: (m.throughput as number) ?? 0,
+            latency_p50_ms: (m.latency_p50_ms as number) ?? 0,
+            latency_p95_ms: (m.latency_p95_ms as number) ?? 0,
+            latency_p99_ms: (m.latency_p99_ms as number) ?? 0,
+            latency_mean: (m.latency_mean as number) ?? 0,
+            error_rate: (m.error_rate as number) ?? 0,
+            success_ops: successOps,
+            failed_ops: failedOps,
           };
           setDataPoints(prev => {
             const updated = [...prev, newPoint];
@@ -319,11 +402,12 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
         break;
       }
     }
-  }, [loadMetrics, loadStability]);
+  }, [runId, loadMetrics, loadStability]);
 
   const handleSseError = useCallback(() => {
+    if (currentRunIdRef.current !== runId) return;
     setSseConnected(false);
-  }, []);
+  }, [runId]);
 
   useEffect(() => {
     if (!isRunActive || !isAutoRefresh) {
@@ -355,15 +439,20 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
   }, [runId, isRunActive, isAutoRefresh, handleSseEvent, handleSseError]);
 
   useEffect(() => {
-    if (dataPoints.length > 0) {
+    if (isFirstRenderAfterRunChangeRef.current) {
+      isFirstRenderAfterRunChangeRef.current = false;
+      return;
+    }
+    if (dataPoints.length > 0 || latestTotals.total_ops > 0) {
       saveMetricsToStorage(runId, {
         dataPoints,
         durationMs,
         stability,
+        latestTotals,
         lastUpdated: Date.now(),
       });
     }
-  }, [runId, dataPoints, durationMs, stability]);
+  }, [runId, dataPoints, durationMs, stability, latestTotals]);
 
   return {
     dataPoints,
@@ -380,6 +469,7 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
     currentStage,
     isRunActive,
     elapsedMs,
+    latestTotals,
     handleManualRefresh,
     loadMetrics,
     loadStability,

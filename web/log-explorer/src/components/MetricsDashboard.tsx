@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import type { RunInfo, MetricsDataPoint, MetricsSummary } from '../types';
 import { stopRun, emergencyStopRun, type StopMode } from '../api';
 import { Icon } from './Icon';
-import { useMetricsData } from '../hooks/useMetricsData';
+import { useMetricsData, type LatestTotals } from '../hooks/useMetricsData';
 import { MetricsCharts, MetricsTabs } from './MetricsCharts';
 import { MetricsControls, MetricsRunStatus, MetricsStopConfirm, MetricsStopReason } from './MetricsControls';
 
@@ -12,23 +12,16 @@ interface MetricsDashboardProps {
   onNavigateToWizard?: () => void;
 }
 
-function calculateSummary(dataPoints: MetricsDataPoint[], durationMs?: number): MetricsSummary {
-  if (dataPoints.length === 0) {
-    return {
-      total_ops: 0,
-      failed_ops: 0,
-      success_rate: 100,
-      avg_latency: 0,
-      peak_throughput: 0,
-      avg_error_rate: 0,
-      duration_seconds: 0,
-    };
-  }
-
-  const totalOps = dataPoints.reduce((sum, d) => sum + d.success_ops + d.failed_ops, 0);
-  const failedOps = dataPoints.reduce((sum, d) => sum + d.failed_ops, 0);
+function calculateSummary(
+  dataPoints: MetricsDataPoint[],
+  latestTotals: LatestTotals,
+  durationMs?: number
+): MetricsSummary {
+  const totalOps = latestTotals.total_ops;
+  const failedOps = latestTotals.failed_ops;
+  
   const avgLatency = dataPoints.length > 0 
-    ? dataPoints.reduce((sum, d) => sum + d.latency_mean, 0) / dataPoints.length 
+    ? dataPoints[dataPoints.length - 1].latency_mean
     : 0;
   const peakThroughput = dataPoints.length > 0 
     ? Math.max(...dataPoints.map(d => d.throughput)) 
@@ -75,12 +68,16 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
     currentStage,
     isRunActive,
     elapsedMs,
+    latestTotals,
     handleManualRefresh,
     loadMetrics,
     loadRunState,
   } = useMetricsData({ runId, run });
 
-  const summary = useMemo(() => calculateSummary(dataPoints, durationMs), [dataPoints, durationMs]);
+  const summary = useMemo(
+    () => calculateSummary(dataPoints, latestTotals, durationMs),
+    [dataPoints, latestTotals, durationMs]
+  );
 
   const handleStopRun = useCallback(async () => {
     setIsStopping(true);
