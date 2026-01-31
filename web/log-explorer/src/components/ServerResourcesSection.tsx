@@ -6,6 +6,7 @@ import { LoadAverageChart } from './LoadAverageChart';
 import { Icon } from './Icon';
 import { formatTime } from '../utils/formatting';
 import { saveToLocalStorage, loadFromLocalStorage } from '../utils/storage';
+import { CONFIG, STORAGE_KEYS } from '../config';
 
 interface ServerResourcesSectionProps {
   runId: string;
@@ -13,8 +14,6 @@ interface ServerResourcesSectionProps {
 }
 
 const API_BASE = '';
-const REFRESH_INTERVAL = 2000;
-const STORAGE_KEY_PREFIX = 'mcpdrill_server_metrics_';
 
 interface CachedServerMetrics {
   dataPoints: ServerMetricsDataPoint[];
@@ -23,11 +22,11 @@ interface CachedServerMetrics {
 }
 
 function saveToStorage(runId: string, data: CachedServerMetrics): void {
-  saveToLocalStorage(`${STORAGE_KEY_PREFIX}${runId}`, data);
+  saveToLocalStorage(`${STORAGE_KEYS.SERVER_METRICS_PREFIX}${runId}`, data);
 }
 
 function loadFromStorage(runId: string): CachedServerMetrics | null {
-  return loadFromLocalStorage<CachedServerMetrics>(`${STORAGE_KEY_PREFIX}${runId}`);
+  return loadFromLocalStorage<CachedServerMetrics>(`${STORAGE_KEYS.SERVER_METRICS_PREFIX}${runId}`);
 }
 
 function convertSamplesToDataPoints(samples: ServerMetricsResponse['samples']): ServerMetricsDataPoint[] {
@@ -111,7 +110,7 @@ function ServerResourcesSectionComponent({ runId, isRunActive }: ServerResources
     }
 
     if (isRunActive && hasAgent) {
-      intervalRef.current = window.setInterval(() => loadMetrics(), REFRESH_INTERVAL);
+      intervalRef.current = window.setInterval(() => loadMetrics(), CONFIG.REFRESH_INTERVALS.SERVER_RESOURCES);
     }
 
     return () => {

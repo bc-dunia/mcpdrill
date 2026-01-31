@@ -3,13 +3,9 @@ import type { RunInfo, LiveMetrics, MetricsDataPoint, StabilityMetrics } from '.
 import { fetchRun, subscribeToRunEvents, type RunEvent } from '../api/index';
 import { formatTime } from '../utils/formatting';
 import { saveWithEviction, loadFromLocalStorage } from '../utils/storage';
+import { CONFIG, STORAGE_KEYS } from '../config';
 
 const API_BASE = '';
-const REFRESH_INTERVAL = 2000;
-const MAX_DATA_POINTS = 60;
-const MANUAL_REFRESH_DEBOUNCE_MS = 500;
-const STORAGE_KEY_PREFIX = 'mcpdrill_metrics_';
-const MAX_CACHED_RUNS = 10;
 
 interface CachedMetricsData {
   dataPoints: MetricsDataPoint[];
@@ -19,11 +15,11 @@ interface CachedMetricsData {
 }
 
 function saveMetricsToStorage(runId: string, data: CachedMetricsData): void {
-  saveWithEviction(STORAGE_KEY_PREFIX, runId, data, MAX_CACHED_RUNS);
+  saveWithEviction(STORAGE_KEYS.METRICS_PREFIX, runId, data, CONFIG.MAX_CACHED_RUNS);
 }
 
 function loadMetricsFromStorage(runId: string): CachedMetricsData | null {
-  return loadFromLocalStorage<CachedMetricsData>(`${STORAGE_KEY_PREFIX}${runId}`);
+  return loadFromLocalStorage<CachedMetricsData>(`${STORAGE_KEYS.METRICS_PREFIX}${runId}`);
 }
 
 async function fetchMetrics(runId: string, includeTimeSeries = false): Promise<LiveMetrics> {
@@ -143,7 +139,7 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
 
         setDataPoints(prev => {
           const updated = [...prev, newPoint];
-          return updated.slice(-MAX_DATA_POINTS);
+          return updated.slice(-CONFIG.MAX_DATA_POINTS);
         });
       }
       
@@ -189,7 +185,7 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
       loadMetrics();
       loadStability();
       debounceTimeoutRef.current = null;
-    }, MANUAL_REFRESH_DEBOUNCE_MS);
+    }, CONFIG.DEBOUNCE_MS);
   }, [loadMetrics, loadStability]);
 
   useEffect(() => {
@@ -216,7 +212,7 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
     }
 
     if (isAutoRefresh && isRunActive) {
-      intervalRef.current = window.setInterval(() => loadMetrics(), REFRESH_INTERVAL);
+      intervalRef.current = window.setInterval(() => loadMetrics(), CONFIG.REFRESH_INTERVALS.METRICS);
     }
 
     return () => {
@@ -237,14 +233,14 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
 
   useEffect(() => {
     if (isAutoRefresh && isRunActive) {
-      const stabilityInterval = window.setInterval(() => loadStability(), REFRESH_INTERVAL);
+      const stabilityInterval = window.setInterval(() => loadStability(), CONFIG.REFRESH_INTERVALS.METRICS);
       return () => clearInterval(stabilityInterval);
     }
   }, [isAutoRefresh, isRunActive, loadStability]);
 
   useEffect(() => {
     if (isAutoRefresh && isRunActive) {
-      const runStateInterval = window.setInterval(() => loadRunState(), REFRESH_INTERVAL);
+      const runStateInterval = window.setInterval(() => loadRunState(), CONFIG.REFRESH_INTERVALS.METRICS);
       return () => clearInterval(runStateInterval);
     }
   }, [isAutoRefresh, isRunActive, loadRunState]);
@@ -262,7 +258,7 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
         setElapsedMs(Date.now() - startTime);
       };
       updateElapsed();
-      elapsedIntervalRef.current = window.setInterval(updateElapsed, 1000);
+      elapsedIntervalRef.current = window.setInterval(updateElapsed, CONFIG.REFRESH_INTERVALS.ELAPSED_TIMER);
     } else if (!isRunActive && durationMs !== undefined) {
       setElapsedMs(durationMs);
     }
@@ -276,43 +272,52 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
   }, [isRunActive, currentRunInfo?.started_at, run?.started_at, durationMs]);
 
   const handleSseEvent = useCallback((event: RunEvent) => {
-    switch (event.type) {
-      case 'stage_started':
-        setCurrentStage(event.data.stage as string || null);
+    const eventType = event.type?.toUpperCase();
+    
+    switch (eventType) {
+      case 'STAGE_STARTED':
+        setCurrentStage(event.correlation?.stage || event.data.stage as string || null);
         break;
-      case 'stage_completed':
+      case 'STAGE_COMPLETED':
         loadMetrics();
         loadStability();
         break;
-      case 'run_completed':
-        setCurrentRunState(event.data.state as string || 'completed');
-        loadMetrics();
-        loadStability();
+      case 'STATE_TRANSITION': {
+        const toState = event.payload?.to_state || event.data.to_state;
+        if (toState === 'completed' || toState === 'failed' || toState === 'stopped') {
+          setCurrentRunState(toState as string);
+          loadMetrics();
+          loadStability();
+        }
         break;
-      case 'metrics':
-        if (event.data) {
-          const timestamp = (event.data.timestamp as number) || Date.now();
+      }
+      case 'WORKER_HEARTBEAT': {
+        const metrics = event.payload?.metrics || event.data.metrics;
+        if (metrics && typeof metrics === 'object') {
+          const m = metrics as Record<string, unknown>;
+          const timestamp = (m.timestamp as number) || Date.now();
           const newPoint: MetricsDataPoint = {
             timestamp,
             time: formatTime(timestamp),
-            throughput: (event.data.throughput as number) || 0,
-            latency_p50_ms: (event.data.latency_p50_ms as number) || 0,
-            latency_p95_ms: (event.data.latency_p95_ms as number) || 0,
-            latency_p99_ms: (event.data.latency_p99_ms as number) || 0,
-            latency_mean: (event.data.latency_mean as number) || 0,
-            error_rate: (event.data.error_rate as number) || 0,
-            success_ops: (event.data.success_ops as number) || 0,
-            failed_ops: (event.data.failed_ops as number) || 0,
+            throughput: (m.throughput as number) || 0,
+            latency_p50_ms: (m.latency_p50_ms as number) || 0,
+            latency_p95_ms: (m.latency_p95_ms as number) || 0,
+            latency_p99_ms: (m.latency_p99_ms as number) || 0,
+            latency_mean: (m.latency_mean as number) || 0,
+            error_rate: (m.error_rate as number) || 0,
+            success_ops: (m.success_ops as number) || 0,
+            failed_ops: (m.failed_ops as number) || 0,
           };
           setDataPoints(prev => {
             const updated = [...prev, newPoint];
-            return updated.slice(-MAX_DATA_POINTS);
+            return updated.slice(-CONFIG.MAX_DATA_POINTS);
           });
-          if (event.data.duration_ms !== undefined) {
-            setDurationMs(event.data.duration_ms as number);
+          if (m.duration_ms !== undefined) {
+            setDurationMs(m.duration_ms as number);
           }
         }
         break;
+      }
     }
   }, [loadMetrics, loadStability]);
 

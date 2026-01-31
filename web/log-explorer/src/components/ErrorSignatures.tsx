@@ -1,6 +1,7 @@
 import { memo, useState, useEffect } from 'react';
 import { Icon } from './Icon';
 import { fetchErrorSignatures, type ErrorSignature } from '../api/index';
+import { CONFIG } from '../config';
 
 interface ErrorSignaturesProps {
   runId: string;
@@ -41,7 +42,7 @@ function ErrorSignaturesComponent({ runId }: ErrorSignaturesProps) {
     };
 
     loadSignatures();
-    const interval = setInterval(loadSignatures, 5000);
+    const interval = setInterval(loadSignatures, CONFIG.REFRESH_INTERVALS.ERROR_SIGNATURES);
     return () => clearInterval(interval);
   }, [runId]);
 

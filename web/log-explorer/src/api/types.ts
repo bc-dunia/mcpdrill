@@ -249,11 +249,27 @@ export interface AgentDetail extends AgentInfo {
   };
 }
 
-// SSE Event types
+// SSE Event types (matches backend runmanager.RunEvent)
+export interface RunEventCorrelation {
+  stage?: string;
+  stage_id?: string;
+  worker_id?: string;
+  vu_id?: string;
+  session_id?: string;
+}
+
 export interface RunEvent {
+  schema_version?: string;
   event_id: string;
+  ts_ms?: number;
+  run_id?: string;
+  execution_id?: string;
   type: string;
-  timestamp: number;
+  actor?: string;
+  correlation?: RunEventCorrelation;
+  payload?: Record<string, unknown>;
+  evidence?: Array<{ kind: string; ref: string; note?: string }>;
+  timestamp?: number;
   data: Record<string, unknown>;
 }
 

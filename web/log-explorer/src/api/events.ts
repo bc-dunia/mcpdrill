@@ -1,6 +1,33 @@
-import type { RunEventHandler, SSEErrorHandler } from './types';
+import type { RunEvent, RunEventHandler, SSEErrorHandler } from './types';
 
 const API_BASE = '';
+
+function normalizeRunEvent(raw: Record<string, unknown>, fallbackEventId?: string): RunEvent {
+  const eventType = (raw.type as string)?.toUpperCase() || 'UNKNOWN';
+  const payload = (raw.payload as Record<string, unknown>) || {};
+  const correlation = (raw.correlation as Record<string, unknown>) || {};
+  
+  return {
+    schema_version: raw.schema_version as string,
+    event_id: (raw.event_id as string) || fallbackEventId || '',
+    ts_ms: raw.ts_ms as number,
+    run_id: raw.run_id as string,
+    execution_id: raw.execution_id as string,
+    type: eventType,
+    actor: raw.actor as string,
+    correlation: {
+      stage: correlation.stage as string | undefined,
+      stage_id: correlation.stage_id as string | undefined,
+      worker_id: correlation.worker_id as string | undefined,
+      vu_id: correlation.vu_id as string | undefined,
+      session_id: correlation.session_id as string | undefined,
+    },
+    payload: payload,
+    evidence: raw.evidence as Array<{ kind: string; ref: string; note?: string }>,
+    timestamp: (raw.ts_ms as number) || Date.now(),
+    data: { ...payload, ...correlation },
+  };
+}
 
 function createSSEHandler(
   eventSource: EventSource,
@@ -10,13 +37,9 @@ function createSSEHandler(
 ) {
   eventSource.addEventListener(eventName, (event) => {
     try {
-      const data = JSON.parse((event as MessageEvent).data);
-      onEvent({
-        event_id: (event as MessageEvent).lastEventId || data.event_id || '',
-        type: data.type || eventName,
-        timestamp: data.timestamp || Date.now(),
-        data,
-      });
+      const raw = JSON.parse((event as MessageEvent).data);
+      const normalized = normalizeRunEvent(raw, (event as MessageEvent).lastEventId);
+      onEvent(normalized);
       if (autoClose) eventSource.close();
     } catch (err) {
       console.error(`Failed to parse ${eventName}:`, err);
@@ -51,25 +74,21 @@ export function subscribeToRunEvents(
   
   eventSource.onmessage = (event) => {
     try {
-      const data = JSON.parse(event.data);
-      onEvent({
-        event_id: event.lastEventId || '',
-        type: data.type || 'message',
-        timestamp: data.ts_ms || Date.now(),
-        data,
-      });
+      const raw = JSON.parse(event.data);
+      const normalized = normalizeRunEvent(raw, event.lastEventId);
+      onEvent(normalized);
     } catch (err) {
       console.error('Failed to parse SSE message:', err);
     }
   };
   
-  // Backend sends all events as 'run_event' with type in data.type
   createSSEHandler(eventSource, 'run_event', (event) => {
     onEvent(event);
-    // Auto-close on terminal states
-    if (event.type === 'STATE_TRANSITION' && 
-        (event.data.to_state === 'completed' || event.data.to_state === 'failed' || event.data.to_state === 'stopped')) {
-      eventSource.close();
+    if (event.type === 'STATE_TRANSITION') {
+      const toState = event.payload?.to_state || event.data.to_state;
+      if (toState === 'completed' || toState === 'failed' || toState === 'stopped') {
+        eventSource.close();
+      }
     }
   });
   

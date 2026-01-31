@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { subscribeToRunEvents, type RunEvent } from '../api/index';
+import { CONFIG } from '../config';
 
 interface UseRunEventsOptions {
   enabled?: boolean;
@@ -40,6 +41,7 @@ export function useRunEvents(
   
   const cleanupRef = useRef<(() => void) | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const connectRef = useRef<(() => void) | null>(null);
 
   const handleEvent = useCallback((event: RunEvent) => {
     setLastEventId(event.event_id || null);
@@ -47,25 +49,34 @@ export function useRunEvents(
     
     onEvent?.(event);
     
-    switch (event.type) {
-      case 'stage_started':
+    // Normalize event type to uppercase (backend sends UPPERCASE, handle both cases)
+    const eventType = event.type?.toUpperCase();
+    
+    switch (eventType) {
+      case 'STAGE_STARTED':
         onStageStarted?.(
-          event.data.stage_id as string,
-          event.data.stage as string
+          (event.data.stage_id ?? event.correlation?.stage_id) as string,
+          (event.data.stage ?? event.correlation?.stage) as string
         );
         break;
-      case 'stage_completed':
+      case 'STAGE_COMPLETED':
         onStageCompleted?.(
-          event.data.stage_id as string,
+          (event.data.stage_id ?? event.correlation?.stage_id) as string,
           event.data.result as string
         );
         break;
-      case 'run_completed':
-        onRunCompleted?.(event.data.state as string);
-        setConnected(false);
+      case 'STATE_TRANSITION':
+        // Handle run completion via state transition
+        if (event.data.to_state === 'completed' || event.data.to_state === 'failed' || event.data.to_state === 'stopped') {
+          onRunCompleted?.(event.data.to_state as string);
+          setConnected(false);
+        }
         break;
-      case 'metrics':
-        onMetrics?.(event.data);
+      case 'WORKER_HEARTBEAT':
+        // Worker heartbeats contain metrics data
+        if (event.data.metrics) {
+          onMetrics?.(event.data.metrics as Record<string, unknown>);
+        }
         break;
     }
   }, [onEvent, onStageStarted, onStageCompleted, onRunCompleted, onMetrics]);
@@ -79,10 +90,10 @@ export function useRunEvents(
       clearTimeout(reconnectTimeoutRef.current);
     }
     reconnectTimeoutRef.current = window.setTimeout(() => {
-      if (enabled && runId) {
-        connect();
+      if (enabled && runId && connectRef.current) {
+        connectRef.current();
       }
-    }, 3000);
+    }, CONFIG.RECONNECT_DELAY_MS);
   }, [enabled, runId]);
 
   const connect = useCallback(() => {
@@ -103,6 +114,8 @@ export function useRunEvents(
       lastEventId || undefined
     );
   }, [runId, enabled, handleEvent, handleError, lastEventId]);
+
+  connectRef.current = connect;
 
   const reconnect = useCallback(() => {
     if (cleanupRef.current) {
