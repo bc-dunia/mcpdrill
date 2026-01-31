@@ -43,7 +43,10 @@ export function MetricsSummary({ summary, isRunActive, stabilityLoading, stabili
       </div>
       <div className="summary-card-mini" title="Active sessions">
         <span className="summary-value">
-          {stabilityLoading ? '—' : (stability?.active_sessions ?? 0)}
+          {stabilityLoading ? '—' : (() => {
+            const lastTimePoint = stability?.time_series?.[stability.time_series.length - 1];
+            return lastTimePoint?.active_sessions ?? stability?.active_sessions ?? 0;
+          })()}
         </span>
         <span className="summary-label">Sessions</span>
       </div>

@@ -82,9 +82,9 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
       <div className="metrics-dashboard-header">
         <div className="dashboard-title">
           <h2 id="metrics-dashboard-heading"><Icon name="chart-bar" size="lg" aria-hidden={true} /> Live Metrics</h2>
-          {run && (
-            <span className={`run-state-badge state-${run.state}`}>
-              {run.state.replace(/_/g, ' ')}
+          {currentRunState && (
+            <span className={`run-state-badge state-${currentRunState}`}>
+              {currentRunState.replace(/_/g, ' ')}
             </span>
           )}
           {isRunActive && (

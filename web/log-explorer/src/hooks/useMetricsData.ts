@@ -135,6 +135,7 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
   const [stageMarkers, setStageMarkers] = useState<StageMarker[]>([]);
 
   const intervalRef = useRef<number | null>(null);
+  const fallbackIntervalRef = useRef<number | null>(null);
   const elapsedIntervalRef = useRef<number | null>(null);
   const isLoadingRef = useRef(false);
   const debounceTimeoutRef = useRef<number | null>(null);
@@ -145,6 +146,7 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
   const currentRunIdRef = useRef(runId);
   const isFirstRenderAfterRunChangeRef = useRef(false);
   const prevRunStateRef = useRef<string | undefined>(currentRunState);
+  const lastSseEventRef = useRef<number>(Date.now());
 
   const isRunActive = currentRunState != null && !['completed', 'failed', 'aborted', 'stopping', 'stopped'].includes(currentRunState);
 
@@ -368,17 +370,34 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+    if (fallbackIntervalRef.current) {
+      clearInterval(fallbackIntervalRef.current);
+      fallbackIntervalRef.current = null;
+    }
 
-    // Only poll when auto-refresh is on, run is active, AND SSE is not connected
-    // SSE provides real-time updates, so polling is redundant when connected
-    if (isAutoRefresh && isRunActive && !sseConnected) {
-      intervalRef.current = window.setInterval(() => loadMetrics(), CONFIG.REFRESH_INTERVALS.METRICS);
+    if (isAutoRefresh && isRunActive) {
+      if (!sseConnected) {
+        intervalRef.current = window.setInterval(() => loadMetrics(), CONFIG.REFRESH_INTERVALS.METRICS);
+      } else {
+        const FALLBACK_INTERVAL = 5000;
+        const SSE_STALE_THRESHOLD = 5000;
+        fallbackIntervalRef.current = window.setInterval(() => {
+          const timeSinceLastEvent = Date.now() - lastSseEventRef.current;
+          if (timeSinceLastEvent > SSE_STALE_THRESHOLD) {
+            loadMetrics();
+          }
+        }, FALLBACK_INTERVAL);
+      }
     }
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
+      }
+      if (fallbackIntervalRef.current) {
+        clearInterval(fallbackIntervalRef.current);
+        fallbackIntervalRef.current = null;
       }
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
@@ -424,7 +443,7 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
       elapsedIntervalRef.current = null;
     }
 
-    const startedAt = currentRunInfo?.started_at || run?.started_at;
+    const startedAt = currentRunInfo?.started_at || run?.started_at || currentRunInfo?.created_at || run?.created_at;
     if (isRunActive && startedAt) {
       const startTime = new Date(startedAt).getTime();
       const updateElapsed = () => {
@@ -442,10 +461,12 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
         elapsedIntervalRef.current = null;
       }
     };
-  }, [isRunActive, currentRunInfo?.started_at, run?.started_at, durationMs]);
+  }, [isRunActive, currentRunInfo?.started_at, run?.started_at, currentRunInfo?.created_at, run?.created_at, durationMs]);
 
   const handleSseEvent = useCallback((event: RunEvent) => {
     if (currentRunIdRef.current !== runId) return;
+    
+    lastSseEventRef.current = Date.now();
     
     const eventType = event.type?.toUpperCase();
     

@@ -63,20 +63,24 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
   );
 };
 
-const ThroughputStats = ({ data }: { data: MetricsDataPoint[] }) => (
-  <div className="throughput-stats">
-    <div className="stat-item stat-success">
-      <span className="stat-dot" style={{ background: throughputColors.success }} />
-      <span className="stat-label">Success</span>
-      <span className="stat-value">{data.length > 0 ? data[data.length - 1].success_ops.toFixed(0) : 0}</span>
+const ThroughputStats = ({ data }: { data: MetricsDataPoint[] }) => {
+  const latest = data.length > 0 ? data[data.length - 1] : null;
+  
+  return (
+    <div className="throughput-stats">
+      <div className="stat-item stat-success">
+        <span className="stat-dot" style={{ background: throughputColors.success }} />
+        <span className="stat-label">Success</span>
+        <span className="stat-value" title="Latest successful ops/sec">{latest ? latest.success_ops.toLocaleString() : 0}</span>
+      </div>
+      <div className="stat-item stat-failed">
+        <span className="stat-dot" style={{ background: throughputColors.failed }} />
+        <span className="stat-label">Failed</span>
+        <span className="stat-value" title="Latest failed ops/sec">{latest ? latest.failed_ops.toLocaleString() : 0}</span>
+      </div>
     </div>
-    <div className="stat-item stat-failed">
-      <span className="stat-dot" style={{ background: throughputColors.failed }} />
-      <span className="stat-label">Failed</span>
-      <span className="stat-value">{data.length > 0 ? data[data.length - 1].failed_ops.toFixed(0) : 0}</span>
-    </div>
-  </div>
-);
+  );
+};
 
 function ThroughputChartComponent({ data, loading, enableBrush, brushRange, onBrushChange, stageMarkers }: ThroughputChartProps) {
   return (

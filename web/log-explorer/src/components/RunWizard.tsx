@@ -39,7 +39,7 @@ function createDefaultConfig(): RunConfig {
     scenario_id: `load-test-${Date.now()}`,
     target: {
       kind: 'server',
-      url: 'http://localhost:3000',
+      url: 'http://localhost:3000/mcp',
       transport: 'streamable_http',
     },
     stages: [

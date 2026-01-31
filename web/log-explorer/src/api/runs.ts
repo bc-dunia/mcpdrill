@@ -350,8 +350,8 @@ export async function fetchRun(runId: string): Promise<RunInfo> {
     scenario_id: run.scenario_id || '',
     state: run.state || '',
     created_at: run.created_at || (run.created_at_ms ? new Date(run.created_at_ms).toISOString() : ''),
-    started_at: run.started_at,
-    completed_at: run.completed_at,
+    started_at: run.started_at || (run.started_at_ms ? new Date(run.started_at_ms).toISOString() : undefined),
+    completed_at: run.completed_at || (run.completed_at_ms ? new Date(run.completed_at_ms).toISOString() : undefined),
     stop_reason: run.stop_reason,
   };
 }

@@ -332,7 +332,7 @@ export function MetricsStopReason({ stopReason, onDismiss }: MetricsStopReasonPr
         <div className="stop-reason-meta">
           <span>
             <Icon name="zap" size="sm" aria-hidden={true} />
-            {stopReason.actor === 'system' ? 'Automatic' : 'Manual'}
+            {['system', 'autoramp', 'scheduler', 'stop_condition'].includes(stopReason.actor) ? 'Automatic' : 'Manual'}
           </span>
           <span>
             <Icon name="clock" size="sm" aria-hidden={true} />
