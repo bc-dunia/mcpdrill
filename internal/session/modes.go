@@ -32,10 +32,11 @@ type ReuseMode struct {
 	config  *SessionConfig
 	evictor *Evictor
 
-	mu       sync.RWMutex
-	sessions map[string]*SessionInfo
-	timers   map[string]*SessionTimer
-	closed   atomic.Bool
+	mu          sync.RWMutex
+	sessions    map[string]*SessionInfo
+	sessionToVU map[string]string // session.ID -> vuID for O(1) reverse lookup
+	timers      map[string]*SessionTimer
+	closed      atomic.Bool
 
 	totalCreated atomic.Int64
 	totalEvicted atomic.Int64
@@ -44,9 +45,10 @@ type ReuseMode struct {
 
 func NewReuseMode(config *SessionConfig) *ReuseMode {
 	rm := &ReuseMode{
-		config:   config,
-		sessions: make(map[string]*SessionInfo),
-		timers:   make(map[string]*SessionTimer),
+		config:      config,
+		sessions:    make(map[string]*SessionInfo),
+		sessionToVU: make(map[string]string),
+		timers:      make(map[string]*SessionTimer),
 	}
 
 	rm.evictor = NewEvictor(config.TTLMs, config.MaxIdleMs, func(session *SessionInfo, reason EvictionReason) {
@@ -93,6 +95,7 @@ func (rm *ReuseMode) Acquire(ctx context.Context, vuID string) (*SessionInfo, er
 
 	rm.mu.Lock()
 	rm.sessions[vuID] = session
+	rm.sessionToVU[session.ID] = vuID
 	rm.timers[vuID] = NewSessionTimer(session, rm.config.TTLMs, rm.config.MaxIdleMs, func(s *SessionInfo, reason EvictionReason) {
 		rm.onEviction(s, reason)
 	})
@@ -119,14 +122,12 @@ func (rm *ReuseMode) Invalidate(ctx context.Context, session *SessionInfo) error
 
 	rm.evictor.Untrack(session.ID)
 
-	for vuID, s := range rm.sessions {
-		if s.ID == session.ID {
-			delete(rm.sessions, vuID)
-			if timer, ok := rm.timers[vuID]; ok {
-				timer.Stop()
-				delete(rm.timers, vuID)
-			}
-			break
+	if vuID, ok := rm.sessionToVU[session.ID]; ok {
+		delete(rm.sessions, vuID)
+		delete(rm.sessionToVU, session.ID)
+		if timer, ok := rm.timers[vuID]; ok {
+			timer.Stop()
+			delete(rm.timers, vuID)
 		}
 	}
 
@@ -161,6 +162,7 @@ func (rm *ReuseMode) Close(ctx context.Context) error {
 		}
 	}
 	rm.sessions = make(map[string]*SessionInfo)
+	rm.sessionToVU = make(map[string]string)
 
 	return nil
 }
@@ -240,14 +242,12 @@ func (rm *ReuseMode) onEviction(session *SessionInfo, reason EvictionReason) {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 
-	for vuID, s := range rm.sessions {
-		if s.ID == session.ID {
-			delete(rm.sessions, vuID)
-			if timer, ok := rm.timers[vuID]; ok {
-				timer.Stop()
-				delete(rm.timers, vuID)
-			}
-			break
+	if vuID, ok := rm.sessionToVU[session.ID]; ok {
+		delete(rm.sessions, vuID)
+		delete(rm.sessionToVU, session.ID)
+		if timer, ok := rm.timers[vuID]; ok {
+			timer.Stop()
+			delete(rm.timers, vuID)
 		}
 	}
 

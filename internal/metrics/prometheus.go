@@ -30,6 +30,12 @@ type TelemetryProvider interface {
 
 // Collector collects and exposes MCP Drill metrics in Prometheus format.
 // Thread-safe for concurrent access.
+//
+// Lock Strategy: Collector uses a single RWMutex for thread-safety. While this creates some lock
+// contention under high load, it's necessary because Go maps are not atomic-safe. Alternative
+// approaches (sync.Map, sharded maps) add complexity without clear benefit for our access patterns.
+// The RWMutex allows concurrent reads via Expose() while serializing writes from hot-path methods
+// like RecordOperation(). This is a reasonable trade-off between simplicity and performance.
 type Collector struct {
 	mu sync.RWMutex
 
@@ -39,15 +45,15 @@ type Collector struct {
 	telemetryProvider TelemetryProvider
 
 	// Cached metrics data
-	runCounts         map[string]int64            // scenario_id -> count
-	runDurations      map[string]*histogramData   // scenario_id -> histogram
-	runStates         map[runStateKey]int         // (scenario_id, state) -> gauge
-	workerHealth      map[string]*workerHealthData // worker_id -> health
-	operationCounts   map[opKey]int64             // (operation, tool_name) -> count
-	operationDurations map[opKey]*histogramData   // (operation, tool_name) -> histogram
-	operationErrors   map[opKey]int64             // (operation, tool_name) -> count
-	stageDurations    map[stageKey]float64        // (run_id, stage_id) -> duration_seconds
-	stageVUs          map[stageKey]int            // (run_id, stage_id) -> vus
+	runCounts          map[string]int64             // scenario_id -> count
+	runDurations       map[string]*histogramData    // scenario_id -> histogram
+	runStates          map[runStateKey]int          // (scenario_id, state) -> gauge
+	workerHealth       map[string]*workerHealthData // worker_id -> health
+	operationCounts    map[opKey]int64              // (operation, tool_name) -> count
+	operationDurations map[opKey]*histogramData     // (operation, tool_name) -> histogram
+	operationErrors    map[opKey]int64              // (operation, tool_name) -> count
+	stageDurations     map[stageKey]float64         // (run_id, stage_id) -> duration_seconds
+	stageVUs           map[stageKey]int             // (run_id, stage_id) -> vus
 
 	// Time function for testing
 	nowFunc func() time.Time

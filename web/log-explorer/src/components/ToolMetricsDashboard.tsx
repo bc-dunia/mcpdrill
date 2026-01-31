@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import type { ToolMetrics } from '../types';
 import { Icon } from './Icon';
+import { ErrorBoundary } from './ErrorBoundary';
 import { exportChartAsPng } from '../utils/chartExport';
 import { formatLatency } from '../utils/formatting';
 
@@ -776,19 +777,26 @@ function ToolMetricsDashboardComponent({ runId, onToolClick }: ToolMetricsDashbo
       </div>
 
       {/* Charts Grid */}
-      <div className="tool-metrics-charts-grid">
-        <CallDistributionChart 
-          data={pieData} 
-          onToolClick={onToolClick} 
-          chartRef={pieChartRef}
-          runId={runId}
-        />
-        <SlowestToolsChart 
-          data={slowestToolsData} 
-          chartRef={barChartRef}
-          runId={runId}
-        />
-      </div>
+      <ErrorBoundary fallback={
+        <div className="tool-metrics-chart-error">
+          <Icon name="alert-triangle" size="lg" />
+          <p>Charts unavailable</p>
+        </div>
+      }>
+        <div className="tool-metrics-charts-grid">
+          <CallDistributionChart 
+            data={pieData} 
+            onToolClick={onToolClick} 
+            chartRef={pieChartRef}
+            runId={runId}
+          />
+          <SlowestToolsChart 
+            data={slowestToolsData} 
+            chartRef={barChartRef}
+            runId={runId}
+          />
+        </div>
+      </ErrorBoundary>
     </div>
   );
 }
