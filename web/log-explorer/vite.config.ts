@@ -9,6 +9,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/api/runs': 'http://localhost:8080',
       '/runs': 'http://localhost:8080',
       '/discover-tools': 'http://localhost:8080',
       '/test-connection': 'http://localhost:8080',
