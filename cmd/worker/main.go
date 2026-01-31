@@ -11,10 +11,12 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/bc-dunia/mcpdrill/internal/types"
+	"github.com/bc-dunia/mcpdrill/internal/worker"
 )
 
 type registerRequest struct {
@@ -30,6 +32,12 @@ type heartbeatRequest struct {
 	Health *types.WorkerHealth `json:"health,omitempty"`
 }
 
+type heartbeatResponse struct {
+	OK                  bool     `json:"ok"`
+	StopRunIDs          []string `json:"stop_run_ids,omitempty"`
+	ImmediateStopRunIDs []string `json:"immediate_stop_run_ids,omitempty"`
+}
+
 type assignmentsResponse struct {
 	Assignments []types.WorkerAssignment `json:"assignments"`
 }
@@ -39,6 +47,7 @@ func main() {
 	maxVUs := flag.Int("max-vus", 100, "Maximum virtual users this worker can handle")
 	heartbeatInterval := flag.Duration("heartbeat-interval", 10*time.Second, "Heartbeat interval")
 	pollInterval := flag.Duration("poll-interval", 1*time.Second, "Assignment poll interval")
+	allowPrivateNetworks := flag.String("allow-private-networks", "", "Comma-separated CIDR ranges to allow (e.g., '127.0.0.0/8,10.0.0.0/8')")
 	flag.Parse()
 
 	hostname, _ := os.Hostname()
@@ -65,8 +74,24 @@ func main() {
 	fmt.Printf("Control plane: %s\n", *controlPlane)
 	fmt.Printf("Max VUs: %d\n", *maxVUs)
 
-	go heartbeatLoop(ctx, *controlPlane, workerID, *heartbeatInterval)
-	go pollAssignments(ctx, *controlPlane, workerID, *pollInterval)
+	privateNets := parsePrivateNetworks(*allowPrivateNetworks)
+	if len(privateNets) > 0 {
+		fmt.Printf("Allowed private networks: %v\n", privateNets)
+	}
+
+	retryClient := worker.NewRetryHTTPClient(ctx, *controlPlane, http.DefaultClient, worker.RetryConfig{
+		MaxRetries: 3,
+		Backoff:    100 * time.Millisecond,
+		MaxBackoff: 5 * time.Second,
+	})
+
+	telemetryShipper := worker.NewTelemetryShipper(ctx, workerID, retryClient)
+	defer telemetryShipper.Close()
+
+	executor := worker.NewAssignmentExecutor(workerID, privateNets, telemetryShipper)
+
+	go heartbeatLoop(ctx, *controlPlane, workerID, *heartbeatInterval, executor)
+	go pollAssignments(ctx, *controlPlane, workerID, *pollInterval, executor)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -74,8 +99,39 @@ func main() {
 
 	fmt.Println("\nShutting down worker...")
 	cancel()
-	time.Sleep(1 * time.Second)
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	for executor.ActiveAssignments() > 0 {
+		select {
+		case <-shutdownCtx.Done():
+			fmt.Println("Shutdown timeout, forcing exit")
+			goto done
+		case <-time.After(500 * time.Millisecond):
+			fmt.Printf("Waiting for %d active assignment(s) to complete...\n", executor.ActiveAssignments())
+		}
+	}
+
+done:
+	shipped, dropped := telemetryShipper.Stats()
+	fmt.Printf("Telemetry stats: shipped=%d dropped=%d\n", shipped, dropped)
 	fmt.Println("Worker stopped")
+}
+
+func parsePrivateNetworks(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 func register(ctx context.Context, baseURL string, hostInfo types.HostInfo, capacity types.WorkerCapacity) (string, error) {
@@ -106,7 +162,7 @@ func register(ctx context.Context, baseURL string, hostInfo types.HostInfo, capa
 	return result.WorkerID, nil
 }
 
-func heartbeatLoop(ctx context.Context, baseURL, workerID string, interval time.Duration) {
+func heartbeatLoop(ctx context.Context, baseURL, workerID string, interval time.Duration, executor *worker.AssignmentExecutor) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -115,43 +171,58 @@ func heartbeatLoop(ctx context.Context, baseURL, workerID string, interval time.
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := sendHeartbeat(ctx, baseURL, workerID); err != nil {
+			resp, err := sendHeartbeat(ctx, baseURL, workerID, executor)
+			if err != nil {
 				fmt.Fprintf(os.Stderr, "Heartbeat failed: %v\n", err)
+				continue
+			}
+
+			for _, runID := range resp.StopRunIDs {
+				executor.StopRun(runID, false)
+			}
+			for _, runID := range resp.ImmediateStopRunIDs {
+				executor.StopRun(runID, true)
 			}
 		}
 	}
 }
 
-func sendHeartbeat(ctx context.Context, baseURL, workerID string) error {
+func sendHeartbeat(ctx context.Context, baseURL, workerID string, executor *worker.AssignmentExecutor) (*heartbeatResponse, error) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
 	req := heartbeatRequest{
 		Health: &types.WorkerHealth{
-			MemBytes: int64(memStats.Alloc),
+			MemBytes:  int64(memStats.Alloc),
+			ActiveVUs: executor.ActiveAssignments(),
 		},
 	}
 	body, _ := json.Marshal(req)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/workers/"+workerID+"/heartbeat", bytes.NewReader(body))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("heartbeat failed: %s", resp.Status)
+		return nil, fmt.Errorf("heartbeat failed: %s", resp.Status)
 	}
-	return nil
+
+	var result heartbeatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
-func pollAssignments(ctx context.Context, baseURL, workerID string, interval time.Duration) {
+func pollAssignments(ctx context.Context, baseURL, workerID string, interval time.Duration, executor *worker.AssignmentExecutor) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -165,8 +236,9 @@ func pollAssignments(ctx context.Context, baseURL, workerID string, interval tim
 				continue
 			}
 			for _, a := range assignments {
-				fmt.Printf("Received assignment: run=%s stage=%s vus=%d-%d\n",
-					a.RunID, a.Stage, a.VUIDStart, a.VUIDEnd)
+				if err := executor.Execute(ctx, a); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to execute assignment %s: %v\n", a.LeaseID, err)
+				}
 			}
 		}
 	}

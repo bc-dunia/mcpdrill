@@ -25,9 +25,22 @@ func main() {
 	jwtSecret := flag.String("jwt-secret", "", "JWT secret (for jwt mode)")
 	enableAgentIngest := flag.Bool("enable-agent-ingest", false, "Enable agent telemetry ingestion endpoints")
 	agentTokens := flag.String("agent-tokens", "", "Comma-separated tokens for agent authentication")
+	allowPrivateNetworks := flag.String("allow-private-networks", "", "Comma-separated CIDR ranges to allow (e.g., '127.0.0.0/8,10.0.0.0/8' for local testing)")
+	rateLimit := flag.Float64("rate-limit", 100, "API rate limit in requests/second (0 to disable)")
+	rateBurst := flag.Int("rate-burst", 200, "API rate limit burst size")
 	flag.Parse()
 
-	validator, err := validation.NewUnifiedValidator(nil)
+	// Build system policy with optional private network allowlist
+	systemPolicy := validation.DefaultSystemPolicy()
+	if *allowPrivateNetworks != "" {
+		cidrs := strings.Split(*allowPrivateNetworks, ",")
+		for i, cidr := range cidrs {
+			cidrs[i] = strings.TrimSpace(cidr)
+		}
+		systemPolicy.AllowPrivateNetworks = cidrs
+	}
+
+	validator, err := validation.NewUnifiedValidator(systemPolicy)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating validator: %v\n", err)
 		os.Exit(1)
@@ -44,6 +57,13 @@ func main() {
 	server.SetRegistry(registry)
 	server.SetTelemetryStore(api.NewTelemetryStore())
 	server.SetMetricsCollector(metrics.NewCollector())
+	rm.SetAssignmentSender(api.NewServerAssignmentAdapter(server))
+
+	server.SetRateLimiterConfig(&api.RateLimiterConfig{
+		RequestsPerSecond: *rateLimit,
+		BurstSize:         *rateBurst,
+		Enabled:           *rateLimit > 0,
+	})
 
 	authConfig := &auth.Config{
 		Mode:      auth.AuthMode(*authMode),
