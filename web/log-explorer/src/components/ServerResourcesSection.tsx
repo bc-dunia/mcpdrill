@@ -4,6 +4,8 @@ import { CpuUsageChart } from './CpuUsageChart';
 import { MemoryUsageChart } from './MemoryUsageChart';
 import { LoadAverageChart } from './LoadAverageChart';
 import { Icon } from './Icon';
+import { formatTime } from '../utils/formatting';
+import { saveToLocalStorage, loadFromLocalStorage } from '../utils/storage';
 
 interface ServerResourcesSectionProps {
   runId: string;
@@ -21,31 +23,11 @@ interface CachedServerMetrics {
 }
 
 function saveToStorage(runId: string, data: CachedServerMetrics): void {
-  try {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}${runId}`, JSON.stringify(data));
-  } catch (err) {
-    console.warn('Failed to save server metrics to localStorage:', err);
-  }
+  saveToLocalStorage(`${STORAGE_KEY_PREFIX}${runId}`, data);
 }
 
 function loadFromStorage(runId: string): CachedServerMetrics | null {
-  try {
-    const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${runId}`);
-    if (stored) return JSON.parse(stored);
-  } catch (err) {
-    console.warn('Failed to load server metrics from localStorage:', err);
-  }
-  return null;
-}
-
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  return date.toLocaleTimeString('en-US', {
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
+  return loadFromLocalStorage<CachedServerMetrics>(`${STORAGE_KEY_PREFIX}${runId}`);
 }
 
 function convertSamplesToDataPoints(samples: ServerMetricsResponse['samples']): ServerMetricsDataPoint[] {

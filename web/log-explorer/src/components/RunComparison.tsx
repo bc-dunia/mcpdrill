@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { RunInfo, ComparisonResult } from '../types';
-import { fetchRuns, fetchComparison } from '../api';
+import { fetchRuns, fetchComparison } from '../api/index';
 import { RunSelector } from './RunSelector';
 import { ComparisonChart } from './ComparisonChart';
 import { ComparisonTable } from './ComparisonTable';

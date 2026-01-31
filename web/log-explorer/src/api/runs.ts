@@ -1,4 +1,26 @@
-import type { LogQueryResponse, RunInfo, LogFilters, RunConfig, ComparisonResult, ComparisonApiResponse, ComparisonDiff, RunMetrics, OpMixEntry } from './types';
+import type {
+  LogQueryResponse,
+  RunInfo,
+  LogFilters,
+  RunConfig,
+  ComparisonResult,
+  ComparisonApiResponse,
+  ComparisonDiff,
+  RunMetrics,
+  OpMixEntry,
+} from '../types';
+import type {
+  BackendToolTemplate,
+  BackendStopCondition,
+  BackendRunConfig,
+  ApiErrorBody,
+  AgentInfo,
+  StopMode,
+  StopRunResponse,
+  ValidationResult,
+  AgentDetail,
+  ErrorSignaturesResponse,
+} from './types';
 
 const API_BASE = '';
 
@@ -31,164 +53,6 @@ export function normalizeMcpUrl(url: string): string {
     
     return `${withoutTrailingSlashes}/mcp`;
   }
-}
-
-interface BackendOperationMix {
-  operation: string;
-  weight: number;
-  custom_operation_name?: string | null;
-}
-
-interface BackendToolTemplate {
-  template_id: string;
-  tool_name: string;
-  weight: number;
-  arguments: Record<string, unknown>;
-  expects_streaming?: boolean;
-}
-
-interface BackendStopCondition {
-  id: string;
-  metric: string;
-  comparator: string;
-  threshold: number;
-  window_ms: number;
-  sustain_windows: number;
-  scope: Record<string, string>;
-}
-
-interface BackendRunConfig {
-  schema_version: string;
-  scenario_id: string;
-  metadata?: {
-    name: string;
-    description?: string;
-    created_by: string;
-    tags: Record<string, string>;
-  };
-  target: {
-    kind: string;
-    url: string;
-    transport: string;
-    headers: Record<string, string>;
-    auth: {
-      type: string;
-      tokens?: string[];
-    };
-    identification: {
-      run_id_header: {
-        name: string;
-        value_template: string;
-      };
-      user_agent: {
-        value: string;
-      };
-    };
-    timeouts: {
-      connect_timeout_ms: number;
-      request_timeout_ms: number;
-      stream_stall_timeout_ms: number;
-    };
-    tls: {
-      verify: boolean;
-      ca_bundle_ref: string | null;
-    };
-    redirect_policy: {
-      mode: string;
-      max_redirects: number;
-    };
-  };
-  environment: {
-    allowlist: {
-      mode: string;
-      allowed_targets: Array<{ kind: string; value: string }>;
-    };
-    forbidden_patterns: string[];
-  };
-  session_policy: {
-    mode: string;
-    pool_size: number | null;
-    ttl_ms: number | null;
-    max_idle_ms: number | null;
-  };
-  workload: {
-    in_flight_per_vu: number;
-    think_time: {
-      mode: string;
-      base_ms: number;
-      jitter_ms: number;
-    };
-    operation_mix: BackendOperationMix[];
-    tools: {
-      selection: {
-        mode: string;
-        single_template_id?: string | null;
-      };
-      templates: BackendToolTemplate[];
-    };
-    payload_profiles: unknown[];
-  };
-  stages: Array<{
-    stage_id: string;
-    stage: string;
-    enabled: boolean;
-    duration_ms: number;
-    load: {
-      target_vus: number;
-      target_rps: number | null;
-    };
-    stop_conditions: BackendStopCondition[];
-  }>;
-  safety: {
-    ramp_by_default: boolean;
-    emergency_stop_enabled: boolean;
-    worker_failure_policy: string;
-    hard_caps: {
-      max_vus: number;
-      max_rps: number;
-      max_connections: number;
-      max_duration_ms: number;
-      max_in_flight_per_vu: number;
-      max_telemetry_q_depth: number;
-    };
-    stop_policy: {
-      mode: string;
-      drain_timeout_ms: number;
-    };
-    identification_required: boolean;
-  };
-  reporting: {
-    formats: string[];
-    retention: {
-      raw_logs_days: number;
-      metrics_days: number;
-      reports_days: number;
-    };
-    include: {
-      store_raw_logs: boolean;
-      store_metrics_snapshot: boolean;
-      store_event_log: boolean;
-    };
-    redaction: {
-      redact_headers: string[];
-    };
-  };
-  telemetry: {
-    structured_logs: {
-      enabled: boolean;
-      sample_rate: number;
-    };
-    traces: {
-      enabled: boolean;
-      propagation: {
-        accept_incoming_traceparent: boolean;
-      };
-    };
-  };
-  server_telemetry?: {
-    enabled: boolean;
-    pair_key: string;
-  };
 }
 
 function mapOperation(op: OpMixEntry['operation']): string {
@@ -387,13 +251,6 @@ function convertToBackendConfig(config: RunConfig): BackendRunConfig {
   };
 }
 
-interface ApiErrorBody {
-  error?: string;
-  error_message?: string;
-  message?: string;
-  detail?: string;
-}
-
 async function extractErrorMessage(response: Response, fallbackAction: string): Promise<string> {
   const status = response.status;
   let serverMessage = '';
@@ -497,18 +354,6 @@ export async function fetchRun(runId: string): Promise<RunInfo> {
     completed_at: run.completed_at,
     stop_reason: run.stop_reason,
   };
-}
-
-export interface AgentInfo {
-  agent_id: string;
-  pair_key: string;
-  hostname: string;
-  os: string;
-  arch: string;
-  version: string;
-  online: boolean;
-  registered_at: string;
-  last_seen: string;
 }
 
 export async function fetchAgents(pairKey?: string): Promise<AgentInfo[]> {
@@ -626,116 +471,6 @@ export async function fetchComparison(runIdA: string, runIdB: string): Promise<C
   };
 }
 
-export interface DiscoveredTool {
-  name: string;
-  description?: string;
-  inputSchema?: Record<string, unknown>;
-  annotations?: {
-    readOnlyHint?: boolean;
-    destructiveHint?: boolean;
-    idempotentHint?: boolean;
-    openWorldHint?: boolean;
-  };
-}
-
-export async function discoverTools(
-  targetUrl: string,
-  headers?: Record<string, string>
-): Promise<DiscoveredTool[]> {
-  const response = await fetch(`${API_BASE}/discover-tools`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ 
-      target_url: normalizeMcpUrl(targetUrl),
-      headers: headers || {},
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(await extractErrorMessage(response, 'Failed to discover tools'));
-  }
-  const data = await response.json();
-  return data.tools || [];
-}
-
-export interface ConnectionTestResult {
-  success: boolean;
-  message?: string;
-  tool_count?: number;
-  tools?: DiscoveredTool[];
-  connect_latency_ms?: number;
-  tools_latency_ms?: number;
-  total_latency_ms?: number;
-  error?: string;
-  error_code?: string;
-}
-
-export async function testConnection(
-  targetUrl: string, 
-  headers?: Record<string, string>
-): Promise<ConnectionTestResult> {
-  const response = await fetch(`${API_BASE}/test-connection`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ target_url: normalizeMcpUrl(targetUrl), headers: headers || {} }),
-  });
-  
-  if (!response.ok) {
-    const errorMsg = await extractErrorMessage(response, 'test connection');
-    return {
-      success: false,
-      message: errorMsg,
-    };
-  }
-  
-  const data = await response.json();
-  return data;
-}
-
-export interface ToolTestResult {
-  success: boolean;
-  result?: unknown;
-  error?: string;
-  latency_ms: number;
-}
-
-export async function testTool(
-  targetUrl: string,
-  toolName: string,
-  args: Record<string, unknown>,
-  headers?: Record<string, string>
-): Promise<ToolTestResult> {
-  const response = await fetch(`${API_BASE}/test-tool`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      target_url: normalizeMcpUrl(targetUrl),
-      tool_name: toolName,
-      arguments: args,
-      headers: headers || {},
-    }),
-  });
-  
-  if (!response.ok) {
-    const errorMsg = await extractErrorMessage(response, 'test tool');
-    return {
-      success: false,
-      error: errorMsg,
-      latency_ms: 0,
-    };
-  }
-  
-  const data = await response.json();
-  return data;
-}
-
-// Stop modes for run termination
-export type StopMode = 'drain' | 'immediate';
-
-export interface StopRunResponse {
-  run_id: string;
-  state: string;
-}
-
 /**
  * Stop a running test with specified mode
  * @param runId - The run ID to stop
@@ -772,24 +507,6 @@ export async function emergencyStopRun(
   return handleResponse<StopRunResponse>(response, 'Failed to emergency stop run');
 }
 
-// Validation types (matches backend ValidationIssue)
-export interface ValidationIssue {
-  level: 'error' | 'warning';
-  code: string;
-  message: string;
-  json_pointer?: string;
-  remediation?: string;
-}
-
-export type ValidationError = ValidationIssue;
-export type ValidationWarning = ValidationIssue;
-
-export interface ValidationResult {
-  ok: boolean;
-  errors: ValidationError[];
-  warnings: ValidationWarning[];
-}
-
 /**
  * Validate run configuration before creating
  */
@@ -821,139 +538,12 @@ export async function validateRunConfig(config: RunConfig): Promise<ValidationRe
   return response.json();
 }
 
-// Agent detail types
-export interface AgentDetail extends AgentInfo {
-  tags?: Record<string, string>;
-  process_info?: {
-    pid?: number;
-    listen_port?: number;
-    process_regex?: string;
-  };
-  metrics_summary?: {
-    total_samples: number;
-    cpu_avg: number;
-    cpu_max: number;
-    mem_avg: number;
-    mem_max: number;
-  };
-}
-
 /**
  * Fetch detailed information about a specific agent
  */
 export async function fetchAgentDetail(agentId: string): Promise<AgentDetail> {
   const response = await fetch(`${API_BASE}/agents/${agentId}`);
   return handleResponse<AgentDetail>(response, 'Failed to fetch agent details');
-}
-
-// SSE Event types
-export interface RunEvent {
-  event_id: string;
-  type: string;
-  timestamp: number;
-  data: Record<string, unknown>;
-}
-
-export type RunEventHandler = (event: RunEvent) => void;
-export type SSEErrorHandler = (error: Event) => void;
-
-function createSSEHandler(
-  eventSource: EventSource,
-  eventName: string,
-  onEvent: RunEventHandler,
-  autoClose = false
-) {
-  eventSource.addEventListener(eventName, (event) => {
-    try {
-      const data = JSON.parse((event as MessageEvent).data);
-      onEvent({
-        event_id: (event as MessageEvent).lastEventId || data.event_id || '',
-        type: data.type || eventName,
-        timestamp: data.timestamp || Date.now(),
-        data,
-      });
-      if (autoClose) eventSource.close();
-    } catch (err) {
-      console.error(`Failed to parse ${eventName}:`, err);
-    }
-  });
-}
-
-/**
- * Subscribe to run events via Server-Sent Events
- * @param runId - The run ID to subscribe to
- * @param onEvent - Callback for each event
- * @param onError - Callback for errors (optional)
- * @param lastEventId - Resume from this event ID (optional)
- * @returns Cleanup function to close the connection
- */
-export function subscribeToRunEvents(
-  runId: string,
-  onEvent: RunEventHandler,
-  onError?: SSEErrorHandler,
-  lastEventId?: string
-): () => void {
-  const params = new URLSearchParams();
-  if (lastEventId) {
-    params.set('cursor', lastEventId);
-  }
-  
-  const url = params.toString() 
-    ? `${API_BASE}/runs/${runId}/events?${params}` 
-    : `${API_BASE}/runs/${runId}/events`;
-  
-  const eventSource = new EventSource(url);
-  
-  eventSource.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      onEvent({
-        event_id: event.lastEventId || '',
-        type: data.type || 'message',
-        timestamp: data.ts_ms || Date.now(),
-        data,
-      });
-    } catch (err) {
-      console.error('Failed to parse SSE message:', err);
-    }
-  };
-  
-  // Backend sends all events as 'run_event' with type in data.type
-  createSSEHandler(eventSource, 'run_event', (event) => {
-    onEvent(event);
-    // Auto-close on terminal states
-    if (event.type === 'STATE_TRANSITION' && 
-        (event.data.to_state === 'completed' || event.data.to_state === 'failed' || event.data.to_state === 'stopped')) {
-      eventSource.close();
-    }
-  });
-  
-  eventSource.onerror = (error) => {
-    if (onError) {
-      onError(error);
-    }
-  };
-  
-  // Return cleanup function
-  return () => {
-    eventSource.close();
-  };
-}
-
-// Error signatures types (for api.ts consolidation)
-export interface ErrorSignature {
-  pattern: string;
-  count: number;
-  first_seen_ms: number;
-  last_seen_ms: number;
-  affected_operations: string[];
-  affected_tools: string[];
-  sample_error: string;
-}
-
-export interface ErrorSignaturesResponse {
-  run_id: string;
-  signatures: ErrorSignature[];
 }
 
 /**

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { RunConfig, WizardStep, TargetConfig as TargetConfigType, StageConfig as StageConfigType, WorkloadConfig as WorkloadConfigType, FetchedTool, ServerTelemetryConfig, AuthConfig } from '../types';
-import { createRun, startRun, ConnectionTestResult } from '../api';
+import { createRun, startRun, ConnectionTestResult } from '../api/index';
 import { TargetConfig } from './TargetConfig';
 import { StageConfig } from './StageConfig';
 import { WorkloadConfig } from './WorkloadConfig';

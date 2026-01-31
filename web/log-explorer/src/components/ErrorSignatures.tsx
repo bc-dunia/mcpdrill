@@ -1,6 +1,6 @@
 import { memo, useState, useEffect } from 'react';
 import { Icon } from './Icon';
-import { fetchErrorSignatures, type ErrorSignature } from '../api';
+import { fetchErrorSignatures, type ErrorSignature } from '../api/index';
 
 interface ErrorSignaturesProps {
   runId: string;

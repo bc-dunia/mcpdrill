@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import type { RunInfo, OperationLog, LogFilters, PaginationState } from '../types'
-import { fetchRuns, fetchLogs, exportAsJSON, exportAsCSV } from '../api'
+import { fetchRuns, fetchLogs, exportAsJSON, exportAsCSV } from '../api/index'
 import { FilterPanel } from './FilterPanel'
 import { LogTable } from './LogTable'
 import { ErrorSignatures } from './ErrorSignatures'

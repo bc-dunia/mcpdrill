@@ -19,6 +19,7 @@ import {
 import type { ToolMetrics, OperationLog, ToolVolumeDataPoint } from '../types';
 import { Icon } from './Icon';
 import { exportChartAsPng } from '../utils/chartExport';
+import { formatLatency } from '../utils/formatting';
 
 interface ToolMetricsDashboardProps {
   runId: string;
@@ -41,11 +42,6 @@ const CHART_COLORS = [
 
 function getToolColor(index: number): string {
   return CHART_COLORS[index % CHART_COLORS.length];
-}
-
-function formatLatency(ms: number): string {
-  if (ms < 1000) return `${ms.toFixed(0)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
 }
 
 const PieTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number; payload: { successRate: number; toolName: string } }> }) => {

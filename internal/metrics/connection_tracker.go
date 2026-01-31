@@ -4,6 +4,8 @@ package metrics
 import (
 	"sync"
 	"time"
+
+	"github.com/bc-dunia/mcpdrill/internal/config"
 )
 
 // ConnectionEventType represents the type of connection event.
@@ -117,8 +119,8 @@ type ConnectionTracker struct {
 // NewConnectionTracker creates a new ConnectionTracker.
 func NewConnectionTracker() *ConnectionTracker {
 	return &ConnectionTracker{
-		events:        make([]ConnectionEvent, 0, 10000),
-		maxEvents:     10000,
+		events:        make([]ConnectionEvent, 0, config.DefaultEventBufferSize),
+		maxEvents:     config.DefaultEventBufferSize,
 		sessions:      make(map[string]*ConnectionMetrics),
 		timeSeries:    make([]StabilityTimePoint, 0, 3600),
 		maxTimeSeries: 3600,

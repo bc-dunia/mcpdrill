@@ -1,21 +1,21 @@
-import { useRef, useCallback, memo } from 'react';
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-} from 'recharts';
+import { memo } from 'react';
 import type { ServerMetricsDataPoint } from '../types';
-import { Icon } from './Icon';
-import { exportChartAsPng } from '../utils/chartExport';
+import { BaseChart, AreaSeriesConfig, GradientDef } from './BaseChart';
 
 interface MemoryUsageChartProps {
   data: ServerMetricsDataPoint[];
   loading?: boolean;
 }
+
+const memoryColor = '#a78bfa';
+
+const gradients: GradientDef[] = [
+  { id: 'memoryGradient', color: memoryColor },
+];
+
+const series: AreaSeriesConfig[] = [
+  { dataKey: 'memory_percent', color: memoryColor, name: 'Memory', gradientId: 'memoryGradient' },
+];
 
 function generateDataSummary(data: ServerMetricsDataPoint[]): string {
   if (data.length === 0) return 'No data available';
@@ -24,19 +24,16 @@ function generateDataSummary(data: ServerMetricsDataPoint[]): string {
   return `Latest: ${latest.memory_percent.toFixed(1)}% (${latest.memory_used_gb.toFixed(1)} / ${latest.memory_total_gb.toFixed(1)} GiB). Peak: ${max.toFixed(1)}%. ${data.length} data points.`;
 }
 
-const memoryColor = '#a78bfa';
-
 interface TooltipPayload {
   value: number;
   color: string;
   payload: ServerMetricsDataPoint;
 }
 
-const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: TooltipPayload[]; label?: string }) => {
+const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: unknown[]; label?: string }) => {
   if (!active || !payload?.length) return null;
-
-  const dataPoint = payload[0].payload;
-
+  const entries = payload as TooltipPayload[];
+  const dataPoint = entries[0].payload;
   return (
     <div className="metrics-tooltip" role="tooltip" aria-live="polite">
       <div className="tooltip-time">{label}</div>
@@ -44,7 +41,7 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
         <div className="tooltip-row">
           <span className="tooltip-dot" style={{ background: memoryColor }} aria-hidden="true" />
           <span className="tooltip-label">Memory</span>
-          <span className="tooltip-value">{payload[0].value.toFixed(1)}%</span>
+          <span className="tooltip-value">{entries[0].value.toFixed(1)}%</span>
         </div>
         <div className="tooltip-row">
           <span className="tooltip-label" style={{ marginLeft: '16px' }}>Used</span>
@@ -56,100 +53,27 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
 };
 
 function MemoryUsageChartComponent({ data, loading }: MemoryUsageChartProps) {
-  const chartRef = useRef<HTMLDivElement>(null);
-
-  const exportAsPng = useCallback(() => {
-    exportChartAsPng(chartRef.current, `memory-usage-${Date.now()}`);
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="metrics-chart-container" role="region" aria-label="Memory Usage chart">
-        <div className="metrics-chart-header">
-          <h3>Memory Usage</h3>
-        </div>
-        <div className="metrics-chart-loading" role="status" aria-live="polite">
-          <div className="spinner" aria-hidden="true" />
-          <span>Loading metrics...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!data.length) {
-    return (
-      <div className="metrics-chart-container" role="region" aria-label="Memory Usage chart">
-        <div className="metrics-chart-header">
-          <h3>Memory Usage</h3>
-        </div>
-        <div className="metrics-chart-empty" role="status">
-          <span className="empty-icon" aria-hidden="true"><Icon name="database" size="xl" /></span>
-          <span>No memory data available</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div 
-      className="metrics-chart-container" 
-      ref={chartRef}
-      role="region" 
-      aria-labelledby="memory-chart-title"
-      aria-describedby="memory-chart-summary"
-    >
-      <div className="metrics-chart-header">
-        <h3 id="memory-chart-title" title="Server memory utilization over time">Memory Usage</h3>
-        <div className="chart-header-actions">
-          <span className="chart-unit">%</span>
-          <button 
-            className="btn btn-ghost btn-sm" 
-            onClick={exportAsPng} 
-            aria-label="Export memory chart as PNG"
-          >
-            <Icon name="download" size="sm" aria-hidden={true} />
-          </button>
-        </div>
-      </div>
-      <p id="memory-chart-summary" className="sr-only">{generateDataSummary(data)}</p>
-      <div className="metrics-chart-body">
-        <ResponsiveContainer width="100%" height={200}>
-          <AreaChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="memoryGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={memoryColor} stopOpacity={0.4}/>
-                <stop offset="95%" stopColor={memoryColor} stopOpacity={0.05}/>
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-            <XAxis 
-              dataKey="time" 
-              stroke="var(--text-muted)" 
-              fontSize={11}
-              tickLine={false}
-            />
-            <YAxis 
-              stroke="var(--text-muted)" 
-              fontSize={11}
-              tickLine={false}
-              axisLine={false}
-              domain={[0, 100]}
-              tickFormatter={(value) => `${value}%`}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Area 
-              type="monotone" 
-              dataKey="memory_percent" 
-              stroke={memoryColor}
-              strokeWidth={2}
-              fill="url(#memoryGradient)"
-              dot={data.length <= 2 ? { r: 4, fill: memoryColor } : false}
-              name="Memory"
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
+    <BaseChart<ServerMetricsDataPoint>
+      data={data}
+      loading={loading}
+      chartType="area"
+      title="Memory Usage"
+      titleTooltip="Server memory utilization over time"
+      chartId="memory"
+      emptyIcon="database"
+      emptyMessage="No memory data available"
+      dataSummary={generateDataSummary(data)}
+      height={200}
+      series={series}
+      gradients={gradients}
+      yAxisConfig={{
+        formatter: (value) => `${value}%`,
+        domain: [0, 100],
+      }}
+      customTooltip={CustomTooltip}
+      headerActions={<span className="chart-unit">%</span>}
+    />
   );
 }
 

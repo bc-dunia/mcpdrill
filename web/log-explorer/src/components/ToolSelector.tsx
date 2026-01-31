@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, memo, type MouseEvent } from 'react';
 import type { FetchedTool, JSONSchema } from '../types';
 import { Icon } from './Icon';
-import { discoverTools } from '../api';
+import { discoverTools } from '../api/index';
 
 type FilterType = 'all' | 'no-params' | 'with-params';
 type BehaviorFilter = 'all' | 'read-only' | 'mutable' | 'destructive';

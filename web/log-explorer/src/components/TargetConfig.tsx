@@ -3,7 +3,7 @@ import type { TargetConfig as TargetConfigType, ServerTelemetryConfig, AgentInfo
 import { Icon } from './Icon';
 import { AgentDetailModal } from './AgentDetailModal';
 import { AuthConfigSection } from './AuthConfigSection';
-import { testConnection, ConnectionTestResult, fetchAgents } from '../api';
+import { testConnection, ConnectionTestResult, fetchAgents } from '../api/index';
 import { isValidUrl, normalizeHeaderKey } from '../utils/validation';
 
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'failed';

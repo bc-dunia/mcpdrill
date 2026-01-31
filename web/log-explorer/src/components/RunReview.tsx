@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { RunConfig } from '../types';
-import { validateRunConfig, type ValidationError, type ValidationWarning } from '../api';
+import { validateRunConfig, type ValidationError, type ValidationWarning } from '../api/index';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Icon } from './Icon';
 

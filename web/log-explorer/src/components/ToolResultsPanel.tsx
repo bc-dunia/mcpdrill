@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import type { OperationLog } from '../types';
 import { Icon } from './Icon';
+import { formatTimestamp, formatLatency } from '../utils/formatting';
 
 interface ToolResultsPanelProps {
   runId: string;
@@ -25,23 +26,6 @@ interface GroupedResults {
 }
 
 const API_BASE = '';
-
-function formatTimestamp(ms: number): string {
-  const date = new Date(ms);
-  return date.toLocaleString('en-US', {
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-}
-
-function formatLatency(ms: number): string {
-  if (ms < 1000) return `${ms.toFixed(0)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
-}
 
 function exportAsJson(data: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });

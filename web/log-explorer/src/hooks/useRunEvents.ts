@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { subscribeToRunEvents, type RunEvent } from '../api';
+import { subscribeToRunEvents, type RunEvent } from '../api/index';
 
 interface UseRunEventsOptions {
   enabled?: boolean;

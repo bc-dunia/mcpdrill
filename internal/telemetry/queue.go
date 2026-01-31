@@ -3,6 +3,8 @@ package telemetry
 import (
 	"sync"
 	"sync/atomic"
+
+	"github.com/bc-dunia/mcpdrill/internal/config"
 )
 
 // BoundedQueue is a thread-safe bounded queue with tier-based backpressure.
@@ -25,7 +27,7 @@ type BoundedQueue struct {
 // NewBoundedQueue creates a new bounded queue with the specified capacity.
 func NewBoundedQueue(capacity int) *BoundedQueue {
 	if capacity <= 0 {
-		capacity = 10000
+		capacity = config.DefaultEventBufferSize
 	}
 	q := &BoundedQueue{
 		capacity: capacity,

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bc-dunia/mcpdrill/internal/config"
 	"github.com/bc-dunia/mcpdrill/internal/transport"
 )
 
@@ -88,8 +89,8 @@ func DefaultSessionConfig() *SessionConfig {
 	return &SessionConfig{
 		Mode:      ModeReuse,
 		PoolSize:  100,
-		TTLMs:     900000,  // 15 minutes
-		MaxIdleMs: 60000,   // 1 minute
+		TTLMs:     config.DefaultSessionTTLMs,
+		MaxIdleMs: config.DefaultSessionIdleMs,
 	}
 }
 
@@ -280,12 +281,12 @@ func (e *SessionError) Unwrap() error {
 
 // Common session errors.
 var (
-	ErrSessionExpired    = &SessionError{Op: "use", Err: errSessionExpired}
-	ErrSessionClosed     = &SessionError{Op: "use", Err: errSessionClosed}
-	ErrPoolExhausted     = &SessionError{Op: "acquire", Err: errPoolExhausted}
-	ErrPoolTimeout       = &SessionError{Op: "acquire", Err: errPoolTimeout}
-	ErrManagerClosed     = &SessionError{Op: "acquire", Err: errManagerClosed}
-	ErrInvalidConfig     = &SessionError{Op: "create", Err: errInvalidConfig}
+	ErrSessionExpired = &SessionError{Op: "use", Err: errSessionExpired}
+	ErrSessionClosed  = &SessionError{Op: "use", Err: errSessionClosed}
+	ErrPoolExhausted  = &SessionError{Op: "acquire", Err: errPoolExhausted}
+	ErrPoolTimeout    = &SessionError{Op: "acquire", Err: errPoolTimeout}
+	ErrManagerClosed  = &SessionError{Op: "acquire", Err: errManagerClosed}
+	ErrInvalidConfig  = &SessionError{Op: "create", Err: errInvalidConfig}
 )
 
 // Internal error values for comparison.

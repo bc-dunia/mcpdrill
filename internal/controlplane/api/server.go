@@ -151,23 +151,23 @@ func (s *Server) Start() error {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/runs", s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.handleCreateRun))).ServeHTTP)
-	mux.HandleFunc("/runs/", s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.routeRuns))).ServeHTTP)
-	mux.HandleFunc("/workers/register", s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.handleRegisterWorker))).ServeHTTP)
-	mux.HandleFunc("/workers/", s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.routeWorkers))).ServeHTTP)
-	mux.HandleFunc("/agents/v1/register", s.agentAuthMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.handleAgentRegister))).ServeHTTP)
-	mux.HandleFunc("/agents/v1/metrics", s.agentAuthMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.handleAgentMetrics))).ServeHTTP)
-	mux.HandleFunc("/agents", s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.handleListAgents))).ServeHTTP)
-	mux.HandleFunc("/agents/", s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.routeAgents))).ServeHTTP)
+	mux.HandleFunc("/runs", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.handleCreateRun))).ServeHTTP)
+	mux.HandleFunc("/runs/", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.routeRuns))).ServeHTTP)
+	mux.HandleFunc("/workers/register", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.handleRegisterWorker))).ServeHTTP)
+	mux.HandleFunc("/workers/", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.routeWorkers))).ServeHTTP)
+	mux.HandleFunc("/agents/v1/register", s.rateLimitMiddleware(s.agentAuthMiddleware(http.HandlerFunc(s.handleAgentRegister))).ServeHTTP)
+	mux.HandleFunc("/agents/v1/metrics", s.rateLimitMiddleware(s.agentAuthMiddleware(http.HandlerFunc(s.handleAgentMetrics))).ServeHTTP)
+	mux.HandleFunc("/agents", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.handleListAgents))).ServeHTTP)
+	mux.HandleFunc("/agents/", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.routeAgents))).ServeHTTP)
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/readyz", s.handleReadyz)
 	mux.HandleFunc("/metrics", s.handleMetrics)
-	mux.HandleFunc("/discover-tools", s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.handleDiscoverTools))).ServeHTTP)
-	mux.HandleFunc("/test-connection", s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.handleTestConnection))).ServeHTTP)
-	mux.HandleFunc("/test-tool", s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.handleTestTool))).ServeHTTP)
+	mux.HandleFunc("/discover-tools", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.handleDiscoverTools))).ServeHTTP)
+	mux.HandleFunc("/test-connection", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.handleTestConnection))).ServeHTTP)
+	mux.HandleFunc("/test-tool", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.handleTestTool))).ServeHTTP)
 
 	for pattern, handler := range s.customHandlers {
-		mux.HandleFunc(pattern, s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(handler))).ServeHTTP)
+		mux.HandleFunc(pattern, s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(handler))).ServeHTTP)
 	}
 
 	listener, err := net.Listen("tcp", s.addr)

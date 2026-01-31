@@ -1,9 +1,9 @@
 package validation
 
 import (
+	"encoding/json"
 	"net/url"
 	"path"
-	"encoding/json"
 	"regexp"
 	"strconv"
 	"strings"
@@ -97,7 +97,6 @@ func (v *SemanticValidator) Validate(data []byte) *ValidationReport {
 
 	return report
 }
-
 
 func (v *SemanticValidator) validateStageIDFormats(config map[string]interface{}, report *ValidationReport) {
 	stages, ok := config["stages"].([]interface{})
@@ -479,45 +478,43 @@ func (v *SemanticValidator) validateTargetWithinSystemAllowlist(config map[strin
 		return
 	}
 
-	target, ok := config["target"].(map[string]interface{})
+	targetHost, ok := targetHostFromConfig(config)
 	if !ok {
 		return
 	}
 
-	url, ok := target["url"].(string)
-	if !ok {
-		return
-	}
-
-	if !v.matchesAllowlist(url, v.systemPolicy.GlobalAllowlist) {
+	if !v.matchesAllowlist(targetHost, v.systemPolicy.GlobalAllowlist) {
 		report.AddError(CodeAllowlistViolation,
 			"Target URL does not match system policy global allowlist",
 			"/target/url")
 	}
 }
 
-func (v *SemanticValidator) matchesAllowlist(targetURL string, allowlist []AllowlistEntry) bool {
-	targetHost := extractHost(targetURL)
-	for _, entry := range allowlist {
-		switch entry.Kind {
-		case "exact":
-			entryHost := extractHost(entry.Value)
-			if targetHost == entryHost {
-				return true
-			}
-		case "suffix":
-			suffix := strings.ToLower(entry.Value)
-			// Normalize suffix: ensure it starts with a dot for boundary-safe matching
-			if !strings.HasPrefix(suffix, ".") {
-				suffix = "." + suffix
-			}
-			// Boundary-safe suffix matching: host must equal suffix (without dot) or end with suffix
-			if targetHost == strings.TrimPrefix(suffix, ".") || strings.HasSuffix(targetHost, suffix) {
-				return true
-			}
-		}
+func (v *SemanticValidator) matchesAllowlist(targetHost string, allowlist []AllowlistEntry) bool {
+	return allowlistMatchesHost(targetHost, allowlist)
+}
+
+func targetURLFromConfig(config map[string]interface{}) (string, bool) {
+	target, ok := config["target"].(map[string]interface{})
+	if !ok {
+		return "", false
 	}
-	return false
+
+	targetURL, ok := target["url"].(string)
+	if !ok || targetURL == "" {
+		return "", false
+	}
+
+	return targetURL, true
+}
+
+func targetHostFromConfig(config map[string]interface{}) (string, bool) {
+	targetURL, ok := targetURLFromConfig(config)
+	if !ok {
+		return "", false
+	}
+
+	return extractHost(targetURL), true
 }
 
 func extractHost(rawURL string) string {
@@ -882,13 +879,8 @@ func (v *SemanticValidator) validateChurnIntervalOps(config map[string]interface
 	}
 }
 func (v *SemanticValidator) validateTargetWithinRunAllowlist(config map[string]interface{}, report *ValidationReport) {
-	target, ok := config["target"].(map[string]interface{})
+	targetURL, ok := targetURLFromConfig(config)
 	if !ok {
-		return
-	}
-
-	targetURL, ok := target["url"].(string)
-	if !ok || targetURL == "" {
 		return
 	}
 
@@ -907,7 +899,7 @@ func (v *SemanticValidator) validateTargetWithinRunAllowlist(config map[string]i
 	}
 
 	runAllowlist := extractRunConfigAllowlistFromConfig(config)
-	
+
 	// Default-deny: if allowlist section exists but allowed_targets is empty/missing, reject
 	if len(runAllowlist) == 0 {
 		// Check if mode is deny_by_default (which requires explicit allowed_targets)
@@ -925,11 +917,8 @@ func (v *SemanticValidator) validateTargetWithinRunAllowlist(config map[string]i
 	targetHost := extractHost(targetURL)
 
 	matchesRun := false
-	for _, entry := range runAllowlist {
-		if matchesAllowlistEntry(targetHost, entry) {
-			matchesRun = true
-			break
-		}
+	if allowlistMatchesHost(targetHost, runAllowlist) {
+		matchesRun = true
 	}
 
 	if !matchesRun {
@@ -940,14 +929,7 @@ func (v *SemanticValidator) validateTargetWithinRunAllowlist(config map[string]i
 	}
 
 	if v.systemPolicy != nil && len(v.systemPolicy.GlobalAllowlist) > 0 {
-		matchesSys := false
-		for _, entry := range v.systemPolicy.GlobalAllowlist {
-			if matchesAllowlistEntry(targetHost, entry) {
-				matchesSys = true
-				break
-			}
-		}
-		if !matchesSys {
+		if !allowlistMatchesHost(targetHost, v.systemPolicy.GlobalAllowlist) {
 			report.AddError(CodeAllowlistViolation,
 				"Target URL matches run config allowlist but not system policy global allowlist",
 				"/target/url")
@@ -987,32 +969,40 @@ func extractRunConfigAllowlistFromConfig(config map[string]interface{}) []Allowl
 	return result
 }
 
-func matchesAllowlistEntry(targetHost string, entry AllowlistEntry) bool {
+func allowlistMatchesHost(targetHost string, allowlist []AllowlistEntry) bool {
+	for _, entry := range allowlist {
+		if allowlistEntryMatchesHost(targetHost, entry) {
+			return true
+		}
+	}
+	return false
+}
+
+func allowlistEntryMatchesHost(targetHost string, entry AllowlistEntry) bool {
 	targetHost = strings.ToLower(targetHost)
 	switch entry.Kind {
 	case "exact":
 		entryHost := extractHost(entry.Value)
 		return targetHost == entryHost
 	case "suffix":
-		suffix := strings.ToLower(entry.Value)
-		// Normalize suffix: ensure it starts with a dot for boundary-safe matching
-		if !strings.HasPrefix(suffix, ".") {
-			suffix = "." + suffix
-		}
-		// Boundary-safe suffix matching: host must equal suffix (without dot) or end with suffix
+		suffix := normalizeAllowlistSuffix(entry.Value)
 		return targetHost == strings.TrimPrefix(suffix, ".") || strings.HasSuffix(targetHost, suffix)
 	}
 	return false
 }
 
-func (v *SemanticValidator) validateForbiddenPatterns(config map[string]interface{}, report *ValidationReport) {
-	target, ok := config["target"].(map[string]interface{})
-	if !ok {
-		return
+func normalizeAllowlistSuffix(value string) string {
+	suffix := strings.ToLower(value)
+	// Normalize suffix: ensure it starts with a dot for boundary-safe matching
+	if !strings.HasPrefix(suffix, ".") {
+		suffix = "." + suffix
 	}
+	return suffix
+}
 
-	targetURL, ok := target["url"].(string)
-	if !ok || targetURL == "" {
+func (v *SemanticValidator) validateForbiddenPatterns(config map[string]interface{}, report *ValidationReport) {
+	targetURL, ok := targetURLFromConfig(config)
+	if !ok {
 		return
 	}
 
@@ -1043,7 +1033,6 @@ func (v *SemanticValidator) validateForbiddenPatterns(config map[string]interfac
 		}
 	}
 }
-
 
 // matchesForbiddenPattern checks if value matches pattern.
 // For glob patterns (containing *?[]), uses path.Match for pure glob matching.

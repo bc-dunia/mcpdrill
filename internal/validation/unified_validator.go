@@ -39,6 +39,15 @@ func (v *UnifiedValidator) ValidateRunConfig(data []byte) *ValidationReport {
 		return report
 	}
 
+	securityReport := v.validateSecurity(data)
+	report.Merge(securityReport)
+
+	return report
+}
+
+func (v *UnifiedValidator) validateSecurity(data []byte) *ValidationReport {
+	report := NewValidationReport()
+
 	ssrfReport := v.ssrfValidator.Validate(data)
 	report.Merge(ssrfReport)
 

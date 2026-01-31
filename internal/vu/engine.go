@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	cfgpkg "github.com/bc-dunia/mcpdrill/internal/config"
 )
 
 type Engine struct {
@@ -57,7 +59,7 @@ func NewEngine(config *VUConfig) (*Engine, error) {
 		sampler:     sampler,
 		rateLimiter: rateLimiter,
 		metrics:     NewVUMetrics(),
-		resultChan:  make(chan *OperationResult, 10000),
+		resultChan:  make(chan *OperationResult, cfgpkg.DefaultChannelBufferSize),
 		vus:         make(map[string]*VUInstance),
 		executors:   make(map[string]*VUExecutor),
 	}, nil

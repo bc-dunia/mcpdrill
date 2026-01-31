@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/bc-dunia/mcpdrill/internal/config"
 )
 
 type EvictionReason string
@@ -33,10 +35,10 @@ type Evictor struct {
 
 func NewEvictor(ttlMs, maxIdleMs int64, callback EvictionCallback) *Evictor {
 	checkPeriod := time.Second
-	if ttlMs > 0 && ttlMs < 1000 {
+	if ttlMs > 0 && ttlMs < config.MinSessionTimeoutMs {
 		checkPeriod = time.Duration(ttlMs) * time.Millisecond / 2
 	}
-	if maxIdleMs > 0 && maxIdleMs < 1000 {
+	if maxIdleMs > 0 && maxIdleMs < config.MinSessionTimeoutMs {
 		period := time.Duration(maxIdleMs) * time.Millisecond / 2
 		if period < checkPeriod {
 			checkPeriod = period

@@ -1,4 +1,6 @@
-const MAX_CACHED_ITEMS = 10;
+import { CONFIG } from '../config';
+
+const MAX_CACHED_ITEMS = CONFIG.MAX_CACHED_RUNS;
 
 const warnedKeys = new Set<string>();
 

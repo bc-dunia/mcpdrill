@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Icon } from './Icon';
-import { fetchAgentDetail, type AgentDetail } from '../api';
+import { fetchAgentDetail, type AgentDetail } from '../api/index';
 
 interface AgentDetailModalProps {
   agentId: string;
