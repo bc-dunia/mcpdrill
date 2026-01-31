@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import type { RunInfo, OperationLog, LogFilters, PaginationState } from '../types'
 import { fetchRuns, fetchLogs, exportAsJSON, exportAsCSV } from '../api/index'
 import { FilterPanel } from './FilterPanel'
@@ -25,17 +26,45 @@ const emptyFilters: LogFilters = {
   error_code: '',
 };
 
-interface LogExplorerProps {
-  onNavigateToWizard?: () => void;
-}
-
-export function LogExplorer({ onNavigateToWizard }: LogExplorerProps) {
+export function LogExplorer() {
+  const { runId: urlRunId } = useParams<{ runId?: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  
   const [runs, setRuns] = useState<RunInfo[]>([]);
-  const [selectedRunId, setSelectedRunId] = useState<string>('');
+  const [selectedRunId, setSelectedRunId] = useState<string>(urlRunId || '');
   const [selectedRun, setSelectedRun] = useState<RunInfo | undefined>();
-  const [activeTab, setActiveTab] = useState<ViewTab>('metrics');
+  
+  const getActiveTabFromPath = (): ViewTab => {
+    if (location.pathname.endsWith('/logs')) return 'logs';
+    return 'metrics';
+  };
+  const [activeTab, setActiveTab] = useState<ViewTab>(getActiveTabFromPath);
   const [logs, setLogs] = useState<OperationLog[]>([]);
-  const [filters, setFilters] = useState<LogFilters>(emptyFilters);
+  
+  const getFiltersFromParams = useCallback((params: URLSearchParams): LogFilters => ({
+    stage: params.get('stage') || '',
+    stage_id: params.get('stage_id') || '',
+    worker_id: params.get('worker_id') || '',
+    session_id: params.get('session_id') || '',
+    vu_id: params.get('vu_id') || '',
+    operation: params.get('operation') || '',
+    tool_name: params.get('tool_name') || '',
+    error_type: params.get('error_type') || '',
+    error_code: params.get('error_code') || '',
+  }), []);
+
+  const [filters, setFilters] = useState<LogFilters>(() => getFiltersFromParams(searchParams));
+  const prevSearchParamsRef = useRef(searchParams.toString());
+
+  useEffect(() => {
+    const currentParamsString = searchParams.toString();
+    if (currentParamsString !== prevSearchParamsRef.current) {
+      prevSearchParamsRef.current = currentParamsString;
+      setFilters(getFiltersFromParams(searchParams));
+    }
+  }, [searchParams, getFiltersFromParams]);
   const [logsPerPage, setLogsPerPage] = useState(DEFAULT_LOGS_PER_PAGE);
   const [pagination, setPagination] = useState<PaginationState>({
     offset: 0,
@@ -68,12 +97,20 @@ export function LogExplorer({ onNavigateToWizard }: LogExplorerProps) {
   }, [loadRuns]);
 
   useEffect(() => {
-    if (runs.length > 0 && !selectedRunId) {
+    if (urlRunId) {
+      setSelectedRunId(urlRunId);
+      const run = runs.find(r => r.id === urlRunId);
+      if (run) setSelectedRun(run);
+    } else if (runs.length > 0 && !selectedRunId) {
       const mostRecentRun = runs[0];
       setSelectedRunId(mostRecentRun.id);
       setSelectedRun(mostRecentRun);
     }
-  }, [runs, selectedRunId]);
+  }, [runs, selectedRunId, urlRunId]);
+
+  useEffect(() => {
+    setActiveTab(getActiveTabFromPath());
+  }, [location.pathname]);
 
   const loadLogs = useCallback(async (runId: string, currentFilters: LogFilters, offset: number, limit: number) => {
     if (!runId) return;
@@ -122,7 +159,11 @@ export function LogExplorer({ onNavigateToWizard }: LogExplorerProps) {
     setSelectedRun(runs.find(r => r.id === runId));
     setFilters(emptyFilters);
     setPagination(prev => ({ ...prev, offset: 0 }));
-  }, [runs]);
+    prevSearchParamsRef.current = '';
+    setSearchParams(new URLSearchParams(), { replace: true });
+    const tab = activeTab === 'logs' ? '/logs' : '/metrics';
+    navigate(`/runs/${runId}${tab}`);
+  }, [runs, activeTab, navigate, setSearchParams]);
 
   const runOptions = useMemo(() => 
     runs.map(run => ({
@@ -136,7 +177,14 @@ export function LogExplorer({ onNavigateToWizard }: LogExplorerProps) {
   const handleFilterChange = useCallback((newFilters: LogFilters) => {
     setFilters(newFilters);
     setPagination(prev => ({ ...prev, offset: 0 }));
-  }, []);
+    
+    const params = new URLSearchParams();
+    Object.entries(newFilters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    prevSearchParamsRef.current = params.toString();
+    setSearchParams(params, { replace: true });
+  }, [setSearchParams]);
 
   const handlePageChange = useCallback((newOffset: number) => {
     loadLogs(selectedRunId, filters, newOffset, logsPerPage);
@@ -164,6 +212,19 @@ export function LogExplorer({ onNavigateToWizard }: LogExplorerProps) {
     }
   }, [selectedRunId, filters, pagination.offset, loadLogs, logsPerPage]);
 
+  const handleTabChange = useCallback((tab: ViewTab) => {
+    setActiveTab(tab);
+    if (selectedRunId) {
+      const tabPath = tab === 'logs' ? '/logs' : '/metrics';
+      const params = searchParams.toString();
+      navigate(`/runs/${selectedRunId}${tabPath}${params ? `?${params}` : ''}`);
+    }
+  }, [selectedRunId, navigate, searchParams]);
+
+  const handleNavigateToWizard = useCallback(() => {
+    navigate('/wizard');
+  }, [navigate]);
+
   return (
     <div className="log-explorer">
       <div className="log-explorer-controls">
@@ -184,7 +245,7 @@ export function LogExplorer({ onNavigateToWizard }: LogExplorerProps) {
             <div className="view-tabs" role="group" aria-label="View options">
               <button
                 className={`view-tab ${activeTab === 'logs' ? 'active' : ''}`}
-                onClick={() => setActiveTab('logs')}
+                onClick={() => handleTabChange('logs')}
                 aria-pressed={activeTab === 'logs'}
               >
                 <span className="tab-icon" aria-hidden="true"><Icon name="clipboard" size="sm" /></span>
@@ -192,7 +253,7 @@ export function LogExplorer({ onNavigateToWizard }: LogExplorerProps) {
               </button>
               <button
                 className={`view-tab ${activeTab === 'metrics' ? 'active' : ''}`}
-                onClick={() => setActiveTab('metrics')}
+                onClick={() => handleTabChange('metrics')}
                 aria-pressed={activeTab === 'metrics'}
               >
                 <span className="tab-icon" aria-hidden="true"><Icon name="chart-bar" size="sm" /></span>
@@ -259,7 +320,7 @@ export function LogExplorer({ onNavigateToWizard }: LogExplorerProps) {
       )}
 
       {selectedRunId && activeTab === 'metrics' && (
-        <MetricsDashboard runId={selectedRunId} run={selectedRun} onNavigateToWizard={onNavigateToWizard} />
+        <MetricsDashboard runId={selectedRunId} run={selectedRun} onNavigateToWizard={handleNavigateToWizard} />
       )}
 
       {!selectedRunId && (
@@ -296,7 +357,7 @@ export function LogExplorer({ onNavigateToWizard }: LogExplorerProps) {
                 <button 
                   type="button"
                   className="btn btn-primary" 
-                  onClick={onNavigateToWizard}
+                  onClick={handleNavigateToWizard}
                 >
                   <Icon name="plus" size="sm" aria-hidden={true} /> Create New Run
                 </button>

@@ -1,10 +1,12 @@
-import { memo } from 'react';
-import type { MetricsDataPoint } from '../types';
-import { BaseChart, LineSeriesConfig } from './BaseChart';
+import { memo, useMemo } from 'react';
+import type { MetricsDataPoint, StageMarker } from '../types';
+import { BaseChart, LineSeriesConfig, BrushRange } from './BaseChart';
 
 interface LatencyChartProps {
   data: MetricsDataPoint[];
   loading?: boolean;
+  brushRange?: BrushRange;
+  stageMarkers?: StageMarker[];
 }
 
 const latencyColors = {
@@ -73,10 +75,15 @@ const LatencyLegend = () => (
   </div>
 );
 
-function LatencyChartComponent({ data, loading }: LatencyChartProps) {
+function LatencyChartComponent({ data, loading, brushRange, stageMarkers }: LatencyChartProps) {
+  const filteredData = useMemo(() => {
+    if (!brushRange || data.length === 0) return data;
+    return data.slice(brushRange.startIndex, brushRange.endIndex + 1);
+  }, [data, brushRange]);
+
   return (
     <BaseChart<MetricsDataPoint>
-      data={data}
+      data={filteredData}
       loading={loading}
       chartType="line"
       title="Latency Percentiles"
@@ -84,12 +91,13 @@ function LatencyChartComponent({ data, loading }: LatencyChartProps) {
       chartId="latency"
       emptyIcon="timer"
       emptyMessage="No latency data available"
-      dataSummary={generateDataSummary(data)}
+      dataSummary={generateDataSummary(filteredData)}
       series={series}
       yAxisConfig={{ formatter: (value) => `${value}ms` }}
       customTooltip={CustomTooltip}
       showLegend={true}
       footer={<LatencyLegend />}
+      stageMarkers={stageMarkers}
     />
   );
 }

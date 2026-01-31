@@ -11,9 +11,11 @@ import {
   Tooltip,
   Legend,
   ReferenceLine,
+  Brush,
 } from 'recharts';
 import { Icon, IconName } from './Icon';
 import { exportChartAsPng } from '../utils/chartExport';
+import type { StageMarker } from '../types';
 
 // Series configuration for Line charts
 export interface LineSeriesConfig {
@@ -54,7 +56,11 @@ export interface YAxisConfig {
   domain?: [number | 'auto', number | 'auto'];
 }
 
-// Base props for all chart wrappers
+export interface BrushRange {
+  startIndex: number;
+  endIndex: number;
+}
+
 export interface BaseChartProps<T> {
   data: T[];
   loading?: boolean;
@@ -67,6 +73,10 @@ export interface BaseChartProps<T> {
   height?: number;
   headerActions?: ReactNode;
   footer?: ReactNode;
+  enableBrush?: boolean;
+  brushRange?: BrushRange;
+  onBrushChange?: (range: BrushRange) => void;
+  stageMarkers?: StageMarker[];
 }
 
 // Props for LineChart variant
@@ -103,6 +113,10 @@ function BaseChartComponent<T extends { time: string }>({
   height = 280,
   headerActions,
   footer,
+  enableBrush,
+  brushRange,
+  onBrushChange,
+  stageMarkers,
   ...chartProps
 }: ChartWrapperProps<T>) {
   const chartRef = useRef<HTMLDivElement>(null);
@@ -111,7 +125,16 @@ function BaseChartComponent<T extends { time: string }>({
     exportChartAsPng(chartRef.current, `${chartId}-${Date.now()}`);
   }, [chartId]);
 
-  const ariaLabel = `${title} chart`;
+  const handleBrushChange = useCallback(
+    (range: { startIndex?: number; endIndex?: number }) => {
+      if (onBrushChange && range.startIndex !== undefined && range.endIndex !== undefined) {
+        onBrushChange({ startIndex: range.startIndex, endIndex: range.endIndex });
+      }
+    },
+    [onBrushChange]
+  );
+
+  const ariaLabel = `${title} chart showing ${data.length} data points`;
   const titleId = `${chartId}-chart-title`;
   const summaryId = `${chartId}-chart-summary`;
 
@@ -167,7 +190,7 @@ function BaseChartComponent<T extends { time: string }>({
 
     if (chartProps.chartType === 'line') {
       return (
-        <LineChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+        <LineChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }} accessibilityLayer>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
           <XAxis {...commonXAxisProps} />
           <YAxis {...commonYAxisProps} />
@@ -188,13 +211,42 @@ function BaseChartComponent<T extends { time: string }>({
               name={s.name}
             />
           ))}
+          {stageMarkers?.map((marker, i) => (
+            <ReferenceLine
+              key={`stage-${i}`}
+              x={marker.time}
+              stroke="var(--text-muted)"
+              strokeDasharray="4 4"
+              strokeWidth={1}
+              label={{
+                value: marker.label,
+                position: 'top',
+                fill: 'var(--text-muted)',
+                fontSize: 10,
+                fontWeight: 500,
+              }}
+              ifOverflow="extendDomain"
+            />
+          ))}
+          {enableBrush && (
+            <Brush
+              dataKey="time"
+              height={30}
+              stroke="var(--accent-primary)"
+              fill="var(--bg-tertiary)"
+              startIndex={brushRange?.startIndex}
+              endIndex={brushRange?.endIndex}
+              onChange={handleBrushChange}
+              tickFormatter={(value) => value}
+            />
+          )}
         </LineChart>
       );
     }
 
     // Area chart
     return (
-      <AreaChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+      <AreaChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }} accessibilityLayer>
         <defs>
           {chartProps.gradients.map((g) => (
             <linearGradient key={g.id} id={g.id} x1="0" y1="0" x2="0" y2="1">
@@ -241,6 +293,35 @@ function BaseChartComponent<T extends { time: string }>({
             name={s.name}
           />
         ))}
+        {stageMarkers?.map((marker, i) => (
+          <ReferenceLine
+            key={`stage-${i}`}
+            x={marker.time}
+            stroke="var(--text-muted)"
+            strokeDasharray="4 4"
+            strokeWidth={1}
+            label={{
+              value: marker.label,
+              position: 'top',
+              fill: 'var(--text-muted)',
+              fontSize: 10,
+              fontWeight: 500,
+            }}
+            ifOverflow="extendDomain"
+          />
+        ))}
+        {enableBrush && (
+          <Brush
+            dataKey="time"
+            height={30}
+            stroke="var(--accent-primary)"
+            fill="var(--bg-tertiary)"
+            startIndex={brushRange?.startIndex}
+            endIndex={brushRange?.endIndex}
+            onChange={handleBrushChange}
+            tickFormatter={(value) => value}
+          />
+        )}
       </AreaChart>
     );
   };
@@ -269,7 +350,8 @@ function BaseChartComponent<T extends { time: string }>({
         </div>
       </div>
       <p id={summaryId} className="sr-only">
-        {dataSummary}
+        {dataSummary}.
+        {data.length > 0 && ` Latest value: ${data[data.length - 1]?.[chartProps.series[0]?.dataKey as keyof T] ?? 'N/A'} at ${data[data.length - 1]?.time}`}
       </p>
       <div className="metrics-chart-body">
         <ResponsiveContainer width="100%" height={height}>

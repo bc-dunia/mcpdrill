@@ -475,3 +475,11 @@ export interface ServerMetricsDataPoint {
   load_avg_5: number;
   load_avg_15: number;
 }
+
+// Stage marker for visualizing stage boundaries on charts
+export interface StageMarker {
+  timestamp: number;  // ms since epoch
+  time: string;       // Formatted time string for X-axis positioning
+  stage: string;      // 'preflight' | 'baseline' | 'ramp' | etc.
+  label: string;      // Display text (uppercase stage name)
+}

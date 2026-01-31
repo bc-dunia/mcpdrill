@@ -1,10 +1,14 @@
 import { memo } from 'react';
-import type { MetricsDataPoint } from '../types';
-import { BaseChart, AreaSeriesConfig, GradientDef } from './BaseChart';
+import type { MetricsDataPoint, StageMarker } from '../types';
+import { BaseChart, AreaSeriesConfig, GradientDef, BrushRange } from './BaseChart';
 
 interface ThroughputChartProps {
   data: MetricsDataPoint[];
   loading?: boolean;
+  enableBrush?: boolean;
+  brushRange?: BrushRange;
+  onBrushChange?: (range: BrushRange) => void;
+  stageMarkers?: StageMarker[];
 }
 
 const throughputColors = {
@@ -74,7 +78,7 @@ const ThroughputStats = ({ data }: { data: MetricsDataPoint[] }) => (
   </div>
 );
 
-function ThroughputChartComponent({ data, loading }: ThroughputChartProps) {
+function ThroughputChartComponent({ data, loading, enableBrush, brushRange, onBrushChange, stageMarkers }: ThroughputChartProps) {
   return (
     <BaseChart<MetricsDataPoint>
       data={data}
@@ -92,6 +96,10 @@ function ThroughputChartComponent({ data, loading }: ThroughputChartProps) {
       showLegend={true}
       headerActions={<span className="chart-unit">ops/sec</span>}
       footer={<ThroughputStats data={data} />}
+      enableBrush={enableBrush}
+      brushRange={brushRange}
+      onBrushChange={onBrushChange}
+      stageMarkers={stageMarkers}
     />
   );
 }

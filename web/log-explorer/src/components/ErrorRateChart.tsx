@@ -1,12 +1,14 @@
-import { memo } from 'react';
-import type { MetricsDataPoint } from '../types';
-import { BaseChart, AreaSeriesConfig, GradientDef, ReferenceLineConfig } from './BaseChart';
+import { memo, useMemo } from 'react';
+import type { MetricsDataPoint, StageMarker } from '../types';
+import { BaseChart, AreaSeriesConfig, GradientDef, ReferenceLineConfig, BrushRange } from './BaseChart';
 import { Icon } from './Icon';
 
 interface ErrorRateChartProps {
   data: MetricsDataPoint[];
   loading?: boolean;
   threshold?: number;
+  brushRange?: BrushRange;
+  stageMarkers?: StageMarker[];
 }
 
 const errorColors = {
@@ -86,8 +88,13 @@ const ThresholdInfo = ({ threshold, isAboveThreshold }: ThresholdInfoProps) => (
   </div>
 );
 
-function ErrorRateChartComponent({ data, loading, threshold }: ErrorRateChartProps) {
-  const currentErrorRate = data.length > 0 ? data[data.length - 1].error_rate : 0;
+function ErrorRateChartComponent({ data, loading, threshold, brushRange, stageMarkers }: ErrorRateChartProps) {
+  const filteredData = useMemo(() => {
+    if (!brushRange || data.length === 0) return data;
+    return data.slice(brushRange.startIndex, brushRange.endIndex + 1);
+  }, [data, brushRange]);
+
+  const currentErrorRate = filteredData.length > 0 ? filteredData[filteredData.length - 1].error_rate : 0;
   const isAboveThreshold = threshold !== undefined && currentErrorRate > threshold;
 
   const referenceLine: ReferenceLineConfig | undefined = threshold !== undefined
@@ -101,7 +108,7 @@ function ErrorRateChartComponent({ data, loading, threshold }: ErrorRateChartPro
 
   return (
     <BaseChart<MetricsDataPoint>
-      data={data}
+      data={filteredData}
       loading={loading}
       chartType="area"
       title="Error Rate"
@@ -109,7 +116,7 @@ function ErrorRateChartComponent({ data, loading, threshold }: ErrorRateChartPro
       chartId="error-rate"
       emptyIcon="alert-triangle"
       emptyMessage="No error data available"
-      dataSummary={generateDataSummary(data, threshold)}
+      dataSummary={generateDataSummary(filteredData, threshold)}
       series={series}
       gradients={gradients}
       yAxisConfig={{
@@ -120,6 +127,7 @@ function ErrorRateChartComponent({ data, loading, threshold }: ErrorRateChartPro
       referenceLine={referenceLine}
       headerActions={<ErrorRateBadge rate={currentErrorRate} isAboveThreshold={isAboveThreshold} />}
       footer={threshold !== undefined ? <ThresholdInfo threshold={threshold} isAboveThreshold={isAboveThreshold} /> : undefined}
+      stageMarkers={stageMarkers}
     />
   );
 }

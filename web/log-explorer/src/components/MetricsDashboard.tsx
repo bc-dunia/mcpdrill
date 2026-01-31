@@ -1,10 +1,10 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import type { RunInfo, MetricsDataPoint, MetricsSummary } from '../types';
-import { stopRun, emergencyStopRun, type StopMode } from '../api';
 import { Icon } from './Icon';
 import { useMetricsData, type LatestTotals } from '../hooks/useMetricsData';
 import { MetricsCharts, MetricsTabs } from './MetricsCharts';
-import { MetricsControls, MetricsRunStatus, MetricsStopConfirm, MetricsStopReason } from './MetricsControls';
+import { MetricsControls, MetricsRunStatus, MetricsStopReason } from './MetricsControls';
+import { ConnectionStatus } from './ConnectionStatus';
 
 interface MetricsDashboardProps {
   runId: string;
@@ -47,9 +47,6 @@ function calculateSummary(
 }
 
 export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDashboardProps) {
-  const [isStopping, setIsStopping] = useState(false);
-  const [showStopConfirm, setShowStopConfirm] = useState(false);
-  const [selectedStopMode, setSelectedStopMode] = useState<StopMode | 'emergency'>('drain');
   const [activeMetricsTab, setActiveMetricsTab] = useState<'overview' | 'tools'>('overview');
   const [stopReasonDismissed, setStopReasonDismissed] = useState(false);
 
@@ -69,6 +66,7 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
     isRunActive,
     elapsedMs,
     latestTotals,
+    stageMarkers,
     handleManualRefresh,
     loadMetrics,
     loadRunState,
@@ -78,24 +76,6 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
     () => calculateSummary(dataPoints, latestTotals, durationMs),
     [dataPoints, latestTotals, durationMs]
   );
-
-  const handleStopRun = useCallback(async () => {
-    setIsStopping(true);
-    try {
-      if (selectedStopMode === 'emergency') {
-        await emergencyStopRun(runId);
-      } else {
-        await stopRun(runId, selectedStopMode);
-      }
-      setShowStopConfirm(false);
-      loadRunState();
-    } catch (err) {
-      console.error('Failed to stop run:', err);
-      alert(err instanceof Error ? err.message : 'Failed to stop run');
-    } finally {
-      setIsStopping(false);
-    }
-  }, [runId, selectedStopMode, loadRunState]);
 
   return (
     <section className="metrics-dashboard" aria-labelledby="metrics-dashboard-heading">
@@ -108,10 +88,10 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
             </span>
           )}
           {isRunActive && (
-            <span className={`sse-status ${sseConnected ? 'connected' : 'disconnected'}`} title={sseConnected ? 'Real-time streaming connected' : 'Using polling (SSE disconnected)'}>
-              <Icon name={sseConnected ? 'wifi' : 'wifi-off'} size="sm" aria-hidden={true} />
-              {sseConnected ? 'Live' : 'Polling'}
-            </span>
+            <ConnectionStatus
+              connected={sseConnected}
+              lastUpdated={dataPoints.length > 0 ? dataPoints[dataPoints.length - 1].timestamp : null}
+            />
           )}
           {currentStage && isRunActive && (
             <span className="current-stage-badge">
@@ -132,15 +112,6 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
           dataPoints={dataPoints}
         />
       </div>
-
-      <MetricsStopConfirm
-        show={showStopConfirm}
-        selectedStopMode={selectedStopMode}
-        setSelectedStopMode={setSelectedStopMode}
-        isStopping={isStopping}
-        onCancel={() => setShowStopConfirm(false)}
-        onConfirm={handleStopRun}
-      />
 
       {error && (
         <div className="error-state" role="alert">
@@ -167,8 +138,8 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
         isRunActive={isRunActive}
         currentRunState={currentRunState}
         onNavigateToWizard={onNavigateToWizard}
-        isStopping={isStopping}
-        onStopClick={() => setShowStopConfirm(true)}
+        runId={runId}
+        onStopped={loadRunState}
       />
 
       {!isRunActive && currentRunInfo?.stop_reason && !stopReasonDismissed && (() => {
@@ -189,6 +160,7 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
         stability={stability}
         stabilityLoading={stabilityLoading}
         summary={summary}
+        stageMarkers={stageMarkers}
       />
     </section>
   );

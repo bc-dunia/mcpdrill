@@ -7,6 +7,8 @@ import { WorkloadConfig } from './WorkloadConfig';
 import { RunReview } from './RunReview';
 import { Icon } from './Icon';
 import { useToast } from './Toast';
+import { ConfirmDialog } from './ConfirmDialog';
+import { formatRelativeTime } from '../utils/formatting';
 
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'failed';
 
@@ -32,47 +34,49 @@ function generateStageID(): string {
   return `stg_${timestamp}${random}`;
 }
 
-const DEFAULT_CONFIG: RunConfig = {
-   scenario_id: `load-test-${Date.now()}`,
-   target: {
-     kind: 'server',
-     url: 'http://localhost:3000',
-     transport: 'streamable_http',
-   },
-   stages: [
-     {
-       stage_id: generateStageID(),
-       stage: 'preflight',
-       enabled: true,
-       duration_ms: 10000,
-       load: { target_vus: 1 },
-     },
-     {
-       stage_id: generateStageID(),
-       stage: 'baseline',
-       enabled: true,
-       duration_ms: 30000,
-       load: { target_vus: 5 },
-     },
-     {
-       stage_id: generateStageID(),
-       stage: 'ramp',
-       enabled: true,
-       duration_ms: 60000,
-       load: { target_vus: 20 },
-     },
-   ],
-   workload: {
-     op_mix: [
-       { operation: 'tools/list', weight: 1 },
-       { operation: 'tools/call', weight: 3, tool_name: 'fast_echo', arguments: { message: 'hello' } },
-     ],
-   },
-   session_policy: {
-     mode: 'reuse',
-   },
-   schema_version: 'run-config/v1',
- };
+function createDefaultConfig(): RunConfig {
+  return {
+    scenario_id: `load-test-${Date.now()}`,
+    target: {
+      kind: 'server',
+      url: 'http://localhost:3000',
+      transport: 'streamable_http',
+    },
+    stages: [
+      {
+        stage_id: generateStageID(),
+        stage: 'preflight',
+        enabled: true,
+        duration_ms: 10000,
+        load: { target_vus: 1 },
+      },
+      {
+        stage_id: generateStageID(),
+        stage: 'baseline',
+        enabled: true,
+        duration_ms: 30000,
+        load: { target_vus: 5 },
+      },
+      {
+        stage_id: generateStageID(),
+        stage: 'ramp',
+        enabled: true,
+        duration_ms: 60000,
+        load: { target_vus: 20 },
+      },
+    ],
+    workload: {
+      op_mix: [
+        { operation: 'tools/list', weight: 1 },
+        { operation: 'tools/call', weight: 3, tool_name: 'fast_echo', arguments: { message: 'hello' } },
+      ],
+    },
+    session_policy: {
+      mode: 'reuse',
+    },
+    schema_version: 'run-config/v1',
+  };
+}
 
 function isValidUrl(urlString: string): boolean {
   const trimmed = urlString?.trim();
@@ -85,13 +89,13 @@ function isValidUrl(urlString: string): boolean {
   }
 }
 
-function loadWizardProgress(): { step: WizardStep; config: RunConfig } | null {
+function loadWizardProgress(): { step: WizardStep; config: RunConfig; savedAt?: number } | null {
   try {
     const saved = localStorage.getItem(WIZARD_STORAGE_KEY);
     if (!saved) return null;
     const parsed = JSON.parse(saved);
     const hasValidStructure = parsed.config && parsed.step && parsed.config.target && parsed.config.stages;
-    return hasValidStructure ? parsed : null;
+    return hasValidStructure ? { step: parsed.step, config: parsed.config, savedAt: parsed.savedAt } : null;
   } catch {
     return null;
   }
@@ -120,7 +124,7 @@ export function RunWizard({ onRunStarted }: Props) {
   });
   const [config, setConfig] = useState<RunConfig>(() => {
     const saved = loadWizardProgress();
-    return saved?.config ?? DEFAULT_CONFIG;
+    return saved?.config ?? createDefaultConfig();
   });
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +133,12 @@ export function RunWizard({ onRunStarted }: Props) {
   const [discoveredTools, setDiscoveredTools] = useState<FetchedTool[]>([]);
   const [authConfig, setAuthConfig] = useState<AuthConfig | undefined>(undefined);
   const { showToast } = useToast();
+  
+  const [lastSaved, setLastSaved] = useState<number | null>(() => {
+    const saved = loadWizardProgress();
+    return saved?.savedAt ?? null;
+  });
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const handleConnectionStatusChange = useCallback((status: ConnectionStatus, result?: ConnectionTestResult) => {
     setConnectionStatus(status);
@@ -148,6 +158,7 @@ export function RunWizard({ onRunStarted }: Props) {
 
   useEffect(() => {
     saveWizardProgress(currentStep, config);
+    setLastSaved(Date.now());
   }, [currentStep, config]);
 
   useEffect(() => {
@@ -229,6 +240,17 @@ export function RunWizard({ onRunStarted }: Props) {
       setCurrentStep(step);
     }
   }, [canNavigateToStep]);
+
+  const handleReset = useCallback(() => {
+    clearWizardProgress();
+    setConfig(createDefaultConfig());
+    setCurrentStep('target');
+    setLastSaved(null);
+    setShowResetConfirm(false);
+    setConnectionStatus('idle');
+    setDiscoveredTools([]);
+    showToast('Configuration reset to defaults', 'info');
+  }, [showToast]);
 
   const validateAllSteps = useCallback((): string | null => {
     if (!isStepValid('target')) {
@@ -341,6 +363,25 @@ export function RunWizard({ onRunStarted }: Props) {
         </div>
       </nav>
 
+      <div className="wizard-header">
+        <div className="wizard-draft-status">
+          {lastSaved && (
+            <span className="draft-saved">
+              Draft saved {formatRelativeTime(lastSaved)}
+            </span>
+          )}
+          
+        </div>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => setShowResetConfirm(true)}
+        >
+          <Icon name="rotate-ccw" size="sm" />
+          Reset to Defaults
+        </button>
+      </div>
+
       <div className="wizard-content">
         {currentStep === 'target' && (
           <>
@@ -431,6 +472,17 @@ export function RunWizard({ onRunStarted }: Props) {
           </button>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={showResetConfirm}
+        title="Reset Configuration?"
+        message="This will discard all changes and restore default settings."
+        confirmLabel="Reset"
+        cancelLabel="Cancel"
+        variant="warning"
+        onConfirm={handleReset}
+        onCancel={() => setShowResetConfirm(false)}
+      />
     </div>
   );
 }

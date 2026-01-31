@@ -57,7 +57,9 @@ export type IconName =
   | 'cpu'
   | 'database'
   | 'wifi'
-  | 'wifi-off';
+  | 'wifi-off'
+  | 'alert-circle'
+  | 'rotate-ccw';
 
 interface IconProps {
   name: IconName;
@@ -473,6 +475,19 @@ const icons: Record<IconName, JSX.Element> = {
       <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
       <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
       <line x1="12" y1="20" x2="12.01" y2="20" />
+    </svg>
+  ),
+  'alert-circle': (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="8" x2="12" y2="12" />
+      <line x1="12" y1="16" x2="12.01" y2="16" />
+    </svg>
+  ),
+  'rotate-ccw': (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
     </svg>
   ),
 };
