@@ -200,6 +200,8 @@ function mapOperation(op: OpMixEntry['operation']): string {
     'prompts/list': 'prompts_list',
     'prompts/get': 'prompts_get',
     'ping': 'ping',
+    'custom': 'custom',
+    'initialize': 'initialize',
   };
   return mapping[op] || 'tools_list';
 }

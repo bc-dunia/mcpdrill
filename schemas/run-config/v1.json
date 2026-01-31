@@ -33,10 +33,7 @@
         "transport": {"type": "string", "minLength": 1, "maxLength": 100},
         "headers": {
           "type": "object",
-          "patternProperties": {
-            "^[A-Za-z0-9-]+$": {"type": "string", "maxLength": 4096}
-          },
-          "additionalProperties": false,
+          "additionalProperties": {"type": "string", "maxLength": 4096},
           "maxProperties": 64
         },
         "auth": {
@@ -208,7 +205,7 @@
             "additionalProperties": false,
             "required": ["operation", "weight"],
             "properties": {
-              "operation": {"type": "string", "enum": ["tools_list", "tools_call", "ping", "custom", "initialize"]},
+              "operation": {"type": "string", "enum": ["tools_list", "tools_call", "resources_list", "resources_read", "prompts_list", "prompts_get", "ping", "custom", "initialize"]},
               "custom_operation_name": {"type": ["string", "null"], "maxLength": 200},
               "weight": {"type": "integer", "exclusiveMinimum": 0, "maximum": 100000}
             }

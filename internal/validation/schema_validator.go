@@ -10,11 +10,13 @@ import (
 
 type SchemaValidator struct {
 	schemas map[string]map[string]interface{}
+	defs    map[string]map[string]interface{} // $defs for each schema
 }
 
 func NewSchemaValidator() (*SchemaValidator, error) {
 	v := &SchemaValidator{
 		schemas: make(map[string]map[string]interface{}),
+		defs:    make(map[string]map[string]interface{}),
 	}
 
 	schemaFiles := []string{
@@ -40,6 +42,10 @@ func NewSchemaValidator() (*SchemaValidator, error) {
 
 		schemaVersion := extractSchemaVersion(path)
 		v.schemas[schemaVersion] = schema
+
+		if defs, ok := schema["$defs"].(map[string]interface{}); ok {
+			v.defs[schemaVersion] = defs
+		}
 	}
 
 	return v, nil
@@ -83,7 +89,7 @@ func (v *SchemaValidator) ValidateRunConfig(data []byte) *ValidationReport {
 		return report
 	}
 
-	v.validateObject(config, schema, "", report)
+	v.validateObjectWithContext(config, schema, "", "run-config/v1", report)
 	return report
 }
 
@@ -115,7 +121,7 @@ func (v *SchemaValidator) ValidateOpLog(data []byte) *ValidationReport {
 		return report
 	}
 
-	v.validateObject(record, schema, "", report)
+	v.validateObjectWithContext(record, schema, "", "op-log/v1", report)
 	return report
 }
 
@@ -147,7 +153,7 @@ func (v *SchemaValidator) ValidateEvent(data []byte) *ValidationReport {
 		return report
 	}
 
-	v.validateObject(event, schema, "", report)
+	v.validateObjectWithContext(event, schema, "", "event/v1", report)
 	return report
 }
 
@@ -179,43 +185,38 @@ func (v *SchemaValidator) ValidateReport(data []byte) *ValidationReport {
 		return report
 	}
 
-	v.validateObject(reportData, schema, "", report)
+	v.validateObjectWithContext(reportData, schema, "", "report/v1", report)
 	return report
 }
 
 func (v *SchemaValidator) validateObject(data map[string]interface{}, schema map[string]interface{}, path string, report *ValidationReport) {
-	required, _ := schema["required"].([]interface{})
-	for _, r := range required {
-		fieldName, _ := r.(string)
-		if _, exists := data[fieldName]; !exists {
-			report.AddError(CodeRequiredFieldMissing,
-				fmt.Sprintf("Required field '%s' is missing", fieldName),
-				joinPath(path, fieldName))
-		}
-	}
-
-	properties, _ := schema["properties"].(map[string]interface{})
-	for fieldName, value := range data {
-		fieldPath := joinPath(path, fieldName)
-
-		propSchema, hasProp := properties[fieldName].(map[string]interface{})
-		if !hasProp {
-			additionalProps, hasAdditional := schema["additionalProperties"]
-			if hasAdditional {
-				if additionalProps == false {
-					report.AddError(CodeSchemaViolation,
-						fmt.Sprintf("Additional property '%s' is not allowed", fieldName),
-						fieldPath)
-				}
-			}
-			continue
-		}
-
-		v.validateValue(value, propSchema, fieldPath, report)
-	}
+	v.validateObjectWithContext(data, schema, path, "", report)
 }
 
 func (v *SchemaValidator) validateValue(value interface{}, schema map[string]interface{}, path string, report *ValidationReport) {
+	v.validateValueWithContext(value, schema, path, "", report)
+}
+
+func (v *SchemaValidator) validateValueWithContext(value interface{}, schema map[string]interface{}, path string, schemaVersion string, report *ValidationReport) {
+	if ref, ok := schema["$ref"].(string); ok {
+		resolved := v.resolveRef(ref, schemaVersion)
+		if resolved != nil {
+			v.validateValueWithContext(value, resolved, path, schemaVersion, report)
+		}
+		return
+	}
+
+	if oneOf, ok := schema["oneOf"].([]interface{}); ok {
+		v.validateOneOf(value, oneOf, path, schemaVersion, report)
+		return
+	}
+
+	if allOf, ok := schema["allOf"].([]interface{}); ok {
+		v.validateAllOf(value, allOf, path, schemaVersion, report)
+	}
+
+	v.validateIfThenElse(value, schema, path, schemaVersion, report)
+
 	if value == nil {
 		typeSpec := schema["type"]
 		if typeSpec != nil {
@@ -240,9 +241,9 @@ func (v *SchemaValidator) validateValue(value interface{}, schema map[string]int
 		v.validateNumber(val, schema, path, report)
 	case bool:
 	case map[string]interface{}:
-		v.validateObject(val, schema, path, report)
+		v.validateObjectWithContext(val, schema, path, schemaVersion, report)
 	case []interface{}:
-		v.validateArray(val, schema, path, report)
+		v.validateArrayWithContext(val, schema, path, schemaVersion, report)
 	}
 
 	if constVal, hasConst := schema["const"]; hasConst {
@@ -265,6 +266,130 @@ func (v *SchemaValidator) validateValue(value interface{}, schema map[string]int
 			report.AddError(CodeSchemaViolation,
 				fmt.Sprintf("Value '%v' is not one of the allowed values", value),
 				path)
+		}
+	}
+}
+
+func (v *SchemaValidator) resolveRef(ref string, schemaVersion string) map[string]interface{} {
+	if !strings.HasPrefix(ref, "#/$defs/") {
+		return nil
+	}
+	defName := strings.TrimPrefix(ref, "#/$defs/")
+	if defs, ok := v.defs[schemaVersion]; ok {
+		if def, ok := defs[defName].(map[string]interface{}); ok {
+			return def
+		}
+	}
+	return nil
+}
+
+func (v *SchemaValidator) validateOneOf(value interface{}, schemas []interface{}, path string, schemaVersion string, report *ValidationReport) {
+	matchCount := 0
+	for _, s := range schemas {
+		subSchema, ok := s.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		testReport := NewValidationReport()
+		v.validateValueWithContext(value, subSchema, path, schemaVersion, testReport)
+		if testReport.OK {
+			matchCount++
+		}
+	}
+	if matchCount != 1 {
+		report.AddError(CodeSchemaViolation,
+			fmt.Sprintf("Value must match exactly one schema in oneOf, matched %d", matchCount),
+			path)
+	}
+}
+
+func (v *SchemaValidator) validateAllOf(value interface{}, schemas []interface{}, path string, schemaVersion string, report *ValidationReport) {
+	for _, s := range schemas {
+		subSchema, ok := s.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		v.validateValueWithContext(value, subSchema, path, schemaVersion, report)
+	}
+}
+
+func (v *SchemaValidator) validateIfThenElse(value interface{}, schema map[string]interface{}, path string, schemaVersion string, report *ValidationReport) {
+	ifSchema, hasIf := schema["if"].(map[string]interface{})
+	if !hasIf {
+		return
+	}
+
+	testReport := NewValidationReport()
+	v.validateValueWithContext(value, ifSchema, path, schemaVersion, testReport)
+
+	if testReport.OK {
+		if thenSchema, ok := schema["then"].(map[string]interface{}); ok {
+			v.validateValueWithContext(value, thenSchema, path, schemaVersion, report)
+		}
+	} else {
+		if elseSchema, ok := schema["else"].(map[string]interface{}); ok {
+			v.validateValueWithContext(value, elseSchema, path, schemaVersion, report)
+		}
+	}
+}
+
+func (v *SchemaValidator) validateObjectWithContext(data map[string]interface{}, schema map[string]interface{}, path string, schemaVersion string, report *ValidationReport) {
+	required, _ := schema["required"].([]interface{})
+	for _, r := range required {
+		fieldName, _ := r.(string)
+		if _, exists := data[fieldName]; !exists {
+			report.AddError(CodeRequiredFieldMissing,
+				fmt.Sprintf("Required field '%s' is missing", fieldName),
+				joinPath(path, fieldName))
+		}
+	}
+
+	properties, _ := schema["properties"].(map[string]interface{})
+	additionalPropsSchema, hasAdditionalSchema := schema["additionalProperties"].(map[string]interface{})
+
+	for fieldName, value := range data {
+		fieldPath := joinPath(path, fieldName)
+
+		propSchema, hasProp := properties[fieldName].(map[string]interface{})
+		if !hasProp {
+			additionalProps, hasAdditional := schema["additionalProperties"]
+			if hasAdditional {
+				if additionalProps == false {
+					report.AddError(CodeSchemaViolation,
+						fmt.Sprintf("Additional property '%s' is not allowed", fieldName),
+						fieldPath)
+				} else if hasAdditionalSchema {
+					v.validateValueWithContext(value, additionalPropsSchema, fieldPath, schemaVersion, report)
+				}
+			}
+			continue
+		}
+
+		v.validateValueWithContext(value, propSchema, fieldPath, schemaVersion, report)
+	}
+}
+
+func (v *SchemaValidator) validateArrayWithContext(arr []interface{}, schema map[string]interface{}, path string, schemaVersion string, report *ValidationReport) {
+	if minItems, ok := schema["minItems"].(float64); ok {
+		if len(arr) < int(minItems) {
+			report.AddError(CodeSchemaViolation,
+				fmt.Sprintf("Array has %d items, minimum is %d", len(arr), int(minItems)),
+				path)
+		}
+	}
+
+	if maxItems, ok := schema["maxItems"].(float64); ok {
+		if len(arr) > int(maxItems) {
+			report.AddError(CodeSchemaViolation,
+				fmt.Sprintf("Array has %d items, maximum is %d", len(arr), int(maxItems)),
+				path)
+		}
+	}
+
+	if itemSchema, ok := schema["items"].(map[string]interface{}); ok {
+		for i, item := range arr {
+			itemPath := fmt.Sprintf("%s/%d", path, i)
+			v.validateValueWithContext(item, itemSchema, itemPath, schemaVersion, report)
 		}
 	}
 }
@@ -343,28 +468,7 @@ func (v *SchemaValidator) validateNumber(val float64, schema map[string]interfac
 }
 
 func (v *SchemaValidator) validateArray(arr []interface{}, schema map[string]interface{}, path string, report *ValidationReport) {
-	if minItems, ok := schema["minItems"].(float64); ok {
-		if len(arr) < int(minItems) {
-			report.AddError(CodeSchemaViolation,
-				fmt.Sprintf("Array has %d items, minimum is %d", len(arr), int(minItems)),
-				path)
-		}
-	}
-
-	if maxItems, ok := schema["maxItems"].(float64); ok {
-		if len(arr) > int(maxItems) {
-			report.AddError(CodeSchemaViolation,
-				fmt.Sprintf("Array has %d items, maximum is %d", len(arr), int(maxItems)),
-				path)
-		}
-	}
-
-	if itemSchema, ok := schema["items"].(map[string]interface{}); ok {
-		for i, item := range arr {
-			itemPath := fmt.Sprintf("%s/%d", path, i)
-			v.validateValue(item, itemSchema, itemPath, report)
-		}
-	}
+	v.validateArrayWithContext(arr, schema, path, "", report)
 }
 
 func isNullAllowed(typeSpec interface{}) bool {

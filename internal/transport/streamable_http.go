@@ -323,9 +323,10 @@ func (c *StreamableHTTPConnection) doRequest(
 		outcome.SessionID = sessionID
 	}
 
-	if httpErr := MapHTTPStatus(resp.StatusCode); httpErr != nil {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		outcome.OK = false
-		outcome.Error = httpErr
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		outcome.Error = MapHTTPStatusWithBody(resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
 		outcome.LatencyMs = time.Since(outcome.StartTime).Milliseconds()
 		outcome.PhaseTiming = phaseTracker.computePhaseTiming(time.Now())
 		return outcome
@@ -392,7 +393,8 @@ func (c *StreamableHTTPConnection) doNotification(
 		outcome.OK = true
 	default:
 		outcome.OK = false
-		outcome.Error = MapHTTPStatus(resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		outcome.Error = MapHTTPStatusWithBody(resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
 	}
 
 	endTime := time.Now()

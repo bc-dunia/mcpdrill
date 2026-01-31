@@ -14,6 +14,7 @@ import { Icon } from './Icon';
 interface MetricsDashboardProps {
   runId: string;
   run?: RunInfo;
+  onNavigateToWizard?: () => void;
 }
 
 const API_BASE = '';
@@ -154,7 +155,7 @@ function calculateSummary(dataPoints: MetricsDataPoint[], durationMs?: number): 
   };
 }
 
-export function MetricsDashboard({ runId, run }: MetricsDashboardProps) {
+export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDashboardProps) {
   const [dataPoints, setDataPoints] = useState<MetricsDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -723,7 +724,7 @@ export function MetricsDashboard({ runId, run }: MetricsDashboardProps) {
             style={{ width: '100%' }}
           />
         </div>
-        {isRunActive && (
+        {isRunActive ? (
           <span className="progress-status">
             <span className="progress-dot" aria-hidden="true" />
             Running
@@ -736,6 +737,20 @@ export function MetricsDashboard({ runId, run }: MetricsDashboardProps) {
               <Icon name={isStopping ? 'loader' : 'x'} size="sm" aria-hidden={true} /> 
               {isStopping ? 'Stopping...' : 'Stop'}
             </button>
+          </span>
+        ) : (
+          <span className="progress-status progress-status-completed">
+            <span className={`status-dot-static status-${currentRunState}`} aria-hidden="true" />
+            {currentRunState?.replace(/_/g, ' ')}
+            {onNavigateToWizard && (
+              <button 
+                className="btn btn-primary btn-sm btn-new-run" 
+                onClick={onNavigateToWizard}
+                aria-label="Start a new test run"
+              >
+                <Icon name="plus" size="sm" aria-hidden={true} /> New Run
+              </button>
+            )}
           </span>
         )}
       </div>

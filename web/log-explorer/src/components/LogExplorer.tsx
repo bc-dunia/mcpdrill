@@ -259,7 +259,7 @@ export function LogExplorer({ onNavigateToWizard }: LogExplorerProps) {
       )}
 
       {selectedRunId && activeTab === 'metrics' && (
-        <MetricsDashboard runId={selectedRunId} run={selectedRun} />
+        <MetricsDashboard runId={selectedRunId} run={selectedRun} onNavigateToWizard={onNavigateToWizard} />
       )}
 
       {!selectedRunId && (

@@ -265,56 +265,88 @@ func mapSyscallError(errno syscall.Errno, opErr *net.OpError) *OperationError {
 }
 
 func MapHTTPStatus(status int) *OperationError {
+	return MapHTTPStatusWithBody(status, "")
+}
+
+func MapHTTPStatusWithBody(status int, responseBody string) *OperationError {
 	switch {
 	case status >= 200 && status < 300:
 		return nil
 	case status == 400:
+		msg := "bad request"
+		if responseBody != "" {
+			msg = fmt.Sprintf("bad request: %s", responseBody)
+		}
 		return &OperationError{
 			Type:    ErrorTypeHTTP,
 			Code:    CodeHTTPBadRequest,
-			Message: "bad request",
+			Message: msg,
 			Details: map[string]interface{}{"http_status": status},
 		}
 	case status == 401:
+		msg := "unauthorized - authentication required"
+		if responseBody != "" {
+			msg = fmt.Sprintf("unauthorized: %s", responseBody)
+		}
 		return &OperationError{
 			Type:    ErrorTypeHTTP,
 			Code:    CodeHTTPUnauthorized,
-			Message: "unauthorized",
+			Message: msg,
 			Details: map[string]interface{}{"http_status": status},
 		}
 	case status == 403:
+		msg := "forbidden - access denied"
+		if responseBody != "" {
+			msg = fmt.Sprintf("forbidden: %s", responseBody)
+		}
 		return &OperationError{
 			Type:    ErrorTypeHTTP,
 			Code:    CodeHTTPForbidden,
-			Message: "forbidden",
+			Message: msg,
 			Details: map[string]interface{}{"http_status": status},
 		}
 	case status == 404:
+		msg := "not found"
+		if responseBody != "" {
+			msg = fmt.Sprintf("not found: %s", responseBody)
+		}
 		return &OperationError{
 			Type:    ErrorTypeHTTP,
 			Code:    CodeHTTPNotFound,
-			Message: "not found",
+			Message: msg,
 			Details: map[string]interface{}{"http_status": status},
 		}
 	case status == 429:
+		msg := "rate limited"
+		if responseBody != "" {
+			msg = fmt.Sprintf("rate limited: %s", responseBody)
+		}
 		return &OperationError{
 			Type:    ErrorTypeRateLimited,
 			Code:    CodeHTTPRateLimited,
-			Message: "rate limited",
+			Message: msg,
 			Details: map[string]interface{}{"http_status": status},
 		}
 	case status >= 500:
+		msg := fmt.Sprintf("server error: %d", status)
+		if responseBody != "" {
+			msg = fmt.Sprintf("server error (%d): %s", status, responseBody)
+		}
 		return &OperationError{
 			Type:    ErrorTypeHTTP,
 			Code:    CodeHTTPServerError,
-			Message: fmt.Sprintf("server error: %d", status),
+			Message: msg,
 			Details: map[string]interface{}{"http_status": status},
 		}
 	default:
+		msg := fmt.Sprintf("HTTP error: %d", status)
+		if responseBody != "" {
+			msg = fmt.Sprintf("HTTP error (%d): %s", status, responseBody)
+		}
 		return &OperationError{
 			Type:    ErrorTypeHTTP,
 			Code:    ErrorCode(fmt.Sprintf("HTTP_%d", status)),
-			Message: fmt.Sprintf("HTTP error: %d", status),
+			Message: msg,
 			Details: map[string]interface{}{"http_status": status},
 		}
 	}

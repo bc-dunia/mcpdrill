@@ -71,8 +71,9 @@ func (s *Server) handleDiscoverTools(w http.ResponseWriter, r *http.Request) {
 		Headers:              req.Headers,
 		AllowPrivateNetworks: []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"},
 		Timeouts: transport.TimeoutConfig{
-			ConnectTimeout: 10 * time.Second,
-			RequestTimeout: 30 * time.Second,
+			ConnectTimeout:     10 * time.Second,
+			RequestTimeout:     30 * time.Second,
+			StreamStallTimeout: 15 * time.Second,
 		},
 	}
 
@@ -95,6 +96,50 @@ func (s *Server) handleDiscoverTools(w http.ResponseWriter, r *http.Request) {
 			log.Printf("failed to close discovery connection: %v", err)
 		}
 	}()
+
+	initParams := &transport.InitializeParams{
+		ProtocolVersion: "2024-11-05",
+		Capabilities:    make(map[string]interface{}),
+		ClientInfo: transport.ClientInfo{
+			Name:    "mcpdrill",
+			Version: "1.0.0",
+		},
+	}
+
+	initOutcome, err := conn.Initialize(ctx, initParams)
+	if err != nil {
+		s.writeError(w, http.StatusBadGateway, &ErrorResponse{
+			ErrorType:    "mcp_error",
+			ErrorCode:    "INIT_FAILED",
+			ErrorMessage: fmt.Sprintf("MCP initialize failed: %v", err),
+			Details:      map[string]interface{}{"target_url": req.TargetURL},
+		})
+		return
+	}
+
+	if !initOutcome.OK {
+		errMsg := "MCP initialize failed"
+		if initOutcome.Error != nil {
+			errMsg = fmt.Sprintf("MCP initialize failed: %v", initOutcome.Error.Message)
+		}
+		s.writeError(w, http.StatusBadGateway, &ErrorResponse{
+			ErrorType:    "mcp_error",
+			ErrorCode:    "INIT_FAILED",
+			ErrorMessage: errMsg,
+			Details:      map[string]interface{}{"target_url": req.TargetURL},
+		})
+		return
+	}
+
+	if _, err = conn.SendInitialized(ctx); err != nil {
+		s.writeError(w, http.StatusBadGateway, &ErrorResponse{
+			ErrorType:    "mcp_error",
+			ErrorCode:    "INIT_FAILED",
+			ErrorMessage: fmt.Sprintf("MCP initialized notification failed: %v", err),
+			Details:      map[string]interface{}{"target_url": req.TargetURL},
+		})
+		return
+	}
 
 	outcome, err := conn.ToolsList(ctx, nil)
 	if err != nil {
@@ -164,8 +209,9 @@ func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 		Headers:              req.Headers,
 		AllowPrivateNetworks: []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"},
 		Timeouts: transport.TimeoutConfig{
-			ConnectTimeout: 10 * time.Second,
-			RequestTimeout: 30 * time.Second,
+			ConnectTimeout:     10 * time.Second,
+			RequestTimeout:     30 * time.Second,
+			StreamStallTimeout: 15 * time.Second,
 		},
 	}
 
@@ -196,6 +242,74 @@ func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 			log.Printf("failed to close discovery connection: %v", err)
 		}
 	}()
+
+	// MCP protocol requires initialize handshake before any other operations
+	initParams := &transport.InitializeParams{
+		ProtocolVersion: "2024-11-05",
+		Capabilities:    make(map[string]interface{}),
+		ClientInfo: transport.ClientInfo{
+			Name:    "mcpdrill",
+			Version: "1.0.0",
+		},
+	}
+
+	initOutcome, err := conn.Initialize(ctx, initParams)
+	if err != nil {
+		s.writeJSON(w, http.StatusOK, &struct {
+			Success        bool   `json:"success"`
+			Error          string `json:"error"`
+			ErrorCode      string `json:"error_code"`
+			ConnectLatency int64  `json:"connect_latency_ms"`
+			TotalLatency   int64  `json:"total_latency_ms"`
+		}{
+			Success:        false,
+			Error:          fmt.Sprintf("MCP initialize failed: %v", err),
+			ErrorCode:      "INIT_FAILED",
+			ConnectLatency: connectLatency.Milliseconds(),
+			TotalLatency:   time.Since(startTime).Milliseconds(),
+		})
+		return
+	}
+
+	if !initOutcome.OK {
+		errMsg := "MCP initialize failed"
+		if initOutcome.Error != nil {
+			errMsg = fmt.Sprintf("MCP initialize failed: %v", initOutcome.Error.Message)
+		}
+		s.writeJSON(w, http.StatusOK, &struct {
+			Success        bool   `json:"success"`
+			Error          string `json:"error"`
+			ErrorCode      string `json:"error_code"`
+			ConnectLatency int64  `json:"connect_latency_ms"`
+			TotalLatency   int64  `json:"total_latency_ms"`
+		}{
+			Success:        false,
+			Error:          errMsg,
+			ErrorCode:      "INIT_FAILED",
+			ConnectLatency: connectLatency.Milliseconds(),
+			TotalLatency:   time.Since(startTime).Milliseconds(),
+		})
+		return
+	}
+
+	// Send initialized notification to complete handshake
+	_, err = conn.SendInitialized(ctx)
+	if err != nil {
+		s.writeJSON(w, http.StatusOK, &struct {
+			Success        bool   `json:"success"`
+			Error          string `json:"error"`
+			ErrorCode      string `json:"error_code"`
+			ConnectLatency int64  `json:"connect_latency_ms"`
+			TotalLatency   int64  `json:"total_latency_ms"`
+		}{
+			Success:        false,
+			Error:          fmt.Sprintf("MCP initialized notification failed: %v", err),
+			ErrorCode:      "INIT_FAILED",
+			ConnectLatency: connectLatency.Milliseconds(),
+			TotalLatency:   time.Since(startTime).Milliseconds(),
+		})
+		return
+	}
 
 	toolsStartTime := time.Now()
 	outcome, err := conn.ToolsList(ctx, nil)
@@ -304,8 +418,9 @@ func (s *Server) handleTestTool(w http.ResponseWriter, r *http.Request) {
 		Headers:              req.Headers,
 		AllowPrivateNetworks: []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"},
 		Timeouts: transport.TimeoutConfig{
-			ConnectTimeout: 10 * time.Second,
-			RequestTimeout: 60 * time.Second,
+			ConnectTimeout:     10 * time.Second,
+			RequestTimeout:     60 * time.Second,
+			StreamStallTimeout: 15 * time.Second,
 		},
 	}
 
