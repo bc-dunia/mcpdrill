@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { RunInfo, LiveMetrics, MetricsDataPoint, MetricsSummary, StabilityMetrics } from '../types';
+import type { RunInfo, LiveMetrics, MetricsDataPoint, MetricsSummary, StabilityMetrics, StopReason } from '../types';
 import { fetchRun, stopRun, emergencyStopRun, subscribeToRunEvents, type StopMode, type RunEvent } from '../api';
 import { LatencyChart } from './LatencyChart';
 import { ThroughputChart } from './ThroughputChart';
@@ -118,6 +118,62 @@ function formatDuration(ms: number | undefined | null): string {
   return `${seconds}s`;
 }
 
+function parseStopReason(stopReason: StopReason | undefined): { title: string; description: string; isError: boolean } | null {
+  if (!stopReason) return null;
+  
+  const reason = stopReason.reason;
+  
+  if (reason.startsWith('stop_condition_triggered:')) {
+    const conditionPart = reason.replace('stop_condition_triggered:', '').trim();
+    const match = conditionPart.match(/(\w+)\s*([><=]+)\s*([\d.]+)\s*\(observed\s+([\d.]+)\)/);
+    
+    if (match) {
+      const [, metric, , threshold, observed] = match;
+      const thresholdNum = parseFloat(threshold);
+      const observedNum = parseFloat(observed);
+      
+      if (metric === 'error_rate') {
+        const thresholdPct = (thresholdNum * 100).toFixed(0);
+        const observedPct = (observedNum * 100).toFixed(1);
+        return {
+          title: 'Test stopped automatically',
+          description: `Error rate exceeded ${thresholdPct}% threshold (observed: ${observedPct}%)`,
+          isError: true,
+        };
+      }
+      
+      if (metric.includes('latency')) {
+        const metricLabel = metric.replace(/_/g, ' ').replace('ms', '').trim();
+        return {
+          title: 'Test stopped automatically',
+          description: `${metricLabel} exceeded ${threshold}ms threshold (observed: ${observed}ms)`,
+          isError: false,
+        };
+      }
+    }
+    
+    return {
+      title: 'Test stopped automatically',
+      description: conditionPart,
+      isError: reason.includes('error_rate'),
+    };
+  }
+  
+  if (reason.includes('user_requested') || stopReason.actor === 'user') {
+    return {
+      title: 'Test stopped by user',
+      description: `Stop mode: ${stopReason.mode}`,
+      isError: false,
+    };
+  }
+  
+  return {
+    title: 'Test stopped',
+    description: reason,
+    isError: false,
+  };
+}
+
 function calculateSummary(dataPoints: MetricsDataPoint[], durationMs?: number): MetricsSummary {
   if (dataPoints.length === 0) {
     return {
@@ -171,10 +227,14 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [selectedStopMode, setSelectedStopMode] = useState<StopMode | 'emergency'>('drain');
   const [currentRunState, setCurrentRunState] = useState<string | undefined>(run?.state);
+  const [currentRunInfo, setCurrentRunInfo] = useState<RunInfo | undefined>(run);
   const [sseConnected, setSseConnected] = useState(false);
   const [currentStage, setCurrentStage] = useState<string | null>(null);
   const [activeMetricsTab, setActiveMetricsTab] = useState<'overview' | 'tools'>('overview');
+  const [stopReasonDismissed, setStopReasonDismissed] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState<number>(0);
   const intervalRef = useRef<number | null>(null);
+  const elapsedIntervalRef = useRef<number | null>(null);
   const isLoadingRef = useRef(false);
   const debounceTimeoutRef = useRef<number | null>(null);
   const sseCleanupRef = useRef<(() => void) | null>(null);
@@ -183,7 +243,8 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
 
   useEffect(() => {
     setCurrentRunState(run?.state);
-  }, [run?.state]);
+    if (run) setCurrentRunInfo(run);
+  }, [run]);
 
   const loadMetrics = useCallback(async () => {
     if (isLoadingRef.current) return;
@@ -237,6 +298,7 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
     try {
       const runInfo = await fetchRun(runId);
       setCurrentRunState(runInfo.state);
+      setCurrentRunInfo(runInfo);
     } catch (err) {
       console.warn('Failed to load run state:', err);
     }
@@ -321,6 +383,32 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
       return () => clearInterval(runStateInterval);
     }
   }, [isAutoRefresh, isRunActive, loadRunState]);
+
+  useEffect(() => {
+    if (elapsedIntervalRef.current) {
+      clearInterval(elapsedIntervalRef.current);
+      elapsedIntervalRef.current = null;
+    }
+
+    const startedAt = currentRunInfo?.started_at || run?.started_at;
+    if (isRunActive && startedAt) {
+      const startTime = new Date(startedAt).getTime();
+      const updateElapsed = () => {
+        setElapsedMs(Date.now() - startTime);
+      };
+      updateElapsed();
+      elapsedIntervalRef.current = window.setInterval(updateElapsed, 1000);
+    } else if (!isRunActive && durationMs !== undefined) {
+      setElapsedMs(durationMs);
+    }
+
+    return () => {
+      if (elapsedIntervalRef.current) {
+        clearInterval(elapsedIntervalRef.current);
+        elapsedIntervalRef.current = null;
+      }
+    };
+  }, [isRunActive, currentRunInfo?.started_at, run?.started_at, durationMs]);
 
   const handleSseEvent = useCallback((event: RunEvent) => {
     switch (event.type) {
@@ -722,7 +810,7 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
       <div className="run-progress-bar" role="timer" aria-label="Run duration">
         <div className="progress-time-display">
           <Icon name="clock" size="sm" aria-hidden={true} />
-          <span className="progress-elapsed">{formatDuration(summary.duration_seconds * 1000)}</span>
+          <span className="progress-elapsed">{formatDuration(elapsedMs)}</span>
         </div>
         <div className="progress-track">
           <div 
@@ -760,6 +848,40 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
           </span>
         )}
       </div>
+
+      {!isRunActive && currentRunInfo?.stop_reason && !stopReasonDismissed && (() => {
+        const parsed = parseStopReason(currentRunInfo.stop_reason);
+        if (!parsed) return null;
+        return (
+          <div className={`stop-reason-alert ${parsed.isError ? 'stop-reason-error' : ''}`} role="alert">
+            <Icon name="alert-triangle" size="md" className="stop-reason-icon" aria-hidden={true} />
+            <div className="stop-reason-content">
+              <p className="stop-reason-title">
+                {parsed.title}
+              </p>
+              <p className="stop-reason-description">{parsed.description}</p>
+              <div className="stop-reason-meta">
+                <span>
+                  <Icon name="zap" size="sm" aria-hidden={true} />
+                  {currentRunInfo.stop_reason.actor === 'system' ? 'Automatic' : 'Manual'}
+                </span>
+                <span>
+                  <Icon name="clock" size="sm" aria-hidden={true} />
+                  {formatTime(currentRunInfo.stop_reason.at_ms)}
+                </span>
+              </div>
+            </div>
+            <button 
+              type="button"
+              className="stop-reason-dismiss"
+              onClick={() => setStopReasonDismissed(true)}
+              aria-label="Dismiss stop reason notification"
+            >
+              <Icon name="x" size="sm" aria-hidden={true} />
+            </button>
+          </div>
+        );
+      })()}
 
       {activeMetricsTab === 'overview' && (
         <div id="metrics-overview-panel" role="tabpanel" aria-labelledby="metrics-overview-tab">

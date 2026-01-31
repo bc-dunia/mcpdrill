@@ -378,28 +378,27 @@ export function AuthConfigSection({ authConfig, onChange, onTestConnection, conn
               style={{ marginTop: '0.75rem' }}
             >
               {additionalTokens.map((entry, index) => (
-                <div key={entry.id} className="header-row-wrapper" role="listitem">
-                  <div className="header-row">
-                    {editingTokenId === entry.id ? (
-                      <>
-                        <label
-                          htmlFor={`token-edit-${entry.id}`}
-                          className="sr-only"
-                        >
-                          Edit token {index + 2}
-                        </label>
-                        <input
-                          id={`token-edit-${entry.id}`}
-                          type="password"
-                          value={editingValue}
-                          onChange={(e) => setEditingValue(e.target.value)}
-                          onKeyDown={handleKeyDown}
-                          onBlur={handleSaveEdit}
-                          placeholder="Enter token value"
-                          className="input"
-                          autoFocus
-                          style={{ flex: 1 }}
-                        />
+                <div key={entry.id} className="token-row" role="listitem">
+                  {editingTokenId === entry.id ? (
+                    <>
+                      <label
+                        htmlFor={`token-edit-${entry.id}`}
+                        className="sr-only"
+                      >
+                        Edit token {index + 2}
+                      </label>
+                      <input
+                        id={`token-edit-${entry.id}`}
+                        type="password"
+                        value={editingValue}
+                        onChange={(e) => setEditingValue(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        onBlur={handleSaveEdit}
+                        placeholder="Enter token value"
+                        className="input"
+                        autoFocus
+                      />
+                      <div className="token-actions">
                         <button
                           type="button"
                           onClick={handleSaveEdit}
@@ -416,26 +415,19 @@ export function AuthConfigSection({ authConfig, onChange, onTestConnection, conn
                         >
                           <Icon name="x" size="sm" aria-hidden={true} />
                         </button>
-                      </>
-                    ) : (
-                      <>
-                        <span
-                          className="token-masked"
-                          style={{
-                            flex: 1,
-                            fontFamily: 'monospace',
-                            fontSize: '0.875rem',
-                            color: 'var(--text-secondary)',
-                            padding: '0.5rem 0.75rem',
-                            background: 'var(--bg-tertiary)',
-                            borderRadius: '4px',
-                          }}
-                          aria-label={`Token ${index + 2} (masked)`}
-                        >
-                          {entry.value.trim()
-                            ? maskToken(entry.value)
-                            : '(empty)'}
-                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <span
+                        className="token-display"
+                        aria-label={`Token ${index + 2} (masked)`}
+                      >
+                        {entry.value.trim()
+                          ? maskToken(entry.value)
+                          : '(empty)'}
+                      </span>
+                      <div className="token-actions">
                         <button
                           type="button"
                           onClick={() => handleEditToken(entry.id)}
@@ -452,9 +444,9 @@ export function AuthConfigSection({ authConfig, onChange, onTestConnection, conn
                         >
                           <Icon name="x" size="sm" aria-hidden={true} />
                         </button>
-                      </>
-                    )}
-                  </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>

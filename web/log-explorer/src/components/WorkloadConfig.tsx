@@ -317,7 +317,9 @@ export function WorkloadConfig({ config, onChange, targetUrl, headers, fetchedTo
             const opMeta = OPERATIONS.find(o => o.value === op.operation);
             return (
               <div key={index} className="legend-item">
-                <span className={`legend-color legend-op-${index}`} />
+                <span className={`legend-color legend-op-${index}`}>
+                  {opMeta && <Icon name={opMeta.icon} size="sm" aria-hidden={true} />}
+                </span>
                 <span className="legend-label">{opMeta?.label}</span>
                 <span className="legend-value">{getPercentage(op.weight)}</span>
               </div>

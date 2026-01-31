@@ -22,6 +22,13 @@ export interface LogQueryResponse {
   logs: OperationLog[];
 }
 
+export interface StopReason {
+  mode: string;
+  reason: string;
+  actor: string;
+  at_ms: number;
+}
+
 export interface RunInfo {
   id: string;
   scenario_id: string;
@@ -29,6 +36,7 @@ export interface RunInfo {
   created_at: string;
   started_at?: string;
   completed_at?: string;
+  stop_reason?: StopReason;
 }
 
 export interface LogFilters {

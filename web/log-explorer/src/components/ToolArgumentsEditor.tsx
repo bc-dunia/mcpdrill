@@ -137,10 +137,16 @@ const SchemaField = memo(function SchemaField({
   if (schema.enum) {
     return (
       <div className={`schema-field ${hasError ? 'has-error' : ''}`}>
-        <label htmlFor={fieldId}>
-          {schema.title || name}
-          {required && <span className="field-required">*</span>}
-        </label>
+        <div className="field-label-row">
+          <label htmlFor={fieldId}>
+            {schema.title || name}
+          </label>
+          {required ? (
+            <span className="field-badge field-required-badge">Required</span>
+          ) : (
+            <span className="field-badge field-optional-badge">Optional</span>
+          )}
+        </div>
         {schema.description && <p className="field-description">{schema.description}</p>}
         <select
           id={fieldId}
@@ -168,10 +174,16 @@ const SchemaField = memo(function SchemaField({
     case 'string':
       return (
         <div className={`schema-field ${hasError ? 'has-error' : ''}`}>
-          <label htmlFor={fieldId}>
-            {schema.title || name}
-            {required && <span className="field-required">*</span>}
-          </label>
+          <div className="field-label-row">
+            <label htmlFor={fieldId}>
+              {schema.title || name}
+            </label>
+            {required ? (
+              <span className="field-badge field-required-badge">Required</span>
+            ) : (
+              <span className="field-badge field-optional-badge">Optional</span>
+            )}
+          </div>
           {schema.description && <p className="field-description">{schema.description}</p>}
           {schema.maxLength && schema.maxLength > 200 ? (
             <textarea
@@ -211,10 +223,16 @@ const SchemaField = memo(function SchemaField({
     case 'integer':
       return (
         <div className={`schema-field ${hasError ? 'has-error' : ''}`}>
-          <label htmlFor={fieldId}>
-            {schema.title || name}
-            {required && <span className="field-required">*</span>}
-          </label>
+          <div className="field-label-row">
+            <label htmlFor={fieldId}>
+              {schema.title || name}
+            </label>
+            {required ? (
+              <span className="field-badge field-required-badge">Required</span>
+            ) : (
+              <span className="field-badge field-optional-badge">Optional</span>
+            )}
+          </div>
           {schema.description && <p className="field-description">{schema.description}</p>}
           <input
             id={fieldId}
@@ -247,19 +265,25 @@ const SchemaField = memo(function SchemaField({
     case 'boolean':
       return (
         <div className={`schema-field schema-field-checkbox ${hasError ? 'has-error' : ''}`}>
-          <label className="checkbox-label">
-            <input
-              id={fieldId}
-              type="checkbox"
-              checked={Boolean(value)}
-              onChange={e => handleChange(e.target.checked)}
-              aria-describedby={schema.description ? `${fieldId}-desc` : undefined}
-            />
-            <span className="checkbox-text">
-              {schema.title || name}
-              {required && <span className="field-required">*</span>}
-            </span>
-          </label>
+          <div className="field-label-row">
+            <label className="checkbox-label">
+              <input
+                id={fieldId}
+                type="checkbox"
+                checked={Boolean(value)}
+                onChange={e => handleChange(e.target.checked)}
+                aria-describedby={schema.description ? `${fieldId}-desc` : undefined}
+              />
+              <span className="checkbox-text">
+                {schema.title || name}
+              </span>
+            </label>
+            {required ? (
+              <span className="field-badge field-required-badge">Required</span>
+            ) : (
+              <span className="field-badge field-optional-badge">Optional</span>
+            )}
+          </div>
           {schema.description && (
             <p id={`${fieldId}-desc`} className="field-description">{schema.description}</p>
           )}
@@ -270,10 +294,16 @@ const SchemaField = memo(function SchemaField({
       const arrayValue = Array.isArray(value) ? value : [];
       return (
         <div className={`schema-field schema-field-array ${hasError ? 'has-error' : ''}`}>
-          <label>
-            {schema.title || name}
-            {required && <span className="field-required">*</span>}
-          </label>
+          <div className="field-label-row">
+            <label>
+              {schema.title || name}
+            </label>
+            {required ? (
+              <span className="field-badge field-required-badge">Required</span>
+            ) : (
+              <span className="field-badge field-optional-badge">Optional</span>
+            )}
+          </div>
           {schema.description && <p className="field-description">{schema.description}</p>}
           <div className="array-items">
             {arrayValue.map((item, index) => (
@@ -330,10 +360,16 @@ const SchemaField = memo(function SchemaField({
       
       return (
         <fieldset className="schema-field schema-field-object">
-          <legend>
-            {schema.title || name}
-            {required && <span className="field-required">*</span>}
-          </legend>
+          <div className="field-label-row">
+            <legend>
+              {schema.title || name}
+            </legend>
+            {required ? (
+              <span className="field-badge field-required-badge">Required</span>
+            ) : (
+              <span className="field-badge field-optional-badge">Optional</span>
+            )}
+          </div>
           {schema.description && <p className="field-description">{schema.description}</p>}
           <div className="nested-fields">
             {Object.entries(schema.properties).map(([key, propSchema]) => (
@@ -574,44 +610,6 @@ function ToolArgumentsEditorComponent({
           )}
         </div>
         <div className="tool-args-actions">
-          <div className="mode-toggle" role="tablist" aria-label="Editor mode">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'form'}
-              onClick={() => setMode('form')}
-              className={`btn btn-sm ${mode === 'form' ? 'btn-primary' : 'btn-ghost'}`}
-            >
-              <Icon name="layout" size="sm" aria-hidden={true} />
-              Form
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'json'}
-              onClick={() => setMode('json')}
-              className={`btn btn-sm ${mode === 'json' ? 'btn-primary' : 'btn-ghost'}`}
-            >
-              <Icon name="code" size="sm" aria-hidden={true} />
-              JSON
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={handleExportArgs}
-            className="btn btn-ghost btn-sm"
-            aria-label="Export arguments as JSON file"
-          >
-            <Icon name="download" size="sm" aria-hidden={true} />
-          </button>
-          <button
-            type="button"
-            onClick={handleImportArgs}
-            className="btn btn-ghost btn-sm"
-            aria-label="Import arguments from JSON file"
-          >
-            <Icon name="upload" size="sm" aria-hidden={true} />
-          </button>
           {targetUrl && (
             <button
               type="button"
@@ -637,6 +635,65 @@ function ToolArgumentsEditorComponent({
               )}
             </button>
           )}
+        </div>
+      </div>
+
+      <p className="tool-args-description">
+        Configure the arguments that will be passed to this tool during the load test. 
+        Fields marked with <span className="required-indicator">*</span> are required.
+      </p>
+
+      <div className="tool-args-mode-section">
+        <div className="mode-toggle-container">
+          <div className="mode-toggle-group" role="tablist" aria-label="Editor mode">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'form'}
+              onClick={() => setMode('form')}
+              className={`mode-toggle-btn ${mode === 'form' ? 'active' : ''}`}
+            >
+              <Icon name="layout" size="sm" aria-hidden={true} />
+              <span className="mode-label">Form View</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'json'}
+              onClick={() => setMode('json')}
+              className={`mode-toggle-btn ${mode === 'json' ? 'active' : ''}`}
+            >
+              <Icon name="code" size="sm" aria-hidden={true} />
+              <span className="mode-label">JSON View</span>
+            </button>
+          </div>
+          <span className="mode-hint">
+            {mode === 'form' 
+              ? 'Fill in fields using the guided form' 
+              : 'Edit raw JSON directly for advanced configuration'}
+          </span>
+        </div>
+        <div className="mode-actions">
+          <button
+            type="button"
+            onClick={handleExportArgs}
+            className="btn btn-ghost btn-sm"
+            aria-label="Export arguments as JSON file"
+            title="Export as JSON"
+          >
+            <Icon name="download" size="sm" aria-hidden={true} />
+            Export
+          </button>
+          <button
+            type="button"
+            onClick={handleImportArgs}
+            className="btn btn-ghost btn-sm"
+            aria-label="Import arguments from JSON file"
+            title="Import from JSON"
+          >
+            <Icon name="upload" size="sm" aria-hidden={true} />
+            Import
+          </button>
         </div>
       </div>
 
@@ -755,19 +812,21 @@ function ToolArgumentsEditorComponent({
       )}
 
       {mode === 'form' ? (
-        <div className="schema-form" role="form" aria-label="Arguments form">
-          {Object.entries(schema.properties).map(([key, propSchema]) => (
-            <SchemaField
-              key={key}
-              name={key}
-              schema={propSchema}
-              value={value[key]}
-              onChange={newVal => handleFieldChange(key, newVal)}
-              required={requiredFields.has(key)}
-              errors={validationErrors}
-              path={key}
-            />
-          ))}
+        <div className="schema-form-container">
+          <div className="schema-form" role="form" aria-label="Arguments form">
+            {Object.entries(schema.properties).map(([key, propSchema]) => (
+              <SchemaField
+                key={key}
+                name={key}
+                schema={propSchema}
+                value={value[key]}
+                onChange={newVal => handleFieldChange(key, newVal)}
+                required={requiredFields.has(key)}
+                errors={validationErrors}
+                path={key}
+              />
+            ))}
+          </div>
         </div>
       ) : (
         <div className="json-editor-wrapper">
