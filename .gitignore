@@ -1,18 +1,18 @@
 # ===================
 # Compiled Binaries
 # ===================
-mcpdrill
-mcpdrill-server
-mcpdrill-worker
-mcpdrill-agent
-mcpdrill-mockserver
-server
-worker
-agent
-mockserver
-mock-server
-validate
-validate_bin
+/mcpdrill
+/mcpdrill-server
+/mcpdrill-worker
+/mcpdrill-agent
+/mcpdrill-mockserver
+/server
+/worker
+/agent
+/mockserver
+/mock-server
+/validate
+/validate_bin
 *.exe
 
 # ===================

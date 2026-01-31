@@ -341,11 +341,34 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
                 <div className="connection-result-error">
                   {connectionResult.error || 'Unknown error'}
                 </div>
+                {(connectionResult.error?.includes('401') || connectionResult.error?.includes('403') || connectionResult.error?.includes('Authorization') || connectionResult.error?.includes('authentication')) && (
+                  <div className="connection-result-hint">
+                    <Icon name="info" size="sm" aria-hidden={true} />
+                    <span>This may require authentication. Configure a bearer token below.</span>
+                  </div>
+                )}
               </>
             )}
           </div>
         )}
+
+        {!connectionResult && !authConfig?.tokens?.length && (
+          <p className="field-hint" style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <Icon name="info" size="sm" aria-hidden={true} />
+            If your server requires authentication, configure it in the Authentication section below.
+          </p>
+        )}
       </div>
+
+      {onAuthConfigChange && (
+        <AuthConfigSection
+          authConfig={authConfig}
+          onChange={onAuthConfigChange}
+          onTestConnection={handleTestConnection}
+          connectionStatus={connectionStatus}
+          showTestButton={true}
+        />
+      )}
 
       <div className="form-section">
         <div className="section-header">
@@ -415,13 +438,6 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
           <p className="empty-hint">No custom headers configured</p>
         )}
       </div>
-
-      {onAuthConfigChange && (
-        <AuthConfigSection
-          authConfig={authConfig}
-          onChange={onAuthConfigChange}
-        />
-      )}
 
       {onServerTelemetryChange && (
         <div className="form-section">

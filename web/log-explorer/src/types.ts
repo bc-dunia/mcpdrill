@@ -49,13 +49,6 @@ export interface PaginationState {
   total: number;
 }
 
-export interface ErrorSignature {
-  error_type: string;
-  error_code: string;
-  count: number;
-  sample_message?: string;
-}
-
 // Run Configuration Types
 export type AuthType = 'none' | 'bearer_token';
 
@@ -421,19 +414,32 @@ export interface StabilityMetrics {
 }
 
 // Server Telemetry Types (from mcpdrill-agent)
+export interface ServerHostMetrics {
+  cpu_percent: number;
+  load_avg_1?: number;
+  load_avg_5?: number;
+  load_avg_15?: number;
+  mem_total: number;
+  mem_used: number;
+  mem_free?: number;
+  mem_available?: number;
+  swap_used?: number;
+}
+
+export interface ServerProcessMetrics {
+  pid: number;
+  cpu_percent: number;
+  mem_rss: number;
+  mem_vms?: number;
+  num_threads?: number;
+  num_fds?: number;
+  open_connections?: number;
+}
+
 export interface ServerMetricsSample {
   timestamp: number;
-  host: {
-    cpu_percent: number;
-    load_avg_1: number;
-    load_avg_5: number;
-    load_avg_15: number;
-    mem_total: number;
-    mem_used: number;
-    mem_free: number;
-    mem_available: number;
-    swap_used: number;
-  };
+  host?: ServerHostMetrics;
+  process?: ServerProcessMetrics;
 }
 
 export interface ServerMetricsAggregated {

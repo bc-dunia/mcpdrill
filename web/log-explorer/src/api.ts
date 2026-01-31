@@ -904,8 +904,8 @@ export function subscribeToRunEvents(
       const data = JSON.parse(event.data);
       onEvent({
         event_id: event.lastEventId || '',
-        type: 'message',
-        timestamp: Date.now(),
+        type: data.type || 'message',
+        timestamp: data.ts_ms || Date.now(),
         data,
       });
     } catch (err) {
@@ -913,11 +913,15 @@ export function subscribeToRunEvents(
     }
   };
   
-  // Handle named events
-  ['run_event', 'metrics', 'stage_started', 'stage_completed'].forEach(
-    name => createSSEHandler(eventSource, name, onEvent)
-  );
-  createSSEHandler(eventSource, 'run_completed', onEvent, true);
+  // Backend sends all events as 'run_event' with type in data.type
+  createSSEHandler(eventSource, 'run_event', (event) => {
+    onEvent(event);
+    // Auto-close on terminal states
+    if (event.type === 'STATE_TRANSITION' && 
+        (event.data.to_state === 'completed' || event.data.to_state === 'failed' || event.data.to_state === 'stopped')) {
+      eventSource.close();
+    }
+  });
   
   eventSource.onerror = (error) => {
     if (onError) {

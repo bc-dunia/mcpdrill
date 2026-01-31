@@ -45,23 +45,26 @@ function formatTime(timestamp: number): string {
 }
 
 function convertSamplesToDataPoints(samples: ServerMetricsResponse['samples']): ServerMetricsDataPoint[] {
-  return samples.map(sample => {
-    const memTotalGb = sample.host.mem_total / (1024 * 1024 * 1024);
-    const memUsedGb = sample.host.mem_used / (1024 * 1024 * 1024);
-    const memPercent = (sample.host.mem_used / sample.host.mem_total) * 100;
+  return samples
+    .filter(sample => sample.host != null)
+    .map(sample => {
+      const host = sample.host!;
+      const memTotalGb = host.mem_total / (1024 * 1024 * 1024);
+      const memUsedGb = host.mem_used / (1024 * 1024 * 1024);
+      const memPercent = host.mem_total > 0 ? (host.mem_used / host.mem_total) * 100 : 0;
 
-    return {
-      timestamp: sample.timestamp,
-      time: formatTime(sample.timestamp),
-      cpu_percent: sample.host.cpu_percent,
-      memory_percent: memPercent,
-      memory_used_gb: memUsedGb,
-      memory_total_gb: memTotalGb,
-      load_avg_1: sample.host.load_avg_1,
-      load_avg_5: sample.host.load_avg_5,
-      load_avg_15: sample.host.load_avg_15,
-    };
-  });
+      return {
+        timestamp: sample.timestamp,
+        time: formatTime(sample.timestamp),
+        cpu_percent: host.cpu_percent ?? 0,
+        memory_percent: memPercent,
+        memory_used_gb: memUsedGb,
+        memory_total_gb: memTotalGb,
+        load_avg_1: host.load_avg_1 ?? 0,
+        load_avg_5: host.load_avg_5 ?? 0,
+        load_avg_15: host.load_avg_15 ?? 0,
+      };
+    });
 }
 
 async function fetchServerMetrics(runId: string): Promise<ServerMetricsResponse> {

@@ -23,7 +23,13 @@ function maskToken(token: string): string {
   return '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' + token.slice(-6);
 }
 
-export function AuthConfigSection({ authConfig, onChange }: Props) {
+interface AuthConfigSectionProps extends Props {
+  onTestConnection?: () => void;
+  connectionStatus?: 'idle' | 'testing' | 'success' | 'failed';
+  showTestButton?: boolean;
+}
+
+export function AuthConfigSection({ authConfig, onChange, onTestConnection, connectionStatus, showTestButton }: AuthConfigSectionProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [editingTokenId, setEditingTokenId] = useState<string | null>(null);
@@ -32,13 +38,16 @@ export function AuthConfigSection({ authConfig, onChange }: Props) {
     authConfig?.activeTokenIndex ?? 0
   );
 
-  // Convert tokens to internal format
   const [tokenEntries, setTokenEntries] = useState<TokenEntry[]>(() => {
     if (!authConfig?.tokens) return [];
     return authConfig.tokens.map((token) => ({
       value: token,
       id: generateTokenId(),
     }));
+  });
+  
+  const [quickTokenValue, setQuickTokenValue] = useState(() => {
+    return authConfig?.tokens?.[0] || '';
   });
 
   const authType: AuthType = authConfig?.type || 'none';
@@ -196,8 +205,24 @@ export function AuthConfigSection({ authConfig, onChange }: Props) {
     [syncTokensToConfig, tokenEntries, authType]
   );
 
+  const handleQuickTokenChange = useCallback((value: string) => {
+    setQuickTokenValue(value);
+    const trimmedValue = value.trim();
+    
+    if (tokenEntries.length === 0 && trimmedValue) {
+      const newEntry: TokenEntry = { value: trimmedValue, id: generateTokenId() };
+      setTokenEntries([newEntry]);
+      syncTokensToConfig([newEntry], authType);
+    } else if (tokenEntries.length > 0) {
+      const updated = tokenEntries.map((e, i) => i === 0 ? { ...e, value: trimmedValue } : e);
+      setTokenEntries(updated);
+      syncTokensToConfig(updated, authType);
+    }
+  }, [tokenEntries, syncTokensToConfig, authType]);
+
   const tokenCount = tokenEntries.filter((e) => e.value.trim()).length;
   const validTokens = tokenEntries.filter((e) => e.value.trim());
+  const additionalTokens = tokenEntries.slice(1);
 
   return (
     <div className="form-section">
@@ -245,37 +270,92 @@ export function AuthConfigSection({ authConfig, onChange }: Props) {
 
       {authType === 'bearer_token' && (
         <div className="form-field" style={{ marginTop: '1rem' }}>
-          <div className="section-header">
-            <label id="token-list-label">Tokens</label>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <input
-                type="file"
-                accept=".txt,.csv,.json"
-                onChange={handleFileUpload}
-                style={{ display: 'none' }}
-                ref={fileInputRef}
-                aria-label="Upload tokens file"
-              />
+          <label htmlFor="quick-token-input">Bearer Token</label>
+          <div className="url-input-row">
+            <input
+              id="quick-token-input"
+              type="password"
+              value={quickTokenValue || (tokenEntries[0]?.value || '')}
+              onChange={(e) => handleQuickTokenChange(e.target.value)}
+              placeholder="Enter your bearer token"
+              className="input"
+              aria-describedby="quick-token-hint"
+            />
+            {showTestButton && onTestConnection && (
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="btn btn-ghost btn-sm"
-                aria-label="Upload tokens from file"
+                onClick={onTestConnection}
+                disabled={connectionStatus === 'testing'}
+                className={`btn btn-secondary test-connection-btn ${connectionStatus || 'idle'}`}
+                aria-busy={connectionStatus === 'testing'}
               >
-                <Icon name="upload" size="sm" aria-hidden={true} />
-                Upload
+                {connectionStatus === 'testing' ? (
+                  <>
+                    <span className="spinner-sm" aria-hidden="true" />
+                    Testing...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="activity" size="sm" aria-hidden={true} />
+                    Test Connection
+                  </>
+                )}
               </button>
+            )}
+          </div>
+          <span id="quick-token-hint" className="field-hint">
+            Token will be sent as: Authorization: Bearer &lt;token&gt;
+          </span>
+
+          {tokenCount > 1 && (
+            <div style={{ marginTop: '1rem' }}>
+              <div className="section-header">
+                <label id="token-list-label">Additional Tokens</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    type="file"
+                    accept=".txt,.csv,.json"
+                    onChange={handleFileUpload}
+                    style={{ display: 'none' }}
+                    ref={fileInputRef}
+                    aria-label="Upload tokens file"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="btn btn-ghost btn-sm"
+                    aria-label="Upload tokens from file"
+                  >
+                    <Icon name="upload" size="sm" aria-hidden={true} />
+                    Upload
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddToken}
+                    className="btn btn-ghost btn-sm"
+                    aria-label="Add token manually"
+                  >
+                    <Icon name="plus" size="sm" aria-hidden={true} />
+                    Add Token
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tokenCount <= 1 && (
+            <div style={{ marginTop: '0.75rem' }}>
               <button
                 type="button"
                 onClick={handleAddToken}
                 className="btn btn-ghost btn-sm"
-                aria-label="Add token manually"
+                style={{ padding: '0.25rem 0' }}
               >
                 <Icon name="plus" size="sm" aria-hidden={true} />
-                Add Token
+                Add additional tokens for load testing
               </button>
             </div>
-          </div>
+          )}
 
           {uploadError && (
             <div className="agents-error" role="alert" style={{ marginTop: '0.5rem' }}>
@@ -284,20 +364,20 @@ export function AuthConfigSection({ authConfig, onChange }: Props) {
             </div>
           )}
 
-          {tokenCount > 0 && (
+          {additionalTokens.length > 0 && (
             <p className="field-hint" style={{ marginTop: '0.5rem' }}>
               {tokenCount} token{tokenCount !== 1 ? 's' : ''} configured
             </p>
           )}
 
-          {tokenEntries.length > 0 ? (
+          {additionalTokens.length > 0 ? (
             <div
               className="headers-list"
               role="list"
               aria-labelledby="token-list-label"
               style={{ marginTop: '0.75rem' }}
             >
-              {tokenEntries.map((entry, index) => (
+              {additionalTokens.map((entry, index) => (
                 <div key={entry.id} className="header-row-wrapper" role="listitem">
                   <div className="header-row">
                     {editingTokenId === entry.id ? (
@@ -306,7 +386,7 @@ export function AuthConfigSection({ authConfig, onChange }: Props) {
                           htmlFor={`token-edit-${entry.id}`}
                           className="sr-only"
                         >
-                          Edit token {index + 1}
+                          Edit token {index + 2}
                         </label>
                         <input
                           id={`token-edit-${entry.id}`}
@@ -350,7 +430,7 @@ export function AuthConfigSection({ authConfig, onChange }: Props) {
                             background: 'var(--bg-tertiary)',
                             borderRadius: '4px',
                           }}
-                          aria-label={`Token ${index + 1} (masked)`}
+                          aria-label={`Token ${index + 2} (masked)`}
                         >
                           {entry.value.trim()
                             ? maskToken(entry.value)
@@ -360,7 +440,7 @@ export function AuthConfigSection({ authConfig, onChange }: Props) {
                           type="button"
                           onClick={() => handleEditToken(entry.id)}
                           className="btn btn-ghost btn-sm"
-                          aria-label={`Edit token ${index + 1}`}
+                          aria-label={`Edit token ${index + 2}`}
                         >
                           <Icon name="edit" size="sm" aria-hidden={true} />
                         </button>
@@ -368,7 +448,7 @@ export function AuthConfigSection({ authConfig, onChange }: Props) {
                           type="button"
                           onClick={() => handleRemoveToken(entry.id)}
                           className="btn btn-ghost btn-sm btn-danger"
-                          aria-label={`Delete token ${index + 1}`}
+                          aria-label={`Delete token ${index + 2}`}
                         >
                           <Icon name="x" size="sm" aria-hidden={true} />
                         </button>
@@ -378,11 +458,7 @@ export function AuthConfigSection({ authConfig, onChange }: Props) {
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="empty-hint" style={{ marginTop: '0.75rem' }}>
-              No tokens added
-            </p>
-          )}
+          ) : null}
 
           {validTokens.length >= 2 && (
             <div className="form-field" style={{ marginTop: '1rem' }}>
