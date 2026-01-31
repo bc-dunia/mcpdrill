@@ -143,26 +143,30 @@ function ToolMetricsDashboardComponent({ runId, onToolClick }: ToolMetricsDashbo
         fetch(`${API_BASE}/runs/${runId}/logs?limit=1000&operation=tools/call`),
       ]);
 
-      // Handle metrics result
       if (metricsResult.status === 'fulfilled') {
-        if (!metricsResult.value.ok) {
-          console.error('Failed to fetch metrics:', metricsResult.value.statusText);
-          setError(`Failed to fetch metrics: ${metricsResult.value.statusText}`);
+        const res = metricsResult.value;
+        if (!res.ok) {
+          const errorMsg = `Failed to fetch metrics (${res.status}${res.statusText ? ' ' + res.statusText : ''})`;
+          console.error(errorMsg);
+          setError(errorMsg);
         } else {
-          const metricsData: AggregatedMetricsResponse = await metricsResult.value.json();
+          const metricsData: AggregatedMetricsResponse = await res.json();
           setToolMetrics(metricsData.by_tool || {});
         }
       } else {
         console.error('Metrics fetch rejected:', metricsResult.reason);
-        setError('Failed to fetch metrics');
+        setError('Failed to fetch metrics: network error');
       }
 
-      // Handle logs result (partial failure is acceptable)
       if (logsResult.status === 'fulfilled' && logsResult.value.ok) {
-        const logsData = await logsResult.value.json();
-        setLogs(logsData.logs || []);
+        try {
+          const logsData = await logsResult.value.json();
+          setLogs(logsData.logs || []);
+        } catch (parseErr) {
+          console.warn('Failed to parse logs response:', parseErr);
+        }
       } else if (logsResult.status === 'rejected') {
-        console.error('Logs fetch rejected:', logsResult.reason);
+        console.warn('Logs fetch rejected:', logsResult.reason);
       }
     } catch (err) {
       console.error('Unexpected error fetching tool metrics:', err);
