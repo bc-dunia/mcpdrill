@@ -26,19 +26,26 @@ A high-performance stress testing platform for MCP servers and gateways.
 git clone https://github.com/bc-dunia/mcpdrill.git
 cd mcpdrill
 
-# Build binaries
-go build -o mcpdrill ./cmd/mcpdrill
-go build -o mcpdrill-server ./cmd/server
-go build -o mcpdrill-worker ./cmd/worker
+# Build all binaries
+make build
+
+# Or build individually
+make server
+make worker
+make mockserver
+make agent
 ```
 
 ### 2. Start Services
 
 ```bash
-# Terminal 1: Start control plane
+# Terminal 1: Start mock MCP server (for testing)
+./mcpdrill-mockserver --addr :3000
+
+# Terminal 2: Start control plane
 ./mcpdrill-server --addr :8080
 
-# Terminal 2: Start worker
+# Terminal 3: Start worker
 ./mcpdrill-worker --control-plane http://localhost:8080
 ```
 
@@ -64,7 +71,7 @@ Create `test.json`:
   "workload": {
     "op_mix": [
       { "operation": "tools/list", "weight": 1 },
-      { "operation": "tools/call", "weight": 5, "tool_name": "echo", "arguments": {"message": "test"} }
+      { "operation": "tools/call", "weight": 5, "tool_name": "fast_echo", "arguments": {"message": "test"} }
     ]
   }
 }
@@ -73,14 +80,19 @@ Create `test.json`:
 Run the test:
 
 ```bash
-./mcpdrill create test.json
-./mcpdrill start run_0000000000000001
-./mcpdrill events run_0000000000000001 --follow
+# Create a run
+curl -X POST http://localhost:8080/runs -H "Content-Type: application/json" -d @test.json
+
+# Start the run (replace with your run_id)
+curl -X POST http://localhost:8080/runs/run_0000000000000001/start
+
+# Stream events
+curl -N http://localhost:8080/runs/run_0000000000000001/events
 ```
 
 ### 4. View Results
 
-- **CLI**: `./mcpdrill status run_0000000000000001`
+- **API**: `curl http://localhost:8080/runs/run_0000000000000001`
 - **Web UI**: Build and access at `http://localhost:8080/ui/logs/`
 
 ```bash
@@ -123,6 +135,79 @@ cd web/log-explorer && npm install && npm run build
                    └─────────────┘
 ```
 
+## Mock Server
+
+MCP Drill includes a built-in mock MCP server with 27 tools for isolated testing without external dependencies. Use it to validate your test configurations before running against production systems.
+
+### Quick Start
+
+```bash
+# Build and run the mock server
+make mockserver
+./mcpdrill-mockserver --addr :3000
+```
+
+The mock server exposes an MCP endpoint at `http://localhost:3000/mcp`.
+
+### Verify It Works
+
+```bash
+# List available tools (JSON-RPC)
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+
+# Call a tool
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"fast_echo","arguments":{"message":"hello"}},"id":2}'
+```
+
+> **Notes:**
+> - `streaming_tool` requires `Accept: text/event-stream` header for SSE streaming
+> - File tools (`read_file`, `write_file`, `list_directory`) are simulated and do not access the real filesystem
+> - By default, `--addr :3000` binds to `127.0.0.1` only; use `--addr 0.0.0.0:3000` to expose externally
+
+### Available Tools
+
+| Category | Tools |
+|----------|-------|
+| **Basic** | `fast_echo`, `slow_echo`, `error_tool`, `timeout_tool`, `streaming_tool` |
+| **Data Processing** | `json_transform`, `text_processor`, `list_operations`, `validate_email`, `calculate`, `hash_generator` |
+| **API Simulation** | `weather_api`, `geocode`, `currency_convert` |
+| **File Operations** | `read_file`, `write_file`, `list_directory` |
+| **Stress Testing** | `large_payload`, `random_latency`, `conditional_error`, `degrading_performance`, `flaky_connection` |
+| **Resilience** | `rate_limited`, `circuit_breaker`, `backpressure`, `stateful_counter`, `realistic_latency` |
+
+### Example Test Configuration
+
+```json
+{
+  "scenario_id": "mock-server-test",
+  "target": {
+    "url": "http://localhost:3000/mcp",
+    "transport": "streamable_http"
+  },
+  "stages": [
+    {
+      "stage_id": "stg_0000000000000001",
+      "stage": "ramp",
+      "duration_ms": 30000,
+      "load": { "target_vus": 10 }
+    }
+  ],
+  "workload": {
+    "op_mix": [
+      { "operation": "tools/list", "weight": 1 },
+      { "operation": "tools/call", "weight": 3, "tool_name": "fast_echo", "arguments": {"message": "hello"} },
+      { "operation": "tools/call", "weight": 2, "tool_name": "calculate", "arguments": {"expression": "2 + 2"} }
+    ]
+  }
+}
+```
+
+See [Tool Testing Guide](docs/tool-testing-guide.md) for detailed documentation on each tool.
+
 ## Server Telemetry Agent (Optional)
 
 > **Note**: MCP Drill works perfectly without the telemetry agent. This is an optional add-on for when you want to correlate client-side load test metrics with server-side resource usage.
@@ -144,7 +229,7 @@ Monitor server-side metrics (CPU, memory, threads, file descriptors) from your M
 
 ```bash
 # Build the agent
-go build -o mcpdrill-agent ./cmd/agent
+make agent
 
 # Enable on control plane
 ./mcpdrill-server --addr :8080 --enable-agent-ingest --agent-tokens "secret-token"
@@ -192,15 +277,26 @@ See [Agent Telemetry Guide](docs/agent-telemetry.md) for full details.
 | **[Troubleshooting](docs/troubleshooting.md)** | Common issues and solutions |
 | **[Development](docs/development.md)** | Building, testing, contributing |
 
-## CLI Quick Reference
+## API Quick Reference
 
 ```bash
-mcpdrill create <config.json>     # Create a test run
-mcpdrill start <run_id>           # Start the run
-mcpdrill status <run_id>          # Check status
-mcpdrill events <run_id> --follow # Stream real-time events
-mcpdrill stop <run_id>            # Graceful stop
-mcpdrill compare <run_a> <run_b>  # Compare two runs
+# Create a test run
+curl -X POST http://localhost:8080/runs -H "Content-Type: application/json" -d @config.json
+
+# Start the run
+curl -X POST http://localhost:8080/runs/{run_id}/start
+
+# Check status
+curl http://localhost:8080/runs/{run_id}
+
+# Stream real-time events
+curl -N http://localhost:8080/runs/{run_id}/events
+
+# Graceful stop
+curl -X POST http://localhost:8080/runs/{run_id}/stop -H "Content-Type: application/json" -d '{"mode":"drain"}'
+
+# Emergency stop
+curl -X POST http://localhost:8080/runs/{run_id}/emergency-stop
 ```
 
 ## Examples

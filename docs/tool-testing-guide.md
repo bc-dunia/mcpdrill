@@ -40,7 +40,7 @@ Tool testing enables you to:
 
 #### fast_echo
 
-**Description:** Echoes input with 50ms latency
+**Description:** Echoes input immediately (no artificial latency)
 
 **Input Schema:**
 ```json
@@ -68,7 +68,7 @@ Tool testing enables you to:
 
 #### slow_echo
 
-**Description:** Echoes input with 500ms latency
+**Description:** Echoes input with 200ms latency
 
 **Input Schema:**
 ```json
@@ -90,7 +90,7 @@ Tool testing enables you to:
 }
 ```
 
-**Returns:** `{ "type": "text", "text": "slow echo: Slow response" }`
+**Returns:** `{ "type": "text", "text": "echo: Slow response" }`
 
 ---
 
@@ -178,7 +178,7 @@ Tool testing enables you to:
 
 #### json_transform
 
-**Description:** Transforms JSON data with operations: uppercase_keys, lowercase_values, filter, map
+**Description:** Transforms JSON data with operations: uppercase_keys, lowercase_values, filter
 
 **Input Schema:**
 ```json
@@ -187,11 +187,10 @@ Tool testing enables you to:
   "properties": {
     "operation": {
       "type": "string",
-      "enum": ["uppercase_keys", "lowercase_values", "filter", "map"]
+      "enum": ["uppercase_keys", "lowercase_values", "filter"]
     },
     "data": { "type": "object" },
-    "filter_key": { "type": "string" },
-    "map_field": { "type": "string" }
+    "filter_key": { "type": "string" }
   },
   "required": ["operation", "data"]
 }
@@ -215,7 +214,7 @@ Tool testing enables you to:
 
 #### text_processor
 
-**Description:** Processes text with operations: uppercase, lowercase, reverse, word_count, char_count
+**Description:** Processes text with operations: uppercase, lowercase, reverse
 
 **Input Schema:**
 ```json
@@ -225,7 +224,7 @@ Tool testing enables you to:
     "text": { "type": "string" },
     "operation": {
       "type": "string",
-      "enum": ["uppercase", "lowercase", "reverse", "word_count", "char_count"]
+      "enum": ["uppercase", "lowercase", "reverse"]
     }
   },
   "required": ["text", "operation"]
@@ -250,7 +249,7 @@ Tool testing enables you to:
 
 #### list_operations
 
-**Description:** Performs operations on number lists: sum, avg, max, min, sort, reverse, filter
+**Description:** Performs operations on number lists: sum, avg, max, sort, filter
 
 **Input Schema:**
 ```json
@@ -263,7 +262,7 @@ Tool testing enables you to:
     },
     "operation": {
       "type": "string",
-      "enum": ["sum", "avg", "max", "min", "sort", "reverse", "filter"]
+      "enum": ["sum", "avg", "max", "sort", "filter"]
     },
     "filter_value": { "type": "number" }
   },
@@ -319,7 +318,7 @@ Tool testing enables you to:
 
 #### calculate
 
-**Description:** Evaluates mathematical expressions safely (supports: +, -, *, /, %, ^)
+**Description:** Evaluates mathematical expressions safely (supports: +, -, *, /, parentheses)
 
 **Input Schema:**
 ```json
@@ -347,7 +346,7 @@ Tool testing enables you to:
 
 #### hash_generator
 
-**Description:** Generates hash of data using specified algorithm: md5, sha1, sha256, sha512
+**Description:** Generates hash of data using specified algorithm: md5, sha256
 
 **Input Schema:**
 ```json
@@ -357,7 +356,7 @@ Tool testing enables you to:
     "data": { "type": "string" },
     "algorithm": {
       "type": "string",
-      "enum": ["md5", "sha1", "sha256", "sha512"]
+      "enum": ["md5", "sha256"]
     }
   },
   "required": ["data", "algorithm"]
@@ -476,9 +475,9 @@ Tool testing enables you to:
 }
 ```
 
-**Returns:** `{ "from": "USD", "to": "EUR", "amount": 100, "converted": 92.0, "rate": 0.92 }`
+**Returns:** `{ "amount": 100, "from": "USD", "to": "EUR", "converted": 90.0 }`
 
-**Supported currencies:** USD, EUR, GBP, JPY, CAD, AUD, CHF, CNY
+**Supported currency pairs:** USD↔EUR, USD↔GBP (limited fixed rates)
 
 ---
 
@@ -914,24 +913,6 @@ Test multiple tools simultaneously by adding multiple `tools/call` operations:
   ]
 }
 ```
-
-### Configurable Tool Behavior
-
-Override default tool latency using the mock server's `tool_config` option:
-
-```json
-{
-  "target": {
-    "url": "http://localhost:3000?tool_config=fast_echo:latency_ms=200"
-  }
-}
-```
-
-Available configuration options:
-- `latency_ms` - Override default latency
-- `disabled=true` - Disable tool (returns error)
-- `force_error=true` - Force tool to fail
-- `error_message=Custom error` - Custom error message
 
 ---
 
