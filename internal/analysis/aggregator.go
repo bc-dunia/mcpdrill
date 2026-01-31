@@ -190,8 +190,8 @@ func (a *Aggregator) Compute() *AggregatedMetrics {
 	defer a.mu.RUnlock()
 
 	metrics := &AggregatedMetrics{
-		ByOperation: make(map[string]*OperationMetrics),
-		ByTool:      make(map[string]*OperationMetrics),
+		ByOperation: make(map[string]*OperationMetrics, len(a.operations)),
+		ByTool:      make(map[string]*OperationMetrics, len(a.operations)),
 	}
 
 	metrics.WorkerHealth = a.computeWorkerHealthMetrics()
@@ -205,13 +205,13 @@ func (a *Aggregator) Compute() *AggregatedMetrics {
 	allLatencies := make([]int, 0, len(a.operations))
 
 	// Group operations by type and tool
-	opLatencies := make(map[string][]int)
-	opSuccess := make(map[string]int)
-	opFailure := make(map[string]int)
+	opLatencies := make(map[string][]int, len(a.operations))
+	opSuccess := make(map[string]int, len(a.operations))
+	opFailure := make(map[string]int, len(a.operations))
 
-	toolLatencies := make(map[string][]int)
-	toolSuccess := make(map[string]int)
-	toolFailure := make(map[string]int)
+	toolLatencies := make(map[string][]int, len(a.operations))
+	toolSuccess := make(map[string]int, len(a.operations))
+	toolFailure := make(map[string]int, len(a.operations))
 
 	for _, op := range a.operations {
 		metrics.TotalOps++

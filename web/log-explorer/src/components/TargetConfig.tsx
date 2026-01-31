@@ -4,6 +4,7 @@ import { Icon } from './Icon';
 import { AgentDetailModal } from './AgentDetailModal';
 import { AuthConfigSection } from './AuthConfigSection';
 import { testConnection, ConnectionTestResult, fetchAgents } from '../api';
+import { isValidUrl, normalizeHeaderKey } from '../utils/validation';
 
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'failed';
 
@@ -27,21 +28,6 @@ const SENSITIVE_HEADERS = ['authorization', 'x-api-key', 'api-key', 'token', 'se
 
 function isSensitiveHeader(name: string): boolean {
   return SENSITIVE_HEADERS.some(h => name.toLowerCase().includes(h));
-}
-
-function isValidUrl(urlString: string): boolean {
-  const trimmed = urlString?.trim();
-  if (!trimmed) return false;
-  try {
-    const url = new URL(trimmed);
-    return ['http:', 'https:'].includes(url.protocol);
-  } catch {
-    return false;
-  }
-}
-
-function normalizeHeaderKey(key: string): string {
-  return key.toLowerCase().trim();
 }
 
 let headerIdCounter = 0;

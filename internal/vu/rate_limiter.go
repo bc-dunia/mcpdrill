@@ -49,26 +49,31 @@ func (r *RateLimiter) Acquire(ctx context.Context) error {
 	}
 
 	for {
-		r.mu.Lock()
+		waitDuration, done := func() (time.Duration, bool) {
+			r.mu.Lock()
+			defer r.mu.Unlock()
 
-		if !r.enabled.Load() {
-			r.mu.Unlock()
+			if !r.enabled.Load() {
+				return 0, true
+			}
+
+			r.refill()
+
+			if r.tokens >= 1 {
+				r.tokens--
+				return 0, true
+			}
+
+			waitDuration := time.Duration(float64(time.Second) / r.refillRate)
+			if waitDuration < time.Millisecond {
+				waitDuration = time.Millisecond
+			}
+			return waitDuration, false
+		}()
+
+		if done {
 			return nil
 		}
-
-		r.refill()
-
-		if r.tokens >= 1 {
-			r.tokens--
-			r.mu.Unlock()
-			return nil
-		}
-
-		waitDuration := time.Duration(float64(time.Second) / r.refillRate)
-		if waitDuration < time.Millisecond {
-			waitDuration = time.Millisecond
-		}
-		r.mu.Unlock()
 
 		select {
 		case <-ctx.Done():

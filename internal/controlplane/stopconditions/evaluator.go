@@ -3,12 +3,19 @@ package stopconditions
 import (
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/bc-dunia/mcpdrill/internal/analysis"
 	"github.com/bc-dunia/mcpdrill/internal/events"
 	"github.com/bc-dunia/mcpdrill/internal/telemetry"
 )
+
+var latencyPool = sync.Pool{
+	New: func() any {
+		return make([]int, 0, 256)
+	},
+}
 
 // Condition defines a single runtime stop condition.
 type Condition struct {
@@ -185,10 +192,16 @@ func (e *Evaluator) Evaluate(nowMs int64) (Trigger, error) {
 		totalOps, failedOps, latencies := e.windowStats(nowMs, cond.WindowMs)
 		if totalOps == 0 {
 			e.sustainCounts[e.conditionKey(cond, i)] = 0
+			if latencies != nil {
+				latencyPool.Put(latencies[:0])
+			}
 			continue
 		}
 
 		observed, latencyP99 := evaluateMetric(cond.Metric, totalOps, failedOps, latencies)
+		if latencies != nil {
+			latencyPool.Put(latencies[:0])
+		}
 		if !compare(observed, cond.Comparator, cond.Threshold) {
 			e.sustainCounts[e.conditionKey(cond, i)] = 0
 			continue
@@ -239,7 +252,12 @@ func (e *Evaluator) windowStats(nowMs int64, windowMs int64) (int, int, []int) {
 	cutoff := nowMs - windowMs
 	totalOps := 0
 	failedOps := 0
-	latencies := make([]int, 0, len(e.buffer))
+	latencies := latencyPool.Get().([]int)
+	if cap(latencies) < len(e.buffer) {
+		latencies = make([]int, 0, len(e.buffer))
+	} else {
+		latencies = latencies[:0]
+	}
 	for _, entry := range e.buffer {
 		if entry.observedMs < cutoff {
 			continue

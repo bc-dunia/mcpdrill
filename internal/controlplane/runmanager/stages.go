@@ -425,58 +425,74 @@ func (rm *RunManager) handleStopConditionTrigger(runID string, stage *parsedStag
 
 // TransitionToBaseline transitions a run from PREFLIGHT_RUNNING to BASELINE_RUNNING.
 func (rm *RunManager) TransitionToBaseline(runID, actor string) error {
-	rm.mu.Lock()
+	var (
+		configCopy        []byte
+		executionID       string
+		eventLog          *EventLog
+		oldState          RunState
+		transitionPayload []byte
+		transitionEvent   RunEvent
+		err               error
+	)
 
-	record, ok := rm.runs[runID]
-	if !ok {
-		rm.mu.Unlock()
-		return NewNotFoundError(runID)
+	func() {
+		rm.mu.Lock()
+		defer rm.mu.Unlock()
+
+		record, ok := rm.runs[runID]
+		if !ok {
+			err = NewNotFoundError(runID)
+			return
+		}
+
+		if record.State != RunStatePreflightRunning {
+			err = NewInvalidStateError(runID, record.State, RunStatePreflightRunning, "transition to baseline")
+			return
+		}
+
+		if !CanTransition(record.State, RunStatePreflightPassed) {
+			err = NewInvalidTransitionError(runID, record.State, RunStatePreflightPassed)
+			return
+		}
+
+		oldState = record.State
+		record.State = RunStatePreflightPassed
+		record.UpdatedAtMs = time.Now().UnixMilli()
+
+		eventLog = rm.eventLogs[runID]
+		transitionPayload, _ := json.Marshal(map[string]interface{}{
+			"from_state": oldState,
+			"to_state":   record.State,
+			"trigger":    "preflight_completed",
+			"actor":      actor,
+		})
+		transitionEvent := RunEvent{
+			RunID:       runID,
+			ExecutionID: record.ExecutionID,
+			Type:        EventTypeStateTransition,
+			Actor:       ActorType(actor),
+			Payload:     transitionPayload,
+			Evidence:    []Evidence{},
+		}
+		_ = eventLog.Append(transitionEvent)
+
+		if !CanTransition(record.State, RunStateBaselineRunning) {
+			err = NewInvalidTransitionError(runID, record.State, RunStateBaselineRunning)
+			return
+		}
+
+		oldState = record.State
+		record.State = RunStateBaselineRunning
+		record.UpdatedAtMs = time.Now().UnixMilli()
+
+		configCopy = make([]byte, len(record.Config))
+		copy(configCopy, record.Config)
+		executionID = record.ExecutionID
+	}()
+
+	if err != nil {
+		return err
 	}
-
-	if record.State != RunStatePreflightRunning {
-		rm.mu.Unlock()
-		return NewInvalidStateError(runID, record.State, RunStatePreflightRunning, "transition to baseline")
-	}
-
-	if !CanTransition(record.State, RunStatePreflightPassed) {
-		rm.mu.Unlock()
-		return NewInvalidTransitionError(runID, record.State, RunStatePreflightPassed)
-	}
-
-	oldState := record.State
-	record.State = RunStatePreflightPassed
-	record.UpdatedAtMs = time.Now().UnixMilli()
-
-	eventLog := rm.eventLogs[runID]
-	transitionPayload, _ := json.Marshal(map[string]interface{}{
-		"from_state": oldState,
-		"to_state":   record.State,
-		"trigger":    "preflight_completed",
-		"actor":      actor,
-	})
-	transitionEvent := RunEvent{
-		RunID:       runID,
-		ExecutionID: record.ExecutionID,
-		Type:        EventTypeStateTransition,
-		Actor:       ActorType(actor),
-		Payload:     transitionPayload,
-		Evidence:    []Evidence{},
-	}
-	_ = eventLog.Append(transitionEvent)
-
-	if !CanTransition(record.State, RunStateBaselineRunning) {
-		rm.mu.Unlock()
-		return NewInvalidTransitionError(runID, record.State, RunStateBaselineRunning)
-	}
-
-	oldState = record.State
-	record.State = RunStateBaselineRunning
-	record.UpdatedAtMs = time.Now().UnixMilli()
-
-	configCopy := make([]byte, len(record.Config))
-	copy(configCopy, record.Config)
-	executionID := record.ExecutionID
-	rm.mu.Unlock()
 
 	parsedConfig, err := parseRunConfig(configCopy)
 	if err != nil {
@@ -488,11 +504,13 @@ func (rm *RunManager) TransitionToBaseline(runID, actor string) error {
 	}
 
 	rm.mu.Lock()
-	record, ok = rm.runs[runID]
-	if ok {
-		record.ActiveStage = &ActiveStageInfo{Stage: string(StageNameBaseline), StageID: baselineStage.StageID}
-	}
-	rm.mu.Unlock()
+	func() {
+		defer rm.mu.Unlock()
+		record, ok := rm.runs[runID]
+		if ok {
+			record.ActiveStage = &ActiveStageInfo{Stage: string(StageNameBaseline), StageID: baselineStage.StageID}
+		}
+	}()
 
 	if l := events.GetGlobalEventLogger(); l != nil {
 		l.LogStageTransition(string(StageNamePreflight), string(StageNameBaseline), baselineStage.StageID, "preflight_completed")
@@ -514,14 +532,14 @@ func (rm *RunManager) TransitionToBaseline(runID, actor string) error {
 	}
 	_ = eventLog.Append(transitionEvent)
 
-	rm.mu.RLock()
-	registry := rm.registry
-	allocator := rm.allocator
-	leaseManager := rm.leaseManager
-	assignmentSender := rm.assignmentSender
-	rm.mu.RUnlock()
+	schedulerReady := false
+	func() {
+		rm.mu.RLock()
+		defer rm.mu.RUnlock()
+		schedulerReady = rm.registry != nil && rm.allocator != nil && rm.leaseManager != nil && rm.assignmentSender != nil
+	}()
 
-	if registry != nil && allocator != nil && leaseManager != nil && assignmentSender != nil {
+	if schedulerReady {
 		rm.createAndDispatchAssignmentsForStage(runID, executionID, configCopy, eventLog, StageNameBaseline)
 	}
 
@@ -532,33 +550,47 @@ func (rm *RunManager) TransitionToBaseline(runID, actor string) error {
 
 // TransitionToRamp transitions a run from BASELINE_RUNNING to RAMP_RUNNING.
 func (rm *RunManager) TransitionToRamp(runID, actor string) error {
-	rm.mu.Lock()
+	var (
+		configCopy  []byte
+		executionID string
+		eventLog    *EventLog
+		oldState    RunState
+		err         error
+	)
 
-	record, ok := rm.runs[runID]
-	if !ok {
-		rm.mu.Unlock()
-		return NewNotFoundError(runID)
+	func() {
+		rm.mu.Lock()
+		defer rm.mu.Unlock()
+
+		record, ok := rm.runs[runID]
+		if !ok {
+			err = NewNotFoundError(runID)
+			return
+		}
+
+		if record.State != RunStateBaselineRunning {
+			err = NewInvalidStateError(runID, record.State, RunStateBaselineRunning, "transition to ramp")
+			return
+		}
+
+		if !CanTransition(record.State, RunStateRampRunning) {
+			err = NewInvalidTransitionError(runID, record.State, RunStateRampRunning)
+			return
+		}
+
+		oldState = record.State
+		record.State = RunStateRampRunning
+		record.UpdatedAtMs = time.Now().UnixMilli()
+
+		configCopy = make([]byte, len(record.Config))
+		copy(configCopy, record.Config)
+		executionID = record.ExecutionID
+		eventLog = rm.eventLogs[runID]
+	}()
+
+	if err != nil {
+		return err
 	}
-
-	if record.State != RunStateBaselineRunning {
-		rm.mu.Unlock()
-		return NewInvalidStateError(runID, record.State, RunStateBaselineRunning, "transition to ramp")
-	}
-
-	if !CanTransition(record.State, RunStateRampRunning) {
-		rm.mu.Unlock()
-		return NewInvalidTransitionError(runID, record.State, RunStateRampRunning)
-	}
-
-	oldState := record.State
-	record.State = RunStateRampRunning
-	record.UpdatedAtMs = time.Now().UnixMilli()
-
-	configCopy := make([]byte, len(record.Config))
-	copy(configCopy, record.Config)
-	executionID := record.ExecutionID
-	eventLog := rm.eventLogs[runID]
-	rm.mu.Unlock()
 
 	parsedConfig, err := parseRunConfig(configCopy)
 	if err != nil {
@@ -570,11 +602,13 @@ func (rm *RunManager) TransitionToRamp(runID, actor string) error {
 	}
 
 	rm.mu.Lock()
-	record, ok = rm.runs[runID]
-	if ok {
-		record.ActiveStage = &ActiveStageInfo{Stage: string(StageNameRamp), StageID: rampStage.StageID}
-	}
-	rm.mu.Unlock()
+	func() {
+		defer rm.mu.Unlock()
+		record, ok := rm.runs[runID]
+		if ok {
+			record.ActiveStage = &ActiveStageInfo{Stage: string(StageNameRamp), StageID: rampStage.StageID}
+		}
+	}()
 
 	if l := events.GetGlobalEventLogger(); l != nil {
 		l.LogStageTransition(string(StageNameBaseline), string(StageNameRamp), rampStage.StageID, "baseline_completed")
@@ -596,14 +630,14 @@ func (rm *RunManager) TransitionToRamp(runID, actor string) error {
 	}
 	_ = eventLog.Append(transitionEvent)
 
-	rm.mu.RLock()
-	registry := rm.registry
-	allocator := rm.allocator
-	leaseManager := rm.leaseManager
-	assignmentSender := rm.assignmentSender
-	rm.mu.RUnlock()
+	schedulerReady := false
+	func() {
+		rm.mu.RLock()
+		defer rm.mu.RUnlock()
+		schedulerReady = rm.registry != nil && rm.allocator != nil && rm.leaseManager != nil && rm.assignmentSender != nil
+	}()
 
-	if registry != nil && allocator != nil && leaseManager != nil && assignmentSender != nil {
+	if schedulerReady {
 		rm.startAutoRamp(runID, executionID, configCopy, eventLog, rampStage, parsedConfig)
 	}
 

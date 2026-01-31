@@ -1,28 +1,7 @@
-import { memo } from 'react';
 import type { StageConfig as StageConfigType } from '../types';
 import { GlossaryTerm } from './GlossaryTerm';
+import { HelpTooltip } from './HelpTooltip';
 import { Icon, type IconName } from './Icon';
-
-interface HelpTooltipProps {
-  text: string;
-}
-
-const HelpTooltip = memo(function HelpTooltip({ text }: HelpTooltipProps) {
-  const tooltipId = `help-${Math.random().toString(36).substring(2, 9)}`;
-  return (
-    <button 
-      type="button"
-      className="help-tooltip" 
-      aria-describedby={tooltipId}
-      aria-label="Help"
-    >
-      ?
-      <span id={tooltipId} className="help-tooltip-content" role="tooltip">
-        {text}
-      </span>
-    </button>
-  );
-});
 
 interface Props {
   stages: StageConfigType[];

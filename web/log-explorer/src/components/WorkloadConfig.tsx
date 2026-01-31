@@ -1,5 +1,6 @@
-import { useMemo, useCallback, memo, useState } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import type { WorkloadConfig as WorkloadConfigType, OpMixEntry, FetchedTool, JSONSchema } from '../types';
+import { HelpTooltip } from './HelpTooltip';
 import { Icon, type IconName } from './Icon';
 import { ToolSelector } from './ToolSelector';
 import { ToolArgumentsEditor } from './ToolArgumentsEditor';
@@ -12,27 +13,6 @@ interface Props {
   fetchedTools?: FetchedTool[];
   onToolsFetched?: (tools: FetchedTool[]) => void;
 }
-
-interface HelpTooltipProps {
-  text: string;
-}
-
-const HelpTooltip = memo(function HelpTooltip({ text }: HelpTooltipProps) {
-  const tooltipId = `help-${Math.random().toString(36).substring(2, 9)}`;
-  return (
-    <button 
-      type="button"
-      className="help-tooltip" 
-      aria-describedby={tooltipId}
-      aria-label="Help"
-    >
-      ?
-      <span id={tooltipId} className="help-tooltip-content" role="tooltip">
-        {text}
-      </span>
-    </button>
-  );
-});
 
 interface OperationInfo {
   value: OpMixEntry['operation'];

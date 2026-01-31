@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // SchemaType represents JSON schema types.
@@ -69,6 +70,20 @@ func (e *ValidationError) Error() string {
 type ValidationResult struct {
 	Valid  bool               `json:"valid"`
 	Errors []*ValidationError `json:"errors,omitempty"`
+}
+
+var patternCache sync.Map
+
+func getCompiledPattern(pattern string) (*regexp.Regexp, error) {
+	if cached, ok := patternCache.Load(pattern); ok {
+		return cached.(*regexp.Regexp), nil
+	}
+	compiled, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	patternCache.Store(pattern, compiled)
+	return compiled, nil
 }
 
 // Error returns a combined error message.
@@ -194,7 +209,7 @@ func (v *ArgumentValidator) validateString(field string, value any, schema *Prop
 
 	// Check pattern
 	if schema.Pattern != nil {
-		re, err := regexp.Compile(*schema.Pattern)
+		re, err := getCompiledPattern(*schema.Pattern)
 		if err != nil {
 			result.Valid = false
 			result.Errors = append(result.Errors, &ValidationError{

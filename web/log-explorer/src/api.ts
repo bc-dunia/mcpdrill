@@ -433,6 +433,13 @@ async function extractErrorMessage(response: Response, fallbackAction: string): 
     : `${fallbackAction}: ${response.statusText || 'Unknown error'}`;
 }
 
+async function handleResponse<T>(response: Response, errorAction: string): Promise<T> {
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response, errorAction));
+  }
+  return response.json();
+}
+
 export async function createRun(config: RunConfig): Promise<string> {
   const backendConfig = convertToBackendConfig(config);
   const response = await fetch(`${API_BASE}/runs`, {
@@ -541,12 +548,7 @@ export async function fetchLogs(
   
   const url = `${API_BASE}/runs/${runId}/logs?${params.toString()}`;
   const response = await fetch(url, { signal });
-  
-  if (!response.ok) {
-    throw new Error(await extractErrorMessage(response, 'Failed to fetch logs'));
-  }
-  
-  return response.json();
+  return handleResponse<LogQueryResponse>(response, 'Failed to fetch logs');
 }
 
 export function exportAsJSON(logs: unknown[], filename: string): void {
@@ -587,18 +589,12 @@ function downloadFile(content: string, filename: string, mimeType: string): void
 
 export async function fetchRunMetrics(runId: string): Promise<RunMetrics> {
   const response = await fetch(`${API_BASE}/runs/${runId}/metrics`);
-  if (!response.ok) {
-    throw new Error(await extractErrorMessage(response, 'Failed to fetch metrics'));
-  }
-  return response.json();
+  return handleResponse<RunMetrics>(response, 'Failed to fetch metrics');
 }
 
 export async function fetchComparison(runIdA: string, runIdB: string): Promise<ComparisonResult> {
   const response = await fetch(`${API_BASE}/runs/${runIdA}/compare/${runIdB}`);
-  if (!response.ok) {
-    throw new Error(await extractErrorMessage(response, 'Failed to fetch comparison'));
-  }
-  return response.json();
+  return handleResponse<ComparisonResult>(response, 'Failed to fetch comparison');
 }
 
 export interface DiscoveredTool {
@@ -727,12 +723,7 @@ export async function stopRun(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode, actor }),
   });
-  
-  if (!response.ok) {
-    throw new Error(await extractErrorMessage(response, 'Failed to stop run'));
-  }
-  
-  return response.json();
+  return handleResponse<StopRunResponse>(response, 'Failed to stop run');
 }
 
 /**
@@ -749,12 +740,7 @@ export async function emergencyStopRun(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ actor }),
   });
-  
-  if (!response.ok) {
-    throw new Error(await extractErrorMessage(response, 'Failed to emergency stop run'));
-  }
-  
-  return response.json();
+  return handleResponse<StopRunResponse>(response, 'Failed to emergency stop run');
 }
 
 // Validation types
@@ -829,12 +815,7 @@ export interface AgentDetail extends AgentInfo {
  */
 export async function fetchAgentDetail(agentId: string): Promise<AgentDetail> {
   const response = await fetch(`${API_BASE}/agents/${agentId}`);
-  
-  if (!response.ok) {
-    throw new Error(await extractErrorMessage(response, 'Failed to fetch agent details'));
-  }
-  
-  return response.json();
+  return handleResponse<AgentDetail>(response, 'Failed to fetch agent details');
 }
 
 // SSE Event types
@@ -847,6 +828,28 @@ export interface RunEvent {
 
 export type RunEventHandler = (event: RunEvent) => void;
 export type SSEErrorHandler = (error: Event) => void;
+
+function createSSEHandler(
+  eventSource: EventSource,
+  eventName: string,
+  onEvent: RunEventHandler,
+  autoClose = false
+) {
+  eventSource.addEventListener(eventName, (event) => {
+    try {
+      const data = JSON.parse((event as MessageEvent).data);
+      onEvent({
+        event_id: (event as MessageEvent).lastEventId || data.event_id || '',
+        type: data.type || eventName,
+        timestamp: data.timestamp || Date.now(),
+        data,
+      });
+      if (autoClose) eventSource.close();
+    } catch (err) {
+      console.error(`Failed to parse ${eventName}:`, err);
+    }
+  });
+}
 
 /**
  * Subscribe to run events via Server-Sent Events
@@ -888,77 +891,10 @@ export function subscribeToRunEvents(
   };
   
   // Handle named events
-  eventSource.addEventListener('run_event', (event) => {
-    try {
-      const data = JSON.parse((event as MessageEvent).data);
-      onEvent({
-        event_id: (event as MessageEvent).lastEventId || data.event_id || '',
-        type: data.type || 'run_event',
-        timestamp: data.timestamp || Date.now(),
-        data,
-      });
-    } catch (err) {
-      console.error('Failed to parse run_event:', err);
-    }
-  });
-  
-  eventSource.addEventListener('metrics', (event) => {
-    try {
-      const data = JSON.parse((event as MessageEvent).data);
-      onEvent({
-        event_id: (event as MessageEvent).lastEventId || '',
-        type: 'metrics',
-        timestamp: Date.now(),
-        data,
-      });
-    } catch (err) {
-      console.error('Failed to parse metrics event:', err);
-    }
-  });
-  
-  eventSource.addEventListener('stage_started', (event) => {
-    try {
-      const data = JSON.parse((event as MessageEvent).data);
-      onEvent({
-        event_id: (event as MessageEvent).lastEventId || '',
-        type: 'stage_started',
-        timestamp: Date.now(),
-        data,
-      });
-    } catch (err) {
-      console.error('Failed to parse stage_started event:', err);
-    }
-  });
-  
-  eventSource.addEventListener('stage_completed', (event) => {
-    try {
-      const data = JSON.parse((event as MessageEvent).data);
-      onEvent({
-        event_id: (event as MessageEvent).lastEventId || '',
-        type: 'stage_completed',
-        timestamp: Date.now(),
-        data,
-      });
-    } catch (err) {
-      console.error('Failed to parse stage_completed event:', err);
-    }
-  });
-  
-  eventSource.addEventListener('run_completed', (event) => {
-    try {
-      const data = JSON.parse((event as MessageEvent).data);
-      onEvent({
-        event_id: (event as MessageEvent).lastEventId || '',
-        type: 'run_completed',
-        timestamp: Date.now(),
-        data,
-      });
-      // Auto-close on completion
-      eventSource.close();
-    } catch (err) {
-      console.error('Failed to parse run_completed event:', err);
-    }
-  });
+  ['run_event', 'metrics', 'stage_started', 'stage_completed'].forEach(
+    name => createSSEHandler(eventSource, name, onEvent)
+  );
+  createSSEHandler(eventSource, 'run_completed', onEvent, true);
   
   eventSource.onerror = (error) => {
     if (onError) {

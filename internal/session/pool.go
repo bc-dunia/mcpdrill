@@ -61,7 +61,7 @@ func (p *SessionPool) Close() {
 		session := e.Value.(*SessionInfo)
 		session.SetState(StateClosed)
 		if session.Connection != nil {
-			session.Connection.Close()
+			closeWithLog(session.Connection, "session connection")
 		}
 	}
 	p.sessions.Init()
@@ -69,7 +69,7 @@ func (p *SessionPool) Close() {
 	for _, session := range p.inUse {
 		session.SetState(StateClosed)
 		if session.Connection != nil {
-			session.Connection.Close()
+			closeWithLog(session.Connection, "session connection")
 		}
 	}
 	p.inUse = make(map[string]*SessionInfo)
@@ -98,7 +98,7 @@ func (p *SessionPool) Acquire(ctx context.Context) (*SessionInfo, bool, error) {
 				p.sessions.Remove(e)
 				p.evictor.Untrack(session.ID)
 				if session.Connection != nil {
-					session.Connection.Close()
+					closeWithLog(session.Connection, "session connection")
 				}
 				e = next
 				continue
@@ -118,6 +118,7 @@ func (p *SessionPool) Acquire(ctx context.Context) (*SessionInfo, bool, error) {
 		p.poolWaits.Add(1)
 
 		done := make(chan struct{})
+		defer close(done)
 		go func() {
 			select {
 			case <-ctx.Done():
@@ -132,7 +133,6 @@ func (p *SessionPool) Acquire(ctx context.Context) (*SessionInfo, bool, error) {
 			p.cond.Wait()
 
 			if ctx.Err() != nil {
-				close(done)
 				p.poolTimeouts.Add(1)
 				return nil, false, &SessionError{Op: "acquire", Err: ctx.Err()}
 			}
@@ -145,7 +145,7 @@ func (p *SessionPool) Acquire(ctx context.Context) (*SessionInfo, bool, error) {
 					p.sessions.Remove(e)
 					p.evictor.Untrack(session.ID)
 					if session.Connection != nil {
-						session.Connection.Close()
+						closeWithLog(session.Connection, "session connection")
 					}
 					e = next
 					continue
@@ -155,12 +155,10 @@ func (p *SessionPool) Acquire(ctx context.Context) (*SessionInfo, bool, error) {
 				session.SetState(StateActive)
 				session.Touch(p.maxIdleMs)
 				p.inUse[session.ID] = session
-				close(done)
 				return session, false, nil
 			}
 
 			if p.sessions.Len()+len(p.inUse) < p.maxSize {
-				close(done)
 				return nil, true, nil
 			}
 		}
@@ -170,7 +168,7 @@ func (p *SessionPool) Acquire(ctx context.Context) (*SessionInfo, bool, error) {
 func (p *SessionPool) Add(session *SessionInfo) {
 	if p.closed.Load() {
 		if session.Connection != nil {
-			session.Connection.Close()
+			closeWithLog(session.Connection, "session connection")
 		}
 		return
 	}
@@ -186,7 +184,7 @@ func (p *SessionPool) Add(session *SessionInfo) {
 func (p *SessionPool) Release(session *SessionInfo) {
 	if p.closed.Load() {
 		if session.Connection != nil {
-			session.Connection.Close()
+			closeWithLog(session.Connection, "session connection")
 		}
 		return
 	}
@@ -199,7 +197,7 @@ func (p *SessionPool) Release(session *SessionInfo) {
 	if session.IsExpired() || session.GetState() == StateClosed {
 		p.evictor.Untrack(session.ID)
 		if session.Connection != nil {
-			session.Connection.Close()
+			closeWithLog(session.Connection, "session connection")
 		}
 		p.cond.Signal()
 		return
@@ -226,7 +224,7 @@ func (p *SessionPool) Remove(session *SessionInfo) {
 	}
 
 	if session.Connection != nil {
-		session.Connection.Close()
+		closeWithLog(session.Connection, "session connection")
 	}
 
 	p.cond.Signal()
@@ -246,7 +244,7 @@ func (p *SessionPool) removeSession(session *SessionInfo) {
 	}
 
 	if session.Connection != nil {
-		session.Connection.Close()
+		closeWithLog(session.Connection, "session connection")
 	}
 
 	p.cond.Signal()

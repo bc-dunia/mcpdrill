@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -87,7 +88,11 @@ func (s *Server) handleDiscoverTools(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("failed to close discovery connection: %v", err)
+		}
+	}()
 
 	outcome, err := conn.ToolsList(ctx, nil)
 	if err != nil {
@@ -184,7 +189,11 @@ func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("failed to close discovery connection: %v", err)
+		}
+	}()
 
 	toolsStartTime := time.Now()
 	outcome, err := conn.ToolsList(ctx, nil)

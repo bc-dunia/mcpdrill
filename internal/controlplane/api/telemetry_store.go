@@ -653,7 +653,7 @@ func (ts *TelemetryStore) GetMetricsTimeSeries(runID string) []metrics.MetricsTi
 		if !exists {
 			bucket = &metricsTimeBucket{
 				timestamp:  bucketKey,
-				latencies:  make([]int, 0),
+				latencies:  make([]int, 0, 128),
 				successOps: 0,
 				failedOps:  0,
 			}

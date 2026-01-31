@@ -2,6 +2,8 @@ package session
 
 import (
 	"context"
+	"io"
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,6 +17,15 @@ type ModeHandler interface {
 	Invalidate(ctx context.Context, session *SessionInfo) error
 	Close(ctx context.Context) error
 	Metrics() *SessionMetrics
+}
+
+func closeWithLog(closer io.Closer, name string) {
+	if closer == nil {
+		return
+	}
+	if err := closer.Close(); err != nil {
+		log.Printf("failed to close %s: %v", name, err)
+	}
 }
 
 type ReuseMode struct {
@@ -121,7 +132,7 @@ func (rm *ReuseMode) Invalidate(ctx context.Context, session *SessionInfo) error
 
 	session.SetState(StateClosed)
 	if session.Connection != nil {
-		session.Connection.Close()
+		closeWithLog(session.Connection, "session connection")
 	}
 
 	rm.reconnects.Add(1)
@@ -146,7 +157,7 @@ func (rm *ReuseMode) Close(ctx context.Context) error {
 	for _, session := range rm.sessions {
 		session.SetState(StateClosed)
 		if session.Connection != nil {
-			session.Connection.Close()
+			closeWithLog(session.Connection, "session connection")
 		}
 	}
 	rm.sessions = make(map[string]*SessionInfo)
@@ -196,12 +207,12 @@ func (rm *ReuseMode) createSession(ctx context.Context, vuID string) (*SessionIn
 
 	outcome, err := conn.Initialize(ctx, params)
 	if err != nil {
-		conn.Close()
+		closeWithLog(conn, "connection")
 		return nil, &SessionError{Op: "initialize", Err: err}
 	}
 
 	if !outcome.OK {
-		conn.Close()
+		closeWithLog(conn, "connection")
 		if outcome.Error != nil {
 			return nil, &SessionError{Op: "initialize", Err: outcome.Error}
 		}
@@ -210,7 +221,7 @@ func (rm *ReuseMode) createSession(ctx context.Context, vuID string) (*SessionIn
 
 	_, err = conn.SendInitialized(ctx)
 	if err != nil {
-		conn.Close()
+		closeWithLog(conn, "connection")
 		return nil, &SessionError{Op: "send_initialized", Err: err}
 	}
 
@@ -241,7 +252,7 @@ func (rm *ReuseMode) onEviction(session *SessionInfo, reason EvictionReason) {
 	}
 
 	if session.Connection != nil {
-		session.Connection.Close()
+		closeWithLog(session.Connection, "session connection")
 	}
 
 	rm.totalEvicted.Add(1)
@@ -278,7 +289,7 @@ func (pm *PerRequestMode) Acquire(ctx context.Context, vuID string) (*SessionInf
 func (pm *PerRequestMode) Release(ctx context.Context, session *SessionInfo) error {
 	session.SetState(StateClosed)
 	if session.Connection != nil {
-		session.Connection.Close()
+		closeWithLog(session.Connection, "session connection")
 	}
 	return nil
 }
@@ -315,12 +326,12 @@ func (pm *PerRequestMode) createSession(ctx context.Context, vuID string) (*Sess
 
 	outcome, err := conn.Initialize(ctx, params)
 	if err != nil {
-		conn.Close()
+		closeWithLog(conn, "connection")
 		return nil, &SessionError{Op: "initialize", Err: err}
 	}
 
 	if !outcome.OK {
-		conn.Close()
+		closeWithLog(conn, "connection")
 		if outcome.Error != nil {
 			return nil, &SessionError{Op: "initialize", Err: outcome.Error}
 		}
@@ -329,7 +340,7 @@ func (pm *PerRequestMode) createSession(ctx context.Context, vuID string) (*Sess
 
 	_, err = conn.SendInitialized(ctx)
 	if err != nil {
-		conn.Close()
+		closeWithLog(conn, "connection")
 		return nil, &SessionError{Op: "send_initialized", Err: err}
 	}
 
@@ -386,7 +397,7 @@ func (pm *PoolMode) Acquire(ctx context.Context, vuID string) (*SessionInfo, err
 func (pm *PoolMode) Release(ctx context.Context, session *SessionInfo) error {
 	if pm.closed.Load() {
 		if session.Connection != nil {
-			session.Connection.Close()
+			closeWithLog(session.Connection, "session connection")
 		}
 		return nil
 	}
@@ -438,12 +449,12 @@ func (pm *PoolMode) createSession(ctx context.Context) (*SessionInfo, error) {
 
 	outcome, err := conn.Initialize(ctx, params)
 	if err != nil {
-		conn.Close()
+		closeWithLog(conn, "connection")
 		return nil, &SessionError{Op: "initialize", Err: err}
 	}
 
 	if !outcome.OK {
-		conn.Close()
+		closeWithLog(conn, "connection")
 		if outcome.Error != nil {
 			return nil, &SessionError{Op: "initialize", Err: outcome.Error}
 		}
@@ -452,7 +463,7 @@ func (pm *PoolMode) createSession(ctx context.Context) (*SessionInfo, error) {
 
 	_, err = conn.SendInitialized(ctx)
 	if err != nil {
-		conn.Close()
+		closeWithLog(conn, "connection")
 		return nil, &SessionError{Op: "send_initialized", Err: err}
 	}
 
@@ -588,7 +599,7 @@ func (cm *ChurnMode) Invalidate(ctx context.Context, session *SessionInfo) error
 
 	session.SetState(StateClosed)
 	if session.Connection != nil {
-		session.Connection.Close()
+		closeWithLog(session.Connection, "session connection")
 	}
 
 	cm.totalEvicted.Add(1)
@@ -606,7 +617,7 @@ func (cm *ChurnMode) Close(ctx context.Context) error {
 	for _, cs := range cm.sessions {
 		cs.session.SetState(StateClosed)
 		if cs.session.Connection != nil {
-			cs.session.Connection.Close()
+			closeWithLog(cs.session.Connection, "session connection")
 		}
 	}
 	cm.sessions = make(map[string]*churnSession)
@@ -662,12 +673,12 @@ func (cm *ChurnMode) createSession(ctx context.Context, vuID string) (*SessionIn
 
 	outcome, err := conn.Initialize(ctx, params)
 	if err != nil {
-		conn.Close()
+		closeWithLog(conn, "connection")
 		return nil, &SessionError{Op: "initialize", Err: err}
 	}
 
 	if !outcome.OK {
-		conn.Close()
+		closeWithLog(conn, "connection")
 		if outcome.Error != nil {
 			return nil, &SessionError{Op: "initialize", Err: outcome.Error}
 		}
@@ -676,7 +687,7 @@ func (cm *ChurnMode) createSession(ctx context.Context, vuID string) (*SessionIn
 
 	_, err = conn.SendInitialized(ctx)
 	if err != nil {
-		conn.Close()
+		closeWithLog(conn, "connection")
 		return nil, &SessionError{Op: "send_initialized", Err: err}
 	}
 

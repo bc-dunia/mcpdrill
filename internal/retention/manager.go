@@ -62,13 +62,20 @@ func (m *Manager) Start() {
 
 // Stop signals the background goroutine to stop and waits for it to exit.
 func (m *Manager) Stop() {
-	m.mu.Lock()
-	if !m.running {
-		m.mu.Unlock()
+	shouldStop := false
+	func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if !m.running {
+			return
+		}
+		m.running = false
+		shouldStop = true
+	}()
+
+	if !shouldStop {
 		return
 	}
-	m.running = false
-	m.mu.Unlock()
 
 	close(m.stopCh)
 	<-m.stoppedCh

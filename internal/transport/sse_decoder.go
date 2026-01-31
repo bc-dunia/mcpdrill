@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -98,7 +99,7 @@ func (d *SSEDecoder) ReadEvent() (*SSEEvent, error) {
 	d.mu.Unlock()
 
 	event := &SSEEvent{}
-	var dataLines []string
+	dataLines := make([]string, 0, 16)
 
 	for {
 		line, err := d.readLineWithTimeout()
@@ -202,6 +203,9 @@ func (d *SSEDecoder) Close() error {
 
 	// Close the underlying reader to unblock any pending read
 	err := d.closer.Close()
+	if err != nil {
+		log.Printf("failed to close SSE reader: %v", err)
+	}
 
 	// Wait for reader goroutine to exit (with timeout to prevent deadlock)
 	done := make(chan struct{})
@@ -240,7 +244,7 @@ func (h *SSEResponseHandler) HandleSSEStream(
 		IsStreaming: true,
 	}
 
-	var notifications []json.RawMessage
+	notifications := make([]json.RawMessage, 0, 16)
 	var finalResponse *JSONRPCResponse
 	startTime := time.Now()
 	var firstEventTime *time.Time
@@ -534,7 +538,7 @@ func ParseSSEFromBytes(data []byte) ([]*SSEEvent, error) {
 	reader := bufio.NewReader(bytes.NewReader(data))
 
 	var currentEvent *SSEEvent
-	var dataLines []string
+	dataLines := make([]string, 0, 16)
 
 	for {
 		line, err := reader.ReadString('\n')

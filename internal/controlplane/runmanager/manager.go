@@ -261,35 +261,51 @@ func (rm *RunManager) CreateRun(config []byte, actor string) (string, error) {
 // Returns an error if the run is not in CREATED state or if allocation fails.
 // Per spec: allocation must succeed before transitioning to PREFLIGHT_RUNNING.
 func (rm *RunManager) StartRun(runID, actor string) error {
-	rm.mu.Lock()
+	var (
+		configCopy       []byte
+		executionID      string
+		eventLog         *EventLog
+		registry         *scheduler.Registry
+		allocator        *scheduler.Allocator
+		leaseManager     *scheduler.LeaseManager
+		assignmentSender AssignmentSender
+		err              error
+	)
 
-	record, ok := rm.runs[runID]
-	if !ok {
-		rm.mu.Unlock()
-		return NewNotFoundError(runID)
+	func() {
+		rm.mu.Lock()
+		defer rm.mu.Unlock()
+
+		record, ok := rm.runs[runID]
+		if !ok {
+			err = NewNotFoundError(runID)
+			return
+		}
+
+		if record.State != RunStateCreated {
+			err = NewInvalidStateError(runID, record.State, RunStateCreated, "start")
+			return
+		}
+
+		if !CanTransition(record.State, RunStatePreflightRunning) {
+			err = NewInvalidTransitionError(runID, record.State, RunStatePreflightRunning)
+			return
+		}
+
+		configCopy = make([]byte, len(record.Config))
+		copy(configCopy, record.Config)
+		executionID = record.ExecutionID
+		eventLog = rm.eventLogs[runID]
+
+		registry = rm.registry
+		allocator = rm.allocator
+		leaseManager = rm.leaseManager
+		assignmentSender = rm.assignmentSender
+	}()
+
+	if err != nil {
+		return err
 	}
-
-	if record.State != RunStateCreated {
-		rm.mu.Unlock()
-		return NewInvalidStateError(runID, record.State, RunStateCreated, "start")
-	}
-
-	if !CanTransition(record.State, RunStatePreflightRunning) {
-		rm.mu.Unlock()
-		return NewInvalidTransitionError(runID, record.State, RunStatePreflightRunning)
-	}
-
-	configCopy := make([]byte, len(record.Config))
-	copy(configCopy, record.Config)
-	executionID := record.ExecutionID
-	eventLog := rm.eventLogs[runID]
-
-	registry := rm.registry
-	allocator := rm.allocator
-	leaseManager := rm.leaseManager
-	assignmentSender := rm.assignmentSender
-
-	rm.mu.Unlock()
 
 	// If scheduler components are partially configured, that's a misconfiguration
 	schedulerConfigured := registry != nil || allocator != nil || leaseManager != nil || assignmentSender != nil
@@ -308,38 +324,45 @@ func (rm *RunManager) StartRun(runID, actor string) error {
 	}
 
 	// Allocation succeeded, now transition to PREFLIGHT_RUNNING
-	rm.mu.Lock()
-	record, ok = rm.runs[runID]
-	if !ok {
-		rm.mu.Unlock()
-		return NewNotFoundError(runID)
-	}
-	if record.State != RunStateCreated {
-		rm.mu.Unlock()
-		return fmt.Errorf("run state changed during allocation: %s", record.State)
-	}
+	func() {
+		rm.mu.Lock()
+		defer rm.mu.Unlock()
 
-	oldState := record.State
-	record.State = RunStatePreflightRunning
-	record.UpdatedAtMs = time.Now().UnixMilli()
+		record, ok := rm.runs[runID]
+		if !ok {
+			err = NewNotFoundError(runID)
+			return
+		}
+		if record.State != RunStateCreated {
+			err = fmt.Errorf("run state changed during allocation: %s", record.State)
+			return
+		}
 
-	payload, _ := json.Marshal(map[string]interface{}{
-		"from_state": oldState,
-		"to_state":   record.State,
-		"trigger":    "start_run",
-		"actor":      actor,
-	})
+		oldState := record.State
+		record.State = RunStatePreflightRunning
+		record.UpdatedAtMs = time.Now().UnixMilli()
 
-	event := RunEvent{
-		RunID:       runID,
-		ExecutionID: record.ExecutionID,
-		Type:        EventTypeStateTransition,
-		Actor:       ActorType(actor),
-		Payload:     payload,
-		Evidence:    []Evidence{},
+		payload, _ := json.Marshal(map[string]interface{}{
+			"from_state": oldState,
+			"to_state":   record.State,
+			"trigger":    "start_run",
+			"actor":      actor,
+		})
+
+		event := RunEvent{
+			RunID:       runID,
+			ExecutionID: record.ExecutionID,
+			Type:        EventTypeStateTransition,
+			Actor:       ActorType(actor),
+			Payload:     payload,
+			Evidence:    []Evidence{},
+		}
+		_ = eventLog.Append(event)
+	}()
+
+	if err != nil {
+		return err
 	}
-	_ = eventLog.Append(event)
-	rm.mu.Unlock()
 
 	// Dispatch assignments after state transition
 	if registry != nil && allocator != nil && leaseManager != nil && assignmentSender != nil {
