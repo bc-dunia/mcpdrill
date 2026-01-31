@@ -23,14 +23,18 @@ interface CachedServerMetrics {
 function saveToStorage(runId: string, data: CachedServerMetrics): void {
   try {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}${runId}`, JSON.stringify(data));
-  } catch { }
+  } catch (err) {
+    console.warn('Failed to save server metrics to localStorage:', err);
+  }
 }
 
 function loadFromStorage(runId: string): CachedServerMetrics | null {
   try {
     const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${runId}`);
     if (stored) return JSON.parse(stored);
-  } catch { }
+  } catch (err) {
+    console.warn('Failed to load server metrics from localStorage:', err);
+  }
   return null;
 }
 

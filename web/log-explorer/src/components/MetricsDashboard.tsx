@@ -41,14 +41,18 @@ function saveMetricsToStorage(runId: string, data: CachedMetricsData): void {
       if (oldestKey) localStorage.removeItem(oldestKey);
     }
     localStorage.setItem(`${STORAGE_KEY_PREFIX}${runId}`, JSON.stringify(data));
-  } catch { }
+  } catch (err) {
+    console.warn('Failed to save metrics to localStorage:', err);
+  }
 }
 
 function loadMetricsFromStorage(runId: string): CachedMetricsData | null {
   try {
     const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${runId}`);
     if (stored) return JSON.parse(stored);
-  } catch { }
+  } catch (err) {
+    console.warn('Failed to load metrics from localStorage:', err);
+  }
   return null;
 }
 
@@ -233,7 +237,9 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
     try {
       const runInfo = await fetchRun(runId);
       setCurrentRunState(runInfo.state);
-    } catch { }
+    } catch (err) {
+      console.warn('Failed to load run state:', err);
+    }
   }, [runId]);
 
   const loadStability = useCallback(async () => {

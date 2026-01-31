@@ -138,23 +138,34 @@ function ToolMetricsDashboardComponent({ runId, onToolClick }: ToolMetricsDashbo
     setError(null);
 
     try {
-      const [metricsRes, logsRes] = await Promise.all([
+      const [metricsResult, logsResult] = await Promise.allSettled([
         fetch(`${API_BASE}/runs/${runId}/metrics`),
         fetch(`${API_BASE}/runs/${runId}/logs?limit=1000&operation=tools/call`),
       ]);
 
-      if (!metricsRes.ok) {
-        throw new Error(`Failed to fetch metrics: ${metricsRes.statusText}`);
+      // Handle metrics result
+      if (metricsResult.status === 'fulfilled') {
+        if (!metricsResult.value.ok) {
+          console.error('Failed to fetch metrics:', metricsResult.value.statusText);
+          setError(`Failed to fetch metrics: ${metricsResult.value.statusText}`);
+        } else {
+          const metricsData: AggregatedMetricsResponse = await metricsResult.value.json();
+          setToolMetrics(metricsData.by_tool || {});
+        }
+      } else {
+        console.error('Metrics fetch rejected:', metricsResult.reason);
+        setError('Failed to fetch metrics');
       }
 
-      const metricsData: AggregatedMetricsResponse = await metricsRes.json();
-      setToolMetrics(metricsData.by_tool || {});
-
-      if (logsRes.ok) {
-        const logsData = await logsRes.json();
+      // Handle logs result (partial failure is acceptable)
+      if (logsResult.status === 'fulfilled' && logsResult.value.ok) {
+        const logsData = await logsResult.value.json();
         setLogs(logsData.logs || []);
+      } else if (logsResult.status === 'rejected') {
+        console.error('Logs fetch rejected:', logsResult.reason);
       }
     } catch (err) {
+      console.error('Unexpected error fetching tool metrics:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch data');
     } finally {
       setLoading(false);

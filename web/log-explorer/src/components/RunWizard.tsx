@@ -100,13 +100,17 @@ function loadWizardProgress(): { step: WizardStep; config: RunConfig } | null {
 function saveWizardProgress(step: WizardStep, config: RunConfig): void {
   try {
     localStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify({ step, config, savedAt: Date.now() }));
-  } catch { }
+  } catch (err) {
+    console.warn('Failed to save wizard progress to localStorage:', err);
+  }
 }
 
 function clearWizardProgress(): void {
   try {
     localStorage.removeItem(WIZARD_STORAGE_KEY);
-  } catch { }
+  } catch (err) {
+    console.warn('Failed to clear wizard progress from localStorage:', err);
+  }
 }
 
 export function RunWizard({ onRunStarted }: Props) {
