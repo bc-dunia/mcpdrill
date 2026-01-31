@@ -7,6 +7,19 @@ import { CONFIG, STORAGE_KEYS } from '../config';
 
 const API_BASE = '';
 
+function toSafeNumber(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && !isNaN(value) && isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    if (!isNaN(parsed) && isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return fallback;
+}
+
 interface CachedTotals {
   total_ops: number;
   success_ops: number;
@@ -368,10 +381,10 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
         const metrics = event.payload?.metrics || event.data.metrics;
         if (metrics && typeof metrics === 'object') {
           const m = metrics as Record<string, unknown>;
-          const timestamp = (m.timestamp as number) ?? Date.now();
-          const totalOps = (m.total_ops as number) ?? 0;
-          const failedOps = (m.failed_ops as number) ?? 0;
-          const successOps = (m.success_ops as number) ?? (totalOps - failedOps);
+          const timestamp = toSafeNumber(m.timestamp, Date.now());
+          const totalOps = toSafeNumber(m.total_ops, 0);
+          const failedOps = toSafeNumber(m.failed_ops, 0);
+          const successOps = toSafeNumber(m.success_ops, totalOps - failedOps);
           
           setLatestTotals({
             total_ops: totalOps,
@@ -382,12 +395,12 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
           const newPoint: MetricsDataPoint = {
             timestamp,
             time: formatTime(timestamp),
-            throughput: (m.throughput as number) ?? 0,
-            latency_p50_ms: (m.latency_p50_ms as number) ?? 0,
-            latency_p95_ms: (m.latency_p95_ms as number) ?? 0,
-            latency_p99_ms: (m.latency_p99_ms as number) ?? 0,
-            latency_mean: (m.latency_mean as number) ?? 0,
-            error_rate: (m.error_rate as number) ?? 0,
+            throughput: toSafeNumber(m.throughput, 0),
+            latency_p50_ms: toSafeNumber(m.latency_p50_ms, 0),
+            latency_p95_ms: toSafeNumber(m.latency_p95_ms, 0),
+            latency_p99_ms: toSafeNumber(m.latency_p99_ms, 0),
+            latency_mean: toSafeNumber(m.latency_mean, 0),
+            error_rate: toSafeNumber(m.error_rate, 0),
             success_ops: successOps,
             failed_ops: failedOps,
           };
@@ -396,7 +409,7 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
             return updated.slice(-CONFIG.MAX_DATA_POINTS);
           });
           if (m.duration_ms !== undefined) {
-            setDurationMs(m.duration_ms as number);
+            setDurationMs(toSafeNumber(m.duration_ms, 0));
           }
         }
         break;

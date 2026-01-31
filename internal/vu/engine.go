@@ -102,20 +102,23 @@ func (e *Engine) Stop(ctx context.Context) error {
 	}
 	e.vuMu.RUnlock()
 
+	// Wait for all VU goroutines to exit
 	done := make(chan struct{})
 	go func() {
 		e.wg.Wait()
+		close(e.resultChan)
 		close(done)
 	}()
 
 	select {
 	case <-done:
+		// Clean shutdown: all goroutines exited, channel closed
+		return nil
 	case <-ctx.Done():
+		// Context timeout: goroutine continues in background
+		// resultChan will be closed after wg.Wait() completes
 		return ctx.Err()
 	}
-
-	close(e.resultChan)
-	return nil
 }
 
 func (e *Engine) UpdateLoad(target LoadTarget) {

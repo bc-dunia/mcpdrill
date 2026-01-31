@@ -238,11 +238,15 @@ func (rm *RunManager) CreateRun(config []byte, actor string) (string, error) {
 	rm.eventLogs[runID] = eventLog
 	rm.mu.Unlock()
 
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, err := json.Marshal(map[string]interface{}{
 		"config_hash": configHash,
 		"scenario_id": scenarioID,
 		"actor":       actor,
 	})
+	if err != nil {
+		log.Printf("[RunManager] Failed to marshal CreateRun event payload for run %s: %v", runID, err)
+		payload = []byte("{}")
+	}
 
 	event := RunEvent{
 		RunID:       runID,
@@ -252,7 +256,9 @@ func (rm *RunManager) CreateRun(config []byte, actor string) (string, error) {
 		Payload:     payload,
 		Evidence:    []Evidence{},
 	}
-	_ = eventLog.Append(event)
+	if err := eventLog.Append(event); err != nil {
+		log.Printf("[RunManager] CRITICAL: Failed to append RUN_CREATED event for run %s: %v", runID, err)
+	}
 
 	return runID, nil
 }

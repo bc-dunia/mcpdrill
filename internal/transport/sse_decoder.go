@@ -198,7 +198,7 @@ func (d *SSEDecoder) Close() error {
 	d.closed = true
 	d.mu.Unlock()
 
-	// Cancel the reader goroutine and wait for it to exit
+	// Cancel the reader goroutine
 	d.cancelFn()
 
 	// Close the underlying reader to unblock any pending read
@@ -207,17 +207,11 @@ func (d *SSEDecoder) Close() error {
 		log.Printf("failed to close SSE reader: %v", err)
 	}
 
-	// Wait for reader goroutine to exit (with timeout to prevent deadlock)
-	done := make(chan struct{})
-	go func() {
-		d.wg.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(100 * time.Millisecond):
-		// Reader goroutine didn't exit in time, but we've done our best
-	}
+	// Wait for reader goroutine to exit
+	// The goroutine will exit when:
+	// 1. Context is cancelled (via cancelFn above), OR
+	// 2. Read encounters EOF/error (via closer.Close above)
+	d.wg.Wait()
 
 	return err
 }
