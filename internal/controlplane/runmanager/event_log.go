@@ -3,6 +3,7 @@ package runmanager
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -13,31 +14,31 @@ import (
 type EventType string
 
 const (
-	EventTypeRunCreated              EventType = "RUN_CREATED"
-	EventTypeValidationCompleted     EventType = "VALIDATION_COMPLETED"
-	EventTypeStateTransition         EventType = "STATE_TRANSITION"
-	EventTypeAllocationFailed        EventType = "ALLOCATION_FAILED"
-	EventTypeStageStarted            EventType = "STAGE_STARTED"
-	EventTypeStageCompleted          EventType = "STAGE_COMPLETED"
-	EventTypeStageFailed             EventType = "STAGE_FAILED"
-	EventTypeSchedulerTargetSet      EventType = "SCHEDULER_TARGET_SET"
-	EventTypeWorkerAssigned          EventType = "WORKER_ASSIGNED"
+	EventTypeRunCreated               EventType = "RUN_CREATED"
+	EventTypeValidationCompleted      EventType = "VALIDATION_COMPLETED"
+	EventTypeStateTransition          EventType = "STATE_TRANSITION"
+	EventTypeAllocationFailed         EventType = "ALLOCATION_FAILED"
+	EventTypeStageStarted             EventType = "STAGE_STARTED"
+	EventTypeStageCompleted           EventType = "STAGE_COMPLETED"
+	EventTypeStageFailed              EventType = "STAGE_FAILED"
+	EventTypeSchedulerTargetSet       EventType = "SCHEDULER_TARGET_SET"
+	EventTypeWorkerAssigned           EventType = "WORKER_ASSIGNED"
 	EventTypeWorkerAssignmentRejected EventType = "WORKER_ASSIGNMENT_REJECTED"
-	EventTypeWorkerRegistered        EventType = "WORKER_REGISTERED"
-	EventTypeWorkerHeartbeat         EventType = "WORKER_HEARTBEAT"
-	EventTypeWorkerCapacityLost      EventType = "WORKER_CAPACITY_LOST"
-	EventTypeWorkerReplaced          EventType = "WORKER_REPLACED"
-	EventTypeStopRequested           EventType = "STOP_REQUESTED"
-	EventTypeEmergencyStop           EventType = "EMERGENCY_STOP"
-	EventTypeStopConditionTriggered  EventType = "STOP_CONDITION_TRIGGERED"
-	EventTypeStageTimeout            EventType = "STAGE_TIMEOUT"
-	EventTypeDecision                EventType = "DECISION"
-	EventTypeAnalysisStarted         EventType = "ANALYSIS_STARTED"
-	EventTypeAnalysisCompleted       EventType = "ANALYSIS_COMPLETED"
-	EventTypeReportGenerated         EventType = "REPORT_GENERATED"
-	EventTypeArtifactStored          EventType = "ARTIFACT_STORED"
-	EventTypeSystemRecovery          EventType = "SYSTEM_RECOVERY"
-	EventTypeSystemWarning           EventType = "SYSTEM_WARNING"
+	EventTypeWorkerRegistered         EventType = "WORKER_REGISTERED"
+	EventTypeWorkerHeartbeat          EventType = "WORKER_HEARTBEAT"
+	EventTypeWorkerCapacityLost       EventType = "WORKER_CAPACITY_LOST"
+	EventTypeWorkerReplaced           EventType = "WORKER_REPLACED"
+	EventTypeStopRequested            EventType = "STOP_REQUESTED"
+	EventTypeEmergencyStop            EventType = "EMERGENCY_STOP"
+	EventTypeStopConditionTriggered   EventType = "STOP_CONDITION_TRIGGERED"
+	EventTypeStageTimeout             EventType = "STAGE_TIMEOUT"
+	EventTypeDecision                 EventType = "DECISION"
+	EventTypeAnalysisStarted          EventType = "ANALYSIS_STARTED"
+	EventTypeAnalysisCompleted        EventType = "ANALYSIS_COMPLETED"
+	EventTypeReportGenerated          EventType = "REPORT_GENERATED"
+	EventTypeArtifactStored           EventType = "ARTIFACT_STORED"
+	EventTypeSystemRecovery           EventType = "SYSTEM_RECOVERY"
+	EventTypeSystemWarning            EventType = "SYSTEM_WARNING"
 )
 
 // ActorType represents who triggered the event.
@@ -82,16 +83,16 @@ type Evidence struct {
 
 // RunEvent represents a single event in the run lifecycle.
 type RunEvent struct {
-	SchemaVersion string               `json:"schema_version"`
-	EventID       string               `json:"event_id"`
-	TimestampMs   int64                `json:"ts_ms"`
-	RunID         string               `json:"run_id"`
-	ExecutionID   string               `json:"execution_id"`
-	Type          EventType            `json:"type"`
-	Actor         ActorType            `json:"actor"`
-	Correlation   CorrelationContext   `json:"correlation"`
-	Payload       json.RawMessage      `json:"payload"`
-	Evidence      []Evidence           `json:"evidence"`
+	SchemaVersion string             `json:"schema_version"`
+	EventID       string             `json:"event_id"`
+	TimestampMs   int64              `json:"ts_ms"`
+	RunID         string             `json:"run_id"`
+	ExecutionID   string             `json:"execution_id"`
+	Type          EventType          `json:"type"`
+	Actor         ActorType          `json:"actor"`
+	Correlation   CorrelationContext `json:"correlation"`
+	Payload       json.RawMessage    `json:"payload"`
+	Evidence      []Evidence         `json:"evidence"`
 }
 
 // DefaultMaxEventsPerLog is the default maximum events per EventLog.
@@ -260,3 +261,13 @@ func generateEventID() string {
 }
 
 var eventIDCounter atomic.Int64
+
+// appendEventWithLog appends an event to the log and logs any errors.
+// This is used in fire-and-forget scenarios where we want visibility into
+// failures but don't want to interrupt the main flow.
+func appendEventWithLog(eventLog *EventLog, event RunEvent, context string) {
+	if err := eventLog.Append(event); err != nil {
+		log.Printf("[WARN] failed to append %s event for run %s: %v (context: %s)",
+			event.Type, event.RunID, err, context)
+	}
+}

@@ -202,7 +202,7 @@ func (rm *RunManager) emitAllocationFailedEvent(runID, executionID string, event
 		Payload:     payload,
 		Evidence:    []Evidence{},
 	}
-	_ = eventLog.Append(event)
+	appendEventWithLog(eventLog, event, "emitAllocationFailedEvent")
 }
 
 func (rm *RunManager) emitWorkerAssignedEvent(runID, executionID string, eventLog *EventLog, workerID, leaseID string, vuStart, vuEnd int, stageID string, stageName StageName) {
@@ -227,7 +227,7 @@ func (rm *RunManager) emitWorkerAssignedEvent(runID, executionID string, eventLo
 		Payload:  payload,
 		Evidence: []Evidence{},
 	}
-	_ = eventLog.Append(event)
+	appendEventWithLog(eventLog, event, "emitWorkerAssignedEvent")
 }
 
 func (rm *RunManager) dispatchRampAssignments(runID, executionID string, config []byte, eventLog *EventLog, stage *parsedStage, parsedConfig *parsedRunConfig, numVUs int, vuOffset int) {
@@ -341,5 +341,5 @@ func (rm *RunManager) emitRampStepEvent(runID, executionID string, eventLog *Eve
 		Payload:  payload,
 		Evidence: []Evidence{},
 	}
-	_ = eventLog.Append(event)
+	appendEventWithLog(eventLog, event, "emitRampStepEvent")
 }

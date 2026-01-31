@@ -357,13 +357,13 @@ func (rm *RunManager) StartRun(runID, actor string) error {
 
 		event := RunEvent{
 			RunID:       runID,
-			ExecutionID: record.ExecutionID,
+			ExecutionID: executionID,
 			Type:        EventTypeStateTransition,
 			Actor:       ActorType(actor),
 			Payload:     payload,
 			Evidence:    []Evidence{},
 		}
-		_ = eventLog.Append(event)
+		appendEventWithLog(eventLog, event, "transitionToPreflightRunning")
 	}()
 
 	if err != nil {
@@ -409,7 +409,7 @@ func (rm *RunManager) transitionToFailedFromCreated(runID, executionID string, e
 		Payload:     payload,
 		Evidence:    []Evidence{{Kind: "reason", Ref: reason}},
 	}
-	_ = eventLog.Append(event)
+	appendEventWithLog(eventLog, event, "transitionToFailedFromCreated")
 }
 
 // RequestStop transitions a run to STOPPING state with the specified mode.
@@ -449,7 +449,7 @@ func (rm *RunManager) requestStopWithReason(runID string, mode StopMode, actor s
 			Payload:     payload,
 			Evidence:    []Evidence{},
 		}
-		_ = eventLog.Append(event)
+		appendEventWithLog(eventLog, event, "requestStopWithReason")
 		return nil
 	}
 
@@ -485,7 +485,7 @@ func (rm *RunManager) requestStopWithReason(runID string, mode StopMode, actor s
 		Payload:     stopPayload,
 		Evidence:    nonNilEvidence(evidence),
 	}
-	_ = eventLog.Append(stopEvent)
+	appendEventWithLog(eventLog, stopEvent, "requestStopWithReason")
 
 	transitionPayload, _ := json.Marshal(map[string]interface{}{
 		"from_state": oldState,
@@ -501,7 +501,7 @@ func (rm *RunManager) requestStopWithReason(runID string, mode StopMode, actor s
 		Payload:     transitionPayload,
 		Evidence:    []Evidence{},
 	}
-	_ = eventLog.Append(transitionEvent)
+	appendEventWithLog(eventLog, transitionEvent, "requestStopWithReason")
 
 	// Set stop reason in telemetry for manual stop
 	if rm.telemetryStore != nil {
@@ -549,7 +549,7 @@ func (rm *RunManager) EmergencyStop(runID, actor string) error {
 			Payload:     escalationPayload,
 			Evidence:    []Evidence{},
 		}
-		_ = eventLog.Append(escalationEvent)
+		appendEventWithLog(eventLog, escalationEvent, "EmergencyStop")
 
 		record.StopReason = &StopReason{
 			Mode:   StopModeImmediate,
@@ -595,7 +595,7 @@ func (rm *RunManager) EmergencyStop(runID, actor string) error {
 		Payload:     emergencyPayload,
 		Evidence:    []Evidence{},
 	}
-	_ = eventLog.Append(emergencyEvent)
+	appendEventWithLog(eventLog, emergencyEvent, "EmergencyStop")
 
 	transitionPayload, _ := json.Marshal(map[string]interface{}{
 		"from_state": oldState,
@@ -611,7 +611,7 @@ func (rm *RunManager) EmergencyStop(runID, actor string) error {
 		Payload:     transitionPayload,
 		Evidence:    []Evidence{},
 	}
-	_ = eventLog.Append(transitionEvent)
+	appendEventWithLog(eventLog, transitionEvent, "EmergencyStop")
 
 	// Set stop reason in telemetry for emergency stop
 	if rm.telemetryStore != nil {
@@ -1205,5 +1205,5 @@ func (rm *RunManager) transitionToCompleted(runID, actor, reason string) {
 		Payload:     payload,
 		Evidence:    []Evidence{},
 	}
-	_ = eventLog.Append(event)
+	appendEventWithLog(eventLog, event, "transitionToStateWithActor")
 }

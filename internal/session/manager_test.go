@@ -563,6 +563,120 @@ func TestSessionInvalidation(t *testing.T) {
 	}
 }
 
+func TestReuseModeSessionToVUIndex(t *testing.T) {
+	// Test that the sessionToVU reverse index is maintained correctly
+	adapter := &mockAdapter{}
+	config := &SessionConfig{
+		Mode:            ModeReuse,
+		TTLMs:           60000,
+		MaxIdleMs:       30000,
+		Adapter:         adapter,
+		TransportConfig: &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+	}
+
+	mgr, err := NewManager(config)
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	ctx := context.Background()
+	mgr.Start(ctx)
+	defer mgr.Close(ctx)
+
+	// Create sessions for multiple VUs
+	session1, err := mgr.Acquire(ctx, "vu_1")
+	if err != nil {
+		t.Fatalf("Acquire(vu_1) error = %v", err)
+	}
+	session2, err := mgr.Acquire(ctx, "vu_2")
+	if err != nil {
+		t.Fatalf("Acquire(vu_2) error = %v", err)
+	}
+	session3, err := mgr.Acquire(ctx, "vu_3")
+	if err != nil {
+		t.Fatalf("Acquire(vu_3) error = %v", err)
+	}
+
+	// Invalidate session2 - should use O(1) lookup via sessionToVU
+	err = mgr.Invalidate(ctx, session2)
+	if err != nil {
+		t.Fatalf("Invalidate() error = %v", err)
+	}
+
+	// Verify vu_2 gets a new session (old one was invalidated)
+	newSession2, err := mgr.Acquire(ctx, "vu_2")
+	if err != nil {
+		t.Fatalf("Acquire(vu_2) after invalidation error = %v", err)
+	}
+	if newSession2.ID == session2.ID {
+		t.Error("vu_2 should get new session after invalidation")
+	}
+
+	// Verify vu_1 and vu_3 still have their original sessions
+	reacquired1, err := mgr.Acquire(ctx, "vu_1")
+	if err != nil {
+		t.Fatalf("Acquire(vu_1) error = %v", err)
+	}
+	if reacquired1.ID != session1.ID {
+		t.Error("vu_1 should still have original session")
+	}
+
+	reacquired3, err := mgr.Acquire(ctx, "vu_3")
+	if err != nil {
+		t.Fatalf("Acquire(vu_3) error = %v", err)
+	}
+	if reacquired3.ID != session3.ID {
+		t.Error("vu_3 should still have original session")
+	}
+}
+
+func TestReuseModeMultipleInvalidations(t *testing.T) {
+	// Test that multiple invalidations don't cause issues
+	adapter := &mockAdapter{}
+	config := &SessionConfig{
+		Mode:            ModeReuse,
+		TTLMs:           60000,
+		MaxIdleMs:       30000,
+		Adapter:         adapter,
+		TransportConfig: &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+	}
+
+	mgr, err := NewManager(config)
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	ctx := context.Background()
+	mgr.Start(ctx)
+	defer mgr.Close(ctx)
+
+	session, err := mgr.Acquire(ctx, "vu_1")
+	if err != nil {
+		t.Fatalf("Acquire() error = %v", err)
+	}
+
+	// First invalidation should succeed
+	err = mgr.Invalidate(ctx, session)
+	if err != nil {
+		t.Fatalf("First Invalidate() error = %v", err)
+	}
+
+	// Second invalidation of same session should be safe (no-op)
+	err = mgr.Invalidate(ctx, session)
+	if err != nil {
+		t.Fatalf("Second Invalidate() error = %v", err)
+	}
+
+	// Should be able to acquire a new session
+	newSession, err := mgr.Acquire(ctx, "vu_1")
+	if err != nil {
+		t.Fatalf("Acquire() after double invalidation error = %v", err)
+	}
+	if newSession.ID == session.ID {
+		t.Error("Should get new session after invalidation")
+	}
+}
+
 func TestConcurrentAcquireRelease(t *testing.T) {
 	adapter := &mockAdapter{}
 	config := &SessionConfig{

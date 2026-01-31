@@ -166,7 +166,7 @@ func (rm *RunManager) handleFailFastLocked(record *RunRecord, workerID string) e
 			{Kind: "worker", Ref: workerID, Note: stringPtr("worker heartbeat timeout")},
 		},
 	}
-	_ = eventLog.Append(stopEvent)
+	appendEventWithLog(eventLog, stopEvent, "handleFailFastLocked")
 
 	transitionPayload, _ := json.Marshal(map[string]interface{}{
 		"from_state": oldState,
@@ -184,7 +184,7 @@ func (rm *RunManager) handleFailFastLocked(record *RunRecord, workerID string) e
 		Payload:     transitionPayload,
 		Evidence:    []Evidence{},
 	}
-	_ = eventLog.Append(transitionEvent)
+	appendEventWithLog(eventLog, transitionEvent, "handleFailFastLocked")
 
 	runID := record.RunID
 	configCopy := make([]byte, len(record.Config))
@@ -320,7 +320,7 @@ func (rm *RunManager) handleReplaceIfPossibleLocked(record *RunRecord, workerID 
 			{Kind: "worker", Ref: workerID, Note: stringPtr("worker replaced via reallocation")},
 		},
 	}
-	_ = eventLog.Append(replacedEvent)
+	appendEventWithLog(eventLog, replacedEvent, "handleReplaceIfPossibleLocked")
 
 	decisionPayload, _ := json.Marshal(map[string]interface{}{
 		"decision_type": "reallocation_success",
@@ -336,7 +336,7 @@ func (rm *RunManager) handleReplaceIfPossibleLocked(record *RunRecord, workerID 
 		Payload:     decisionPayload,
 		Evidence:    []Evidence{},
 	}
-	_ = eventLog.Append(decisionEvent)
+	appendEventWithLog(eventLog, decisionEvent, "handleReplaceIfPossibleLocked")
 
 	log.Printf("[RunManager] Worker %s replaced, %d new assignments issued", workerID, len(assignments))
 	return nil
@@ -360,7 +360,7 @@ func (rm *RunManager) emitReallocationFailedDecision(eventLog *EventLog, record 
 			{Kind: "worker", Ref: workerID, Note: stringPtr("worker heartbeat timeout")},
 		},
 	}
-	_ = eventLog.Append(decisionEvent)
+	appendEventWithLog(eventLog, decisionEvent, "emitReallocationFailedDecision")
 }
 
 func (rm *RunManager) getStageDuration(config *parsedRunConfig, stageID string) int64 {
@@ -397,7 +397,7 @@ func (rm *RunManager) handleBestEffortLocked(record *RunRecord, workerID string)
 			{Kind: "worker", Ref: workerID, Note: stringPtr("worker heartbeat timeout, continuing with reduced capacity")},
 		},
 	}
-	_ = eventLog.Append(capacityEvent)
+	appendEventWithLog(eventLog, capacityEvent, "handleBestEffortLocked")
 
 	// Emit SYSTEM_WARNING event
 	warningPayload, _ := json.Marshal(map[string]interface{}{
@@ -414,7 +414,7 @@ func (rm *RunManager) handleBestEffortLocked(record *RunRecord, workerID string)
 		Payload:     warningPayload,
 		Evidence:    []Evidence{},
 	}
-	_ = eventLog.Append(warningEvent)
+	appendEventWithLog(eventLog, warningEvent, "handleBestEffortLocked")
 
 	return nil
 }

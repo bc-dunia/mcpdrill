@@ -185,7 +185,7 @@ func (rm *RunManager) emitReportGeneratedEvent(runID, executionID string, eventL
 			{Kind: "artifact", Ref: htmlInfo.Path, Note: stringPtr("HTML report")},
 		},
 	}
-	_ = eventLog.Append(event)
+	appendEventWithLog(eventLog, event, "emitReportGeneratedEvent")
 }
 
 func (rm *RunManager) completeAnalysis(runID string) {
@@ -230,7 +230,7 @@ func (rm *RunManager) completeAnalysis(runID string) {
 		Payload:     completedPayload,
 		Evidence:    []Evidence{},
 	}
-	_ = eventLog.Append(completedEvent)
+	appendEventWithLog(eventLog, completedEvent, "completeAnalysis")
 
 	transitionPayload, _ := json.Marshal(map[string]interface{}{
 		"from_state": oldState,
@@ -246,7 +246,7 @@ func (rm *RunManager) completeAnalysis(runID string) {
 		Payload:     transitionPayload,
 		Evidence:    []Evidence{},
 	}
-	_ = eventLog.Append(transitionEvent)
+	appendEventWithLog(eventLog, transitionEvent, "completeAnalysis")
 }
 
 func (rm *RunManager) failAnalysis(runID, reason, details string) {
@@ -281,7 +281,7 @@ func (rm *RunManager) failAnalysis(runID, reason, details string) {
 		Payload:     failPayload,
 		Evidence:    []Evidence{},
 	}
-	_ = eventLog.Append(failEvent)
+	appendEventWithLog(eventLog, failEvent, "failAnalysis")
 
 	transitionPayload, _ := json.Marshal(map[string]interface{}{
 		"from_state": oldState,
@@ -298,5 +298,5 @@ func (rm *RunManager) failAnalysis(runID, reason, details string) {
 		Payload:     transitionPayload,
 		Evidence:    []Evidence{},
 	}
-	_ = eventLog.Append(transitionEvent)
+	appendEventWithLog(eventLog, transitionEvent, "failAnalysis")
 }
