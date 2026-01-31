@@ -32,46 +32,46 @@ function ComparisonChartComponent({ comparison }: ComparisonChartProps) {
   const latencyData = useMemo<LatencyDataPoint[]>(() => [
     {
       name: 'P50',
-      runA: run_a.metrics.latency_p50_ms,
-      runB: run_b.metrics.latency_p50_ms,
+      runA: run_a.latency_p50_ms,
+      runB: run_b.latency_p50_ms,
       diff: diff.latency_p50_ms,
       diffPct: diff.latency_p50_pct,
     },
     {
       name: 'P95',
-      runA: run_a.metrics.latency_p95_ms,
-      runB: run_b.metrics.latency_p95_ms,
+      runA: run_a.latency_p95_ms,
+      runB: run_b.latency_p95_ms,
       diff: diff.latency_p95_ms,
       diffPct: diff.latency_p95_pct,
     },
     {
       name: 'P99',
-      runA: run_a.metrics.latency_p99_ms,
-      runB: run_b.metrics.latency_p99_ms,
+      runA: run_a.latency_p99_ms,
+      runB: run_b.latency_p99_ms,
       diff: diff.latency_p99_ms,
       diffPct: diff.latency_p99_pct,
     },
-  ], [run_a.metrics, run_b.metrics, diff]);
+  ], [run_a, run_b, diff]);
 
   const throughputData = useMemo(() => [
     {
       name: 'Throughput',
-      runA: run_a.metrics.throughput,
-      runB: run_b.metrics.throughput,
+      runA: run_a.throughput,
+      runB: run_b.throughput,
       diff: diff.throughput,
       diffPct: diff.throughput_pct,
     },
-  ], [run_a.metrics.throughput, run_b.metrics.throughput, diff.throughput, diff.throughput_pct]);
+  ], [run_a.throughput, run_b.throughput, diff.throughput, diff.throughput_pct]);
 
   const errorData = useMemo(() => [
     {
       name: 'Error Rate',
-      runA: run_a.metrics.error_rate * 100,
-      runB: run_b.metrics.error_rate * 100,
+      runA: run_a.error_rate * 100,
+      runB: run_b.error_rate * 100,
       diff: diff.error_rate * 100,
       diffPct: diff.error_rate_pct,
     },
-  ], [run_a.metrics.error_rate, run_b.metrics.error_rate, diff.error_rate, diff.error_rate_pct]);
+  ], [run_a.error_rate, run_b.error_rate, diff.error_rate, diff.error_rate_pct]);
 
   const getBarColor = (diffPct: number, isLowerBetter: boolean) => {
     const threshold = 1;

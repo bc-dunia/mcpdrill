@@ -1,4 +1,4 @@
-import type { LogQueryResponse, RunInfo, LogFilters, RunConfig, ComparisonResult, RunMetrics, OpMixEntry } from './types';
+import type { LogQueryResponse, RunInfo, LogFilters, RunConfig, ComparisonResult, ComparisonApiResponse, ComparisonDiff, RunMetrics, OpMixEntry } from './types';
 
 const API_BASE = '';
 
@@ -387,6 +387,7 @@ function convertToBackendConfig(config: RunConfig): BackendRunConfig {
 
 interface ApiErrorBody {
   error?: string;
+  error_message?: string;
   message?: string;
   detail?: string;
 }
@@ -400,7 +401,7 @@ async function extractErrorMessage(response: Response, fallbackAction: string): 
     if (text) {
       try {
         const json = JSON.parse(text) as ApiErrorBody;
-        serverMessage = json.error || json.message || json.detail || text;
+        serverMessage = json.error || json.error_message || json.message || json.detail || text;
       } catch {
         serverMessage = text;
       }
@@ -592,9 +593,32 @@ export async function fetchRunMetrics(runId: string): Promise<RunMetrics> {
   return handleResponse<RunMetrics>(response, 'Failed to fetch metrics');
 }
 
+function computeDiff(runA: ComparisonApiResponse['run_a'], runB: ComparisonApiResponse['run_b']): ComparisonDiff {
+  const pctDiff = (a: number, b: number) => a === 0 ? (b === 0 ? 0 : 100) : ((b - a) / a) * 100;
+  
+  return {
+    latency_p50_ms: runB.latency_p50_ms - runA.latency_p50_ms,
+    latency_p50_pct: pctDiff(runA.latency_p50_ms, runB.latency_p50_ms),
+    latency_p95_ms: runB.latency_p95_ms - runA.latency_p95_ms,
+    latency_p95_pct: pctDiff(runA.latency_p95_ms, runB.latency_p95_ms),
+    latency_p99_ms: runB.latency_p99_ms - runA.latency_p99_ms,
+    latency_p99_pct: pctDiff(runA.latency_p99_ms, runB.latency_p99_ms),
+    throughput: runB.throughput - runA.throughput,
+    throughput_pct: pctDiff(runA.throughput, runB.throughput),
+    error_rate: runB.error_rate - runA.error_rate,
+    error_rate_pct: pctDiff(runA.error_rate, runB.error_rate),
+  };
+}
+
 export async function fetchComparison(runIdA: string, runIdB: string): Promise<ComparisonResult> {
   const response = await fetch(`${API_BASE}/runs/${runIdA}/compare/${runIdB}`);
-  return handleResponse<ComparisonResult>(response, 'Failed to fetch comparison');
+  const apiResponse = await handleResponse<ComparisonApiResponse>(response, 'Failed to fetch comparison');
+  
+  return {
+    run_a: apiResponse.run_a,
+    run_b: apiResponse.run_b,
+    diff: computeDiff(apiResponse.run_a, apiResponse.run_b),
+  };
 }
 
 export interface DiscoveredTool {
@@ -743,18 +767,17 @@ export async function emergencyStopRun(
   return handleResponse<StopRunResponse>(response, 'Failed to emergency stop run');
 }
 
-// Validation types
-export interface ValidationError {
-  field: string;
+// Validation types (matches backend ValidationIssue)
+export interface ValidationIssue {
+  level: 'error' | 'warning';
   code: string;
   message: string;
+  json_pointer?: string;
+  remediation?: string;
 }
 
-export interface ValidationWarning {
-  field: string;
-  code: string;
-  message: string;
-}
+export type ValidationError = ValidationIssue;
+export type ValidationWarning = ValidationIssue;
 
 export interface ValidationResult {
   ok: boolean;

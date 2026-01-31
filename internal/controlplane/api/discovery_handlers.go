@@ -46,7 +46,8 @@ func (s *Server) handleDiscoverTools(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		TargetURL string `json:"target_url"`
+		TargetURL string            `json:"target_url"`
+		Headers   map[string]string `json:"headers,omitempty"`
 	}
 	if err := json.NewDecoder(limitedBody(w, r)).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, NewInvalidRequestErrorResponse(
@@ -67,6 +68,7 @@ func (s *Server) handleDiscoverTools(w http.ResponseWriter, r *http.Request) {
 
 	config := &transport.TransportConfig{
 		Endpoint:             validatedURL,
+		Headers:              req.Headers,
 		AllowPrivateNetworks: []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"},
 		Timeouts: transport.TimeoutConfig{
 			ConnectTimeout: 10 * time.Second,
@@ -109,7 +111,7 @@ func (s *Server) handleDiscoverTools(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadGateway, &ErrorResponse{
 			ErrorType:    "mcp_error",
 			ErrorCode:    "TOOLS_LIST_ERROR",
-			ErrorMessage: fmt.Sprintf("Tools list returned error: %s", outcome.Error),
+			ErrorMessage: fmt.Sprintf("Tools list returned error: %v", outcome.Error),
 			Details:      map[string]interface{}{"target_url": req.TargetURL},
 		})
 		return
@@ -227,7 +229,7 @@ func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 			TotalLatency   int64  `json:"total_latency_ms"`
 		}{
 			Success:        false,
-			Error:          fmt.Sprintf("Server returned error: %s", outcome.Error),
+			Error:          fmt.Sprintf("Server returned error: %v", outcome.Error),
 			ErrorCode:      "SERVER_ERROR",
 			ConnectLatency: connectLatency.Milliseconds(),
 			ToolsLatency:   toolsLatency.Milliseconds(),
@@ -257,5 +259,149 @@ func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 		ConnectLatency: connectLatency.Milliseconds(),
 		ToolsLatency:   toolsLatency.Milliseconds(),
 		TotalLatency:   totalLatency.Milliseconds(),
+	})
+}
+
+func (s *Server) handleTestTool(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeMethodNotAllowed(w, r.Method, "POST")
+		return
+	}
+
+	var req struct {
+		TargetURL string                 `json:"target_url"`
+		ToolName  string                 `json:"tool_name"`
+		Arguments map[string]interface{} `json:"arguments,omitempty"`
+		Headers   map[string]string      `json:"headers,omitempty"`
+	}
+	if err := json.NewDecoder(limitedBody(w, r)).Decode(&req); err != nil {
+		s.writeError(w, http.StatusBadRequest, NewInvalidRequestErrorResponse(
+			"Invalid JSON request body",
+			map[string]interface{}{"parse_error": err.Error()},
+		))
+		return
+	}
+
+	if req.ToolName == "" {
+		s.writeError(w, http.StatusBadRequest, NewInvalidRequestErrorResponse(
+			"tool_name is required",
+			map[string]interface{}{"field": "tool_name"},
+		))
+		return
+	}
+
+	validatedURL, err := validateTargetURL(req.TargetURL)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, NewInvalidRequestErrorResponse(
+			err.Error(),
+			map[string]interface{}{"field": "target_url"},
+		))
+		return
+	}
+
+	config := &transport.TransportConfig{
+		Endpoint:             validatedURL,
+		Headers:              req.Headers,
+		AllowPrivateNetworks: []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"},
+		Timeouts: transport.TimeoutConfig{
+			ConnectTimeout: 10 * time.Second,
+			RequestTimeout: 60 * time.Second,
+		},
+	}
+
+	adapter := transport.NewStreamableHTTPAdapter()
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	startTime := time.Now()
+
+	conn, err := adapter.Connect(ctx, config)
+	if err != nil {
+		s.writeJSON(w, http.StatusOK, &struct {
+			Success   bool   `json:"success"`
+			Error     string `json:"error"`
+			LatencyMs int64  `json:"latency_ms"`
+		}{
+			Success:   false,
+			Error:     fmt.Sprintf("Failed to connect: %v", err),
+			LatencyMs: time.Since(startTime).Milliseconds(),
+		})
+		return
+	}
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("failed to close test-tool connection: %v", err)
+		}
+	}()
+
+	outcome, err := conn.ToolsCall(ctx, &transport.ToolsCallParams{
+		Name:      req.ToolName,
+		Arguments: req.Arguments,
+	})
+	latencyMs := time.Since(startTime).Milliseconds()
+
+	if err != nil {
+		s.writeJSON(w, http.StatusOK, &struct {
+			Success   bool   `json:"success"`
+			Error     string `json:"error"`
+			LatencyMs int64  `json:"latency_ms"`
+		}{
+			Success:   false,
+			Error:     fmt.Sprintf("Tool call failed: %v", err),
+			LatencyMs: latencyMs,
+		})
+		return
+	}
+
+	if !outcome.OK {
+		s.writeJSON(w, http.StatusOK, &struct {
+			Success   bool   `json:"success"`
+			Error     string `json:"error"`
+			LatencyMs int64  `json:"latency_ms"`
+		}{
+			Success:   false,
+			Error:     fmt.Sprintf("Tool returned error: %v", outcome.Error),
+			LatencyMs: latencyMs,
+		})
+		return
+	}
+
+	var toolResult transport.ToolsCallResult
+	if err := json.Unmarshal(outcome.Result, &toolResult); err != nil {
+		s.writeJSON(w, http.StatusOK, &struct {
+			Success   bool            `json:"success"`
+			Result    json.RawMessage `json:"result"`
+			LatencyMs int64           `json:"latency_ms"`
+		}{
+			Success:   true,
+			Result:    outcome.Result,
+			LatencyMs: latencyMs,
+		})
+		return
+	}
+
+	if toolResult.IsError {
+		s.writeJSON(w, http.StatusOK, &struct {
+			Success   bool        `json:"success"`
+			Error     string      `json:"error"`
+			Result    interface{} `json:"result,omitempty"`
+			LatencyMs int64       `json:"latency_ms"`
+		}{
+			Success:   false,
+			Error:     "Tool execution returned an error",
+			Result:    toolResult.Content,
+			LatencyMs: latencyMs,
+		})
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, &struct {
+		Success   bool        `json:"success"`
+		Result    interface{} `json:"result"`
+		LatencyMs int64       `json:"latency_ms"`
+	}{
+		Success:   true,
+		Result:    toolResult.Content,
+		LatencyMs: latencyMs,
 	})
 }

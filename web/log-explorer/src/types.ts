@@ -175,43 +175,56 @@ export interface RunMetrics {
   latency_p95_ms: number;
   latency_p99_ms: number;
   error_rate: number;
-  total_requests: number;
-  total_errors: number;
+  total_ops: number;
+  failed_ops: number;
   duration_ms: number;
 }
 
+export interface RunMetricsResponse {
+  run_id: string;
+  throughput: number;
+  latency_p50_ms: number;
+  latency_p95_ms: number;
+  latency_p99_ms: number;
+  error_rate: number;
+  total_ops: number;
+  failed_ops: number;
+  duration_ms: number;
+}
+
+// Raw API response from /runs/compare
+export interface ComparisonApiResponse {
+  run_a: RunMetricsResponse;
+  run_b: RunMetricsResponse;
+}
+
+// Computed diff between two runs
+export interface ComparisonDiff {
+  latency_p50_ms: number;
+  latency_p50_pct: number;
+  latency_p95_ms: number;
+  latency_p95_pct: number;
+  latency_p99_ms: number;
+  latency_p99_pct: number;
+  throughput: number;
+  throughput_pct: number;
+  error_rate: number;
+  error_rate_pct: number;
+}
+
+// Full comparison result with computed diff (used in components)
 export interface ComparisonResult {
-  run_a: {
-    id: string;
-    scenario_id: string;
-    state: string;
-    metrics: RunMetrics;
-  };
-  run_b: {
-    id: string;
-    scenario_id: string;
-    state: string;
-    metrics: RunMetrics;
-  };
-  diff: {
-    throughput: number;
-    throughput_pct: number;
-    latency_p50_ms: number;
-    latency_p50_pct: number;
-    latency_p95_ms: number;
-    latency_p95_pct: number;
-    latency_p99_ms: number;
-    latency_p99_pct: number;
-    error_rate: number;
-    error_rate_pct: number;
-  };
-  warnings: string[];
+  run_a: RunMetricsResponse;
+  run_b: RunMetricsResponse;
+  diff: ComparisonDiff;
 }
 
 export type MetricDirection = 'higher_better' | 'lower_better';
 
+export type MetricKey = keyof Omit<RunMetricsResponse, 'run_id'>;
+
 export interface MetricConfig {
-  key: keyof RunMetrics;
+  key: MetricKey;
   label: string;
   unit: string;
   direction: MetricDirection;

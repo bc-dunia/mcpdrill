@@ -135,16 +135,7 @@ export function RunComparison({ initialRunA, initialRunB, onUrlChange }: RunComp
         </div>
       )}
 
-      {comparison?.warnings && comparison.warnings.length > 0 && (
-        <div className="comparison-warnings">
-          {comparison.warnings.map((warning, i) => (
-            <div key={i} className="comparison-warning warning-minor" role="note">
-              <span className="warning-icon" aria-hidden="true"><Icon name="info" size="sm" /></span>
-              <span>{warning}</span>
-            </div>
-          ))}
-        </div>
-      )}
+
 
       {error && (
         <div className="comparison-error" role="alert">
@@ -177,16 +168,16 @@ export function RunComparison({ initialRunA, initialRunB, onUrlChange }: RunComp
           <div className="results-summary">
             <div className="summary-card summary-card-a">
               <div className="summary-label">Run A</div>
-              <div className="summary-id">{comparison.run_a.id}</div>
-              <div className="summary-scenario">{comparison.run_a.scenario_id}</div>
+              <div className="summary-id">{comparison.run_a.run_id}</div>
+              <div className="summary-scenario">{runA?.scenario_id || ''}</div>
             </div>
             <div className="summary-vs">
               <span>VS</span>
             </div>
             <div className="summary-card summary-card-b">
               <div className="summary-label">Run B</div>
-              <div className="summary-id">{comparison.run_b.id}</div>
-              <div className="summary-scenario">{comparison.run_b.scenario_id}</div>
+              <div className="summary-id">{comparison.run_b.run_id}</div>
+              <div className="summary-scenario">{runB?.scenario_id || ''}</div>
             </div>
           </div>
 

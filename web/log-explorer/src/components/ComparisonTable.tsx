@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import type { ComparisonResult, RunMetrics, MetricConfig } from '../types';
+import type { ComparisonResult, MetricConfig, MetricKey } from '../types';
 import { Icon, type IconName } from './Icon';
 
 interface ComparisonTableProps {
@@ -43,15 +43,15 @@ const METRIC_CONFIGS: MetricConfig[] = [
     format: (v) => (v * 100).toFixed(2),
   },
   {
-    key: 'total_requests',
-    label: 'Total Requests',
+    key: 'total_ops',
+    label: 'Total Operations',
     unit: '',
     direction: 'higher_better',
     format: (v) => v.toLocaleString(),
   },
   {
-    key: 'total_errors',
-    label: 'Total Errors',
+    key: 'failed_ops',
+    label: 'Failed Operations',
     unit: '',
     direction: 'lower_better',
     format: (v) => v.toLocaleString(),
@@ -65,30 +65,13 @@ const METRIC_CONFIGS: MetricConfig[] = [
   },
 ];
 
-function getDiffKey(key: keyof RunMetrics): string {
-  const mapping: Record<string, string> = {
-    throughput: 'throughput',
-    latency_p50_ms: 'latency_p50_ms',
-    latency_p95_ms: 'latency_p95_ms',
-    latency_p99_ms: 'latency_p99_ms',
-    error_rate: 'error_rate',
-  };
-  return mapping[key] || '';
-}
-
-function getDiffPctKey(key: keyof RunMetrics): string {
-  const mapping: Record<string, string> = {
-    throughput: 'throughput_pct',
-    latency_p50_ms: 'latency_p50_pct',
-    latency_p95_ms: 'latency_p95_pct',
-    latency_p99_ms: 'latency_p99_pct',
-    error_rate: 'error_rate_pct',
-  };
-  return mapping[key] || '';
+function calculateDiffPct(valueA: number, valueB: number): number {
+  if (valueA === 0) return valueB === 0 ? 0 : 100;
+  return ((valueB - valueA) / valueA) * 100;
 }
 
 function ComparisonTableComponent({ comparison }: ComparisonTableProps) {
-  const { run_a, run_b, diff } = comparison;
+  const { run_a, run_b } = comparison;
 
   const getIndicator = (diffPct: number, direction: 'higher_better' | 'lower_better'): { icon: IconName; className: string; label: string } => {
     const threshold = 1;
@@ -125,11 +108,11 @@ function ComparisonTableComponent({ comparison }: ComparisonTableProps) {
             <th scope="col" className="col-metric">Metric</th>
             <th scope="col" className="col-value">
               <span className="run-label run-a">Run A</span>
-              <span className="run-id">{run_a.id.slice(0, 16)}...</span>
+              <span className="run-id">{run_a.run_id.slice(0, 16)}...</span>
             </th>
             <th scope="col" className="col-value">
               <span className="run-label run-b">Run B</span>
-              <span className="run-id">{run_b.id.slice(0, 16)}...</span>
+              <span className="run-id">{run_b.run_id.slice(0, 16)}...</span>
             </th>
             <th scope="col" className="col-diff">Diff</th>
             <th scope="col" className="col-pct">% Change</th>
@@ -138,12 +121,9 @@ function ComparisonTableComponent({ comparison }: ComparisonTableProps) {
         </thead>
         <tbody>
           {METRIC_CONFIGS.map((config) => {
-            const valueA = run_a.metrics[config.key];
-            const valueB = run_b.metrics[config.key];
-            const diffKey = getDiffKey(config.key);
-            const diffPctKey = getDiffPctKey(config.key);
-            const hasDiff = diffKey && diffPctKey;
-            const diffPct = hasDiff ? (diff as Record<string, number>)[diffPctKey] : 0;
+            const valueA = run_a[config.key as MetricKey];
+            const valueB = run_b[config.key as MetricKey];
+            const diffPct = calculateDiffPct(valueA, valueB);
             const indicator = getIndicator(diffPct, config.direction);
 
             return (
@@ -164,22 +144,14 @@ function ComparisonTableComponent({ comparison }: ComparisonTableProps) {
                   </span>
                 </td>
                 <td className="col-diff">
-                  {hasDiff ? (
-                    <span className={`diff-value ${indicator.className}`}>
-                      {formatDiff(valueA, valueB, config)}
-                    </span>
-                  ) : (
-                    <span className="diff-value neutral">—</span>
-                  )}
+                  <span className={`diff-value ${indicator.className}`}>
+                    {formatDiff(valueA, valueB, config)}
+                  </span>
                 </td>
                 <td className="col-pct">
-                  {hasDiff ? (
-                    <span className={`pct-value ${indicator.className}`}>
-                      {formatPctChange(diffPct)}
-                    </span>
-                  ) : (
-                    <span className="pct-value neutral">—</span>
-                  )}
+                  <span className={`pct-value ${indicator.className}`}>
+                    {formatPctChange(diffPct)}
+                  </span>
                 </td>
                 <td className="col-status">
                   <span 

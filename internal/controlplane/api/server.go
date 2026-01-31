@@ -162,8 +162,9 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/readyz", s.handleReadyz)
 	mux.HandleFunc("/metrics", s.handleMetrics)
-	mux.HandleFunc("/discover-tools", s.rateLimitMiddleware(http.HandlerFunc(s.handleDiscoverTools)).ServeHTTP)
-	mux.HandleFunc("/test-connection", s.rateLimitMiddleware(http.HandlerFunc(s.handleTestConnection)).ServeHTTP)
+	mux.HandleFunc("/discover-tools", s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.handleDiscoverTools))).ServeHTTP)
+	mux.HandleFunc("/test-connection", s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.handleTestConnection))).ServeHTTP)
+	mux.HandleFunc("/test-tool", s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(s.handleTestTool))).ServeHTTP)
 
 	for pattern, handler := range s.customHandlers {
 		mux.HandleFunc(pattern, s.rbacMiddleware(s.rateLimitMiddleware(http.HandlerFunc(handler))).ServeHTTP)
@@ -241,7 +242,11 @@ func (s *Server) routeRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Handle /runs/{id}/compare/{id2}
+	if path == "validate" {
+		s.handleValidateConfig(w, r)
+		return
+	}
+
 	if strings.Contains(path, "/compare/") {
 		s.handleCompareRuns(w, r)
 		return

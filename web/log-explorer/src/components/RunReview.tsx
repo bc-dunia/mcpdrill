@@ -86,7 +86,7 @@ export function RunReview({ config, onStart, isStarting, error }: Props) {
         isValidating: false,
         isValid: null,
         errors: [{
-          field: 'general',
+          level: 'error',
           code: 'VALIDATION_FAILED',
           message: err instanceof Error ? err.message : 'Validation request failed',
         }],
@@ -228,9 +228,10 @@ export function RunReview({ config, onStart, isStarting, error }: Props) {
               {validation.errors.map((err, idx) => (
                 <li key={idx} className="validation-item error">
                   <Icon name="x" size="xs" aria-hidden={true} />
-                  <span className="validation-field">{err.field}:</span>
+                  {err.json_pointer && <span className="validation-field">{err.json_pointer}:</span>}
                   <span className="validation-message">{err.message}</span>
                   {err.code && <code className="validation-code">{err.code}</code>}
+                  {err.remediation && <span className="validation-remediation">{err.remediation}</span>}
                 </li>
               ))}
             </ul>
@@ -247,9 +248,10 @@ export function RunReview({ config, onStart, isStarting, error }: Props) {
               {validation.warnings.map((warn, idx) => (
                 <li key={idx} className="validation-item warning">
                   <Icon name="alert-triangle" size="xs" aria-hidden={true} />
-                  <span className="validation-field">{warn.field}:</span>
+                  {warn.json_pointer && <span className="validation-field">{warn.json_pointer}:</span>}
                   <span className="validation-message">{warn.message}</span>
                   {warn.code && <code className="validation-code">{warn.code}</code>}
+                  {warn.remediation && <span className="validation-remediation">{warn.remediation}</span>}
                 </li>
               ))}
             </ul>
