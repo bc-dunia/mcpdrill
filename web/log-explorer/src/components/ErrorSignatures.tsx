@@ -5,6 +5,7 @@ import { CONFIG } from '../config';
 
 interface ErrorSignaturesProps {
   runId: string;
+  onErrorClick?: (errorType: string) => void;
 }
 
 function formatTime(ms: number): string {
@@ -12,7 +13,7 @@ function formatTime(ms: number): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-function ErrorSignaturesComponent({ runId }: ErrorSignaturesProps) {
+function ErrorSignaturesComponent({ runId, onErrorClick }: ErrorSignaturesProps) {
   const [signatures, setSignatures] = useState<ErrorSignature[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +108,20 @@ function ErrorSignaturesComponent({ runId }: ErrorSignaturesProps) {
           <div key={index} className="error-signature-item">
             <div className="error-signature-header">
               <span className="error-count">{sig.count}x</span>
-              <span className="error-pattern" title={sig.sample_error}>{sig.pattern}</span>
+              {onErrorClick ? (
+                <button
+                  type="button"
+                  className="error-pattern-link"
+                  onClick={() => onErrorClick(sig.pattern)}
+                  title={`Filter logs by: ${sig.pattern}`}
+                >
+                  {sig.pattern}
+                </button>
+              ) : (
+                <span className="error-pattern" title={sig.sample_error}>
+                  {sig.pattern}
+                </span>
+              )}
             </div>
             <div className="error-signature-details">
               <div className="error-detail">

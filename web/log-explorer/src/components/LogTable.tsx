@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import type { OperationLog, PaginationState } from '../types'
+import type { OperationLog, PaginationState, LogFilters } from '../types'
 import { SkeletonTable } from './Skeleton'
 import { Icon } from './Icon';
 
@@ -9,6 +9,7 @@ interface LogTableProps {
   pagination: PaginationState;
   onPageChange: (offset: number) => void;
   onLimitChange?: (limit: number) => void;
+  onFilterClick?: (key: keyof LogFilters, value: string) => void;
 }
 
 function formatTimestamp(ms: number | undefined | null): string {
@@ -31,7 +32,13 @@ function formatLatency(ms: number | undefined | null): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-function LogTableComponent({ logs, loading, pagination, onPageChange, onLimitChange }: LogTableProps) {
+function truncateId(id: string | undefined | null, chars = 6): string {
+  if (!id) return '—';
+  if (id.length <= chars) return id;
+  return '...' + id.slice(-chars);
+}
+
+function LogTableComponent({ logs, loading, pagination, onPageChange, onLimitChange, onFilterClick }: LogTableProps) {
   const { offset, limit, total } = pagination;
   const currentPage = Math.floor(offset / limit) + 1;
   const totalPages = Math.ceil(total / limit);
@@ -52,7 +59,7 @@ function LogTableComponent({ logs, loading, pagination, onPageChange, onLimitCha
   };
 
   if (loading) {
-    return <SkeletonTable rows={8} columns={6} />;
+    return <SkeletonTable rows={8} columns={11} />;
   }
 
   if (logs.length === 0) {
@@ -69,15 +76,20 @@ function LogTableComponent({ logs, loading, pagination, onPageChange, onLimitCha
       <div className="log-table-scroll">
         <table className="log-table">
           <caption className="sr-only">
-            Operation logs showing timestamp, operation type, tool name, latency, status, and error information
+            Operation logs showing timestamp, stage ID, worker ID, VU ID, session ID, operation type, tool name, latency, status, stream info, and error information
           </caption>
           <thead>
             <tr>
               <th scope="col">Timestamp</th>
+              <th scope="col">Stage</th>
+              <th scope="col">Worker</th>
+              <th scope="col">VU</th>
+              <th scope="col">Session</th>
               <th scope="col">Operation</th>
               <th scope="col">Tool</th>
               <th scope="col">Latency</th>
               <th scope="col">Status</th>
+              <th scope="col">Stream</th>
               <th scope="col">Error</th>
             </tr>
           </thead>
@@ -91,6 +103,78 @@ function LogTableComponent({ logs, loading, pagination, onPageChange, onLimitCha
               >
                 <td className="cell-timestamp">
                   <span className="timestamp-value">{formatTimestamp(log.timestamp_ms)}</span>
+                </td>
+                <td className="cell-id">
+                  {log.stage_id ? (
+                    onFilterClick ? (
+                      <button 
+                        type="button"
+                        className="filter-link"
+                        onClick={() => onFilterClick('stage_id', log.stage_id)}
+                        title={`Filter by stage: ${log.stage_id}`}
+                      >
+                        {truncateId(log.stage_id)}
+                      </button>
+                    ) : (
+                      <code title={log.stage_id}>{truncateId(log.stage_id)}</code>
+                    )
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+                <td className="cell-id">
+                  {log.worker_id ? (
+                    onFilterClick ? (
+                      <button 
+                        type="button"
+                        className="filter-link"
+                        onClick={() => onFilterClick('worker_id', log.worker_id)}
+                        title={`Filter by worker: ${log.worker_id}`}
+                      >
+                        {truncateId(log.worker_id)}
+                      </button>
+                    ) : (
+                      <code title={log.worker_id}>{truncateId(log.worker_id)}</code>
+                    )
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+                <td className="cell-id">
+                  {log.vu_id ? (
+                    onFilterClick ? (
+                      <button 
+                        type="button"
+                        className="filter-link"
+                        onClick={() => onFilterClick('vu_id', log.vu_id)}
+                        title={`Filter by VU: ${log.vu_id}`}
+                      >
+                        {truncateId(log.vu_id)}
+                      </button>
+                    ) : (
+                      <code title={log.vu_id}>{truncateId(log.vu_id)}</code>
+                    )
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+                <td className="cell-id">
+                  {log.session_id ? (
+                    onFilterClick ? (
+                      <button 
+                        type="button"
+                        className="filter-link"
+                        onClick={() => onFilterClick('session_id', log.session_id)}
+                        title={`Filter by session: ${log.session_id}`}
+                      >
+                        {truncateId(log.session_id)}
+                      </button>
+                    ) : (
+                      <code title={log.session_id}>{truncateId(log.session_id)}</code>
+                    )
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
                 </td>
                 <td className="cell-operation">
                   <code>{log.operation}</code>
@@ -107,6 +191,19 @@ function LogTableComponent({ logs, loading, pagination, onPageChange, onLimitCha
                   <span className={`status-badge ${log.ok ? 'status-ok' : 'status-error'}`}>
                     {log.ok ? 'OK' : 'Error'}
                   </span>
+                </td>
+                <td className="cell-stream">
+                  {log.stream?.is_streaming ? (
+                    <span 
+                      className={`stream-badge ${log.stream.stalled ? 'stream-stalled' : log.stream.ended_normally ? 'stream-ok' : 'stream-error'}`}
+                      title={`Events: ${log.stream.events_count}${log.stream.stalled ? ` | Stalled: ${log.stream.stall_duration_ms}ms` : ''}`}
+                    >
+                      {log.stream.stalled ? 'Stalled' : log.stream.ended_normally ? 'OK' : 'Err'}
+                      <span className="stream-count">{log.stream.events_count}</span>
+                    </span>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
                 </td>
                 <td className="cell-error">
                   {log.error_type ? (

@@ -798,6 +798,85 @@ h1.logo-text,
   color: var(--text-muted);
 }
 
+/* Stream info column */
+.cell-stream {
+  white-space: nowrap;
+}
+
+.stream-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+
+.stream-badge.stream-ok {
+  background: rgba(74, 222, 128, 0.1);
+  color: var(--accent-green);
+  border-color: rgba(74, 222, 128, 0.2);
+}
+
+.stream-badge.stream-error {
+  background: rgba(248, 113, 113, 0.1);
+  color: var(--accent-red);
+  border-color: rgba(248, 113, 113, 0.2);
+}
+
+.stream-badge.stream-stalled {
+  background: rgba(251, 191, 36, 0.1);
+  color: var(--accent-amber);
+  border-color: rgba(251, 191, 36, 0.2);
+}
+
+.stream-count {
+  background: var(--bg-tertiary);
+  padding: 0 4px;
+  border-radius: 2px;
+  font-size: 10px;
+}
+
+/* Clickable filter links in log table */
+.filter-link {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-tertiary);
+  color: var(--accent-cyan);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--duration-fast) ease;
+}
+
+.filter-link:hover {
+  background: var(--accent-cyan);
+  color: var(--bg-primary);
+  border-color: var(--accent-cyan);
+}
+
+.filter-link:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+/* Compact ID columns */
+.cell-id {
+  white-space: nowrap;
+}
+
+.cell-id code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
 .pagination {
   display: flex;
   align-items: center;
@@ -987,6 +1066,30 @@ h1.logo-text,
   color: var(--text-primary);
   word-break: break-word;
   line-height: 1.4;
+}
+
+.error-pattern-link {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: transparent;
+  border: none;
+  color: var(--accent-red);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  word-break: break-word;
+  line-height: 1.4;
+  transition: color var(--duration-fast) ease;
+}
+
+.error-pattern-link:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.error-pattern-link:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
 }
 
 .error-signature-details {
@@ -3892,6 +3995,38 @@ h1.logo-text,
   height: 14px;
 }
 
+/* Stage filter bar in metrics */
+.stage-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.stage-filter-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.stage-filter-info {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.select-small {
+  padding: 8px 32px 8px 12px;
+  min-height: 36px;
+  font-size: 13px;
+}
+
 /* Stability events section */
 .stability-events-section {
   margin-top: var(--space-6);
@@ -5612,6 +5747,19 @@ h1.logo-text,
 
 .session-lifecycle-table tbody tr:hover {
   background: var(--bg-tertiary);
+}
+
+.session-row-clickable {
+  cursor: pointer;
+}
+
+.session-row-clickable:hover {
+  background: var(--bg-hover);
+}
+
+.session-row-clickable:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: -2px;
 }
 
 .session-lifecycle-table .session-id {

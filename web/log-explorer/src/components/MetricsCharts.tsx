@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import type { MetricsDataPoint, MetricsSummary, StabilityMetrics, StageMarker } from '../types';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import type { MetricsDataPoint, MetricsSummary, StabilityMetrics, StageMarker, LogFilters } from '../types';
 import { LatencyChart } from './LatencyChart';
 import { ThroughputChart } from './ThroughputChart';
 import { ErrorRateChart } from './ErrorRateChart';
@@ -29,6 +29,7 @@ interface MetricsChartsProps {
   stabilityLoading: boolean;
   summary: MetricsSummary;
   stageMarkers?: StageMarker[];
+  onNavigateToLogs?: (key: keyof LogFilters, value: string) => void;
 }
 
 export function MetricsTabs({ activeTab, onChange }: MetricsTabsProps) {
@@ -72,19 +73,55 @@ export function MetricsCharts({
   stabilityLoading,
   summary,
   stageMarkers,
+  onNavigateToLogs,
 }: MetricsChartsProps) {
   const [brushRange, setBrushRange] = useState<BrushRange>({
     startIndex: 0,
     endIndex: Math.max(0, dataPoints.length - 1),
   });
   const [hasUserZoomed, setHasUserZoomed] = useState(false);
+  const [selectedStage, setSelectedStage] = useState<string>('all');
   const prevRunIdRef = useRef(runId);
+
+  const availableStages = useMemo(() => {
+    if (!stageMarkers || stageMarkers.length === 0) return [];
+    // Get unique stages in order
+    const seen = new Set<string>();
+    return stageMarkers.filter(m => {
+      if (seen.has(m.stage)) return false;
+      seen.add(m.stage);
+      return true;
+    });
+  }, [stageMarkers]);
+
+  const filteredDataPoints = useMemo(() => {
+    if (selectedStage === 'all' || !stageMarkers || stageMarkers.length === 0) {
+      return dataPoints;
+    }
+    
+    // Find the stage marker(s) for selected stage
+    const stageIndices = stageMarkers
+      .map((m, i) => ({ marker: m, index: i }))
+      .filter(({ marker }) => marker.stage === selectedStage);
+    
+    if (stageIndices.length === 0) return dataPoints;
+    
+    // Get time range: from first occurrence of stage to next different stage (or end)
+    const startTs = stageIndices[0].marker.timestamp;
+    const nextStageIndex = stageIndices[stageIndices.length - 1].index + 1;
+    const endTs = nextStageIndex < stageMarkers.length 
+      ? stageMarkers[nextStageIndex].timestamp 
+      : Infinity;
+    
+    return dataPoints.filter(d => d.timestamp >= startTs && d.timestamp < endTs);
+  }, [dataPoints, stageMarkers, selectedStage]);
 
   useEffect(() => {
     if (runId !== prevRunIdRef.current) {
       prevRunIdRef.current = runId;
       setHasUserZoomed(false);
       setBrushRange({ startIndex: 0, endIndex: 0 });
+      setSelectedStage('all');
     }
   }, [runId]);
 
@@ -92,15 +129,15 @@ export function MetricsCharts({
     if (!hasUserZoomed) {
       setBrushRange({
         startIndex: 0,
-        endIndex: Math.max(0, dataPoints.length - 1),
+        endIndex: Math.max(0, filteredDataPoints.length - 1),
       });
     } else {
       setBrushRange(prev => ({
         startIndex: prev.startIndex,
-        endIndex: Math.max(prev.endIndex, dataPoints.length - 1),
+        endIndex: Math.max(prev.endIndex, filteredDataPoints.length - 1),
       }));
     }
-  }, [dataPoints.length, hasUserZoomed]);
+  }, [filteredDataPoints.length, hasUserZoomed]);
 
   const handleBrushChange = useCallback((range: BrushRange) => {
     setHasUserZoomed(true);
@@ -111,16 +148,51 @@ export function MetricsCharts({
     setHasUserZoomed(false);
     setBrushRange({
       startIndex: 0,
-      endIndex: Math.max(0, dataPoints.length - 1),
+      endIndex: Math.max(0, filteredDataPoints.length - 1),
     });
-  }, [dataPoints.length]);
+  }, [filteredDataPoints.length]);
 
-  const isZoomed = dataPoints.length > 0 && (brushRange.startIndex > 0 || brushRange.endIndex < dataPoints.length - 1);
+  const handleToolClick = useCallback((toolName: string) => {
+    onNavigateToLogs?.('tool_name', toolName);
+  }, [onNavigateToLogs]);
+
+  const handleSessionClick = useCallback((sessionId: string) => {
+    onNavigateToLogs?.('session_id', sessionId);
+  }, [onNavigateToLogs]);
+
+  const isZoomed = filteredDataPoints.length > 0 && (brushRange.startIndex > 0 || brushRange.endIndex < filteredDataPoints.length - 1);
 
   return (
     <>
       {activeTab === 'overview' && (
         <div id="metrics-overview-panel" role="tabpanel" aria-labelledby="metrics-overview-tab">
+          {availableStages.length > 1 && (
+            <div className="stage-filter-bar">
+              <label htmlFor="stage-filter" className="stage-filter-label">
+                <Icon name="list" size="sm" aria-hidden={true} />
+                Stage:
+              </label>
+              <select
+                id="stage-filter"
+                value={selectedStage}
+                onChange={(e) => setSelectedStage(e.target.value)}
+                className="select-input select-small"
+              >
+                <option value="all">All Stages</option>
+                {availableStages.map((m) => (
+                  <option key={m.stage} value={m.stage}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              {selectedStage !== 'all' && (
+                <span className="stage-filter-info">
+                  {filteredDataPoints.length} of {dataPoints.length} points
+                </span>
+              )}
+            </div>
+          )}
+
           <MetricsSummarySection
             summary={summary}
             isRunActive={isRunActive}
@@ -143,7 +215,7 @@ export function MetricsCharts({
           <div className="metrics-charts-grid-hierarchical">
             <div className="chart-cell chart-primary">
               <ThroughputChart 
-                data={dataPoints} 
+                data={filteredDataPoints} 
                 loading={loading && dataPoints.length === 0}
                 enableBrush={true}
                 brushRange={brushRange}
@@ -159,7 +231,7 @@ export function MetricsCharts({
             </div>
             <div className="chart-cell chart-primary">
               <LatencyChart 
-                data={dataPoints} 
+                data={filteredDataPoints} 
                 loading={loading && dataPoints.length === 0}
                 brushRange={brushRange}
                 stageMarkers={stageMarkers}
@@ -167,7 +239,7 @@ export function MetricsCharts({
             </div>
             <div className="chart-cell chart-secondary">
               <ErrorRateChart 
-                data={dataPoints} 
+                data={filteredDataPoints} 
                 loading={loading && dataPoints.length === 0}
                 threshold={0.1}
                 brushRange={brushRange}
@@ -195,6 +267,7 @@ export function MetricsCharts({
               <SessionLifecycleTable
                 sessions={stability?.session_metrics ?? []}
                 loading={stabilityLoading}
+                onSessionClick={handleSessionClick}
               />
             </div>
           )}
@@ -210,7 +283,7 @@ export function MetricsCharts({
 
       {activeTab === 'tools' && (
         <div id="metrics-tools-panel" role="tabpanel" aria-labelledby="metrics-tools-tab">
-          <ToolMetricsDashboard runId={runId} />
+          <ToolMetricsDashboard runId={runId} onToolClick={handleToolClick} />
         </div>
       )}
     </>

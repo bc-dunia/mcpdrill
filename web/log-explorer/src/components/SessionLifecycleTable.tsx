@@ -5,6 +5,7 @@ import { Icon } from './Icon';
 interface SessionLifecycleTableProps {
   sessions: ConnectionMetrics[];
   loading?: boolean;
+  onSessionClick?: (sessionId: string) => void;
 }
 
 type SortField = 'session_id' | 'state' | 'request_count' | 'error_count' | 'avg_latency_ms' | 'reconnect_count';
@@ -29,7 +30,7 @@ function getStateColor(state: string): string {
   }
 }
 
-function SessionLifecycleTableComponent({ sessions, loading }: SessionLifecycleTableProps) {
+function SessionLifecycleTableComponent({ sessions, loading, onSessionClick }: SessionLifecycleTableProps) {
   const [sortField, setSortField] = useState<SortField>('request_count');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [filter, setFilter] = useState<'all' | 'active' | 'dropped' | 'terminated'>('all');
@@ -187,7 +188,19 @@ function SessionLifecycleTableComponent({ sessions, loading }: SessionLifecycleT
           </thead>
           <tbody>
             {filteredAndSortedSessions.slice(0, 50).map((session) => (
-              <tr key={session.session_id} className={`session-row state-${session.state}`}>
+              <tr
+                key={session.session_id}
+                className={`session-row state-${session.state} ${onSessionClick ? 'session-row-clickable' : ''}`}
+                onClick={() => onSessionClick?.(session.session_id)}
+                tabIndex={onSessionClick ? 0 : undefined}
+                onKeyDown={(e) => {
+                  if (onSessionClick && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    onSessionClick(session.session_id);
+                  }
+                }}
+                role={onSessionClick ? 'button' : undefined}
+              >
                 <td className="session-id" title={session.session_id}>
                   {session.session_id.slice(0, 12)}...
                 </td>

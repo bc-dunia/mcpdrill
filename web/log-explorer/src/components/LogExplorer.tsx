@@ -194,6 +194,24 @@ export function LogExplorer() {
     setLogsPerPage(newLimit);
   }, []);
 
+  const handleLogFilterClick = useCallback((key: keyof LogFilters, value: string) => {
+    const newFilters = { ...filters, [key]: value };
+    handleFilterChange(newFilters);
+  }, [filters, handleFilterChange]);
+
+  const handleNavigateToLogs = useCallback((key: keyof LogFilters, value: string) => {
+    setActiveTab('logs');
+    
+    const params = new URLSearchParams();
+    params.set(key, value);
+    prevSearchParamsRef.current = params.toString();
+    setSearchParams(params, { replace: true });
+    navigate(`/runs/${selectedRunId}/logs?${params.toString()}`);
+    
+    setFilters({ ...emptyFilters, [key]: value });
+    setPagination(prev => ({ ...prev, offset: 0 }));
+  }, [selectedRunId, navigate, setSearchParams]);
+
   const handleExportJSON = useCallback(() => {
     const filename = `logs-${selectedRunId}-${Date.now()}.json`;
     exportAsJSON(logs, filename);
@@ -224,6 +242,10 @@ export function LogExplorer() {
   const handleNavigateToWizard = useCallback(() => {
     navigate('/wizard');
   }, [navigate]);
+
+  const handleErrorClick = useCallback((errorType: string) => {
+    handleNavigateToLogs('error_type', errorType);
+  }, [handleNavigateToLogs]);
 
   return (
     <div className="log-explorer">
@@ -308,19 +330,20 @@ export function LogExplorer() {
                   pagination={pagination}
                   onPageChange={handlePageChange}
                   onLimitChange={handleLimitChange}
+                  onFilterClick={handleLogFilterClick}
                 />
               )}
             </div>
 
             <aside className="error-signatures-sidebar">
-              <ErrorSignatures runId={selectedRunId} />
+              <ErrorSignatures runId={selectedRunId} onErrorClick={handleErrorClick} />
             </aside>
           </div>
         </>
       )}
 
       {selectedRunId && activeTab === 'metrics' && (
-        <MetricsDashboard runId={selectedRunId} run={selectedRun} onNavigateToWizard={handleNavigateToWizard} />
+        <MetricsDashboard runId={selectedRunId} run={selectedRun} onNavigateToWizard={handleNavigateToWizard} onNavigateToLogs={handleNavigateToLogs} />
       )}
 
       {!selectedRunId && (

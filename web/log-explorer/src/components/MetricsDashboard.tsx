@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import type { RunInfo, MetricsDataPoint, MetricsSummary } from '../types';
+import type { RunInfo, MetricsDataPoint, MetricsSummary, LogFilters } from '../types';
 import { Icon } from './Icon';
 import { useMetricsData, type LatestTotals } from '../hooks/useMetricsData';
 import { MetricsCharts, MetricsTabs } from './MetricsCharts';
@@ -10,6 +10,7 @@ interface MetricsDashboardProps {
   runId: string;
   run?: RunInfo;
   onNavigateToWizard?: () => void;
+  onNavigateToLogs?: (key: keyof LogFilters, value: string) => void;
 }
 
 function calculateSummary(
@@ -46,7 +47,7 @@ function calculateSummary(
   };
 }
 
-export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDashboardProps) {
+export function MetricsDashboard({ runId, run, onNavigateToWizard, onNavigateToLogs }: MetricsDashboardProps) {
   const [activeMetricsTab, setActiveMetricsTab] = useState<'overview' | 'tools'>('overview');
   const [stopReasonDismissed, setStopReasonDismissed] = useState(false);
 
@@ -161,6 +162,7 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard }: MetricsDash
         stabilityLoading={stabilityLoading}
         summary={summary}
         stageMarkers={stageMarkers}
+        onNavigateToLogs={onNavigateToLogs}
       />
     </section>
   );
