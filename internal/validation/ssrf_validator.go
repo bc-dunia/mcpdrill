@@ -88,6 +88,11 @@ func (v *SSRFValidator) validateHost(parsed *url.URL, report *ValidationReport) 
 }
 
 func (v *SSRFValidator) validateIPAddress(ip net.IP, report *ValidationReport) {
+	// If IP is in allowed private networks, skip all IP literal blocking
+	if v.isPrivateNetworkAllowed(ip) {
+		return
+	}
+
 	report.AddErrorWithRemediation(CodeIPLiteralBlocked,
 		"IP literal targets are not allowed",
 		"/target/url",
