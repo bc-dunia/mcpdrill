@@ -20,12 +20,16 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":8080", "HTTP server address")
-	authMode := flag.String("auth-mode", "none", "Authentication mode: none, api_key, jwt")
+	authMode := flag.String("auth-mode", "api_key", "Authentication mode: none, api_key, jwt")
 	apiKeys := flag.String("api-keys", "", "Comma-separated API keys (for api_key mode)")
 	jwtSecret := flag.String("jwt-secret", "", "JWT secret (for jwt mode)")
+	insecure := flag.Bool("insecure", false, "Allow unauthenticated mode (only safe on loopback)")
 	enableAgentIngest := flag.Bool("enable-agent-ingest", false, "Enable agent telemetry ingestion endpoints")
 	agentTokens := flag.String("agent-tokens", "", "Comma-separated tokens for agent authentication")
 	allowPrivateNetworks := flag.String("allow-private-networks", "", "Comma-separated CIDR ranges to allow (e.g., '127.0.0.0/8,10.0.0.0/8' for local testing)")
+	allowPrivateDiscovery := flag.Bool("allow-private-discovery", false, "Allow discovery endpoints to access private networks")
+	insecureWorkerAuth := flag.Bool("insecure-worker-auth", false, "Disable worker token authentication (not recommended)")
+	redactAssignmentSecrets := flag.Bool("redact-assignment-secrets", false, "Redact sensitive headers and tokens in worker assignments")
 	rateLimit := flag.Float64("rate-limit", 100, "API rate limit in requests/second (0 to disable)")
 	rateBurst := flag.Int("rate-burst", 200, "API rate limit burst size")
 	flag.Parse()
@@ -58,6 +62,9 @@ func main() {
 	server.SetTelemetryStore(api.NewTelemetryStore())
 	server.SetMetricsCollector(metrics.NewCollector())
 	rm.SetAssignmentSender(api.NewServerAssignmentAdapter(server))
+	server.SetAllowPrivateNetworks(*allowPrivateDiscovery)
+	server.SetWorkerAuthEnabled(!*insecureWorkerAuth)
+	server.SetRedactAssignmentSecrets(*redactAssignmentSecrets)
 
 	server.SetRateLimiterConfig(&api.RateLimiterConfig{
 		RequestsPerSecond: *rateLimit,
@@ -65,9 +72,18 @@ func main() {
 		Enabled:           *rateLimit > 0,
 	})
 
+	if strings.EqualFold(*authMode, string(auth.AuthModeNone)) && !*insecure {
+		fmt.Fprintln(os.Stderr, "Refusing to start with auth disabled without --insecure")
+		os.Exit(1)
+	}
+
 	authConfig := &auth.Config{
-		Mode:      auth.AuthMode(*authMode),
-		SkipPaths: []string{"/healthz", "/readyz"},
+		Mode:         auth.AuthMode(*authMode),
+		InsecureMode: *insecure,
+		SkipPaths:    []string{"/healthz", "/readyz"},
+	}
+	if *insecure {
+		authConfig.Mode = auth.AuthModeNone
 	}
 	if *apiKeys != "" {
 		authConfig.APIKeys = strings.Split(*apiKeys, ",")

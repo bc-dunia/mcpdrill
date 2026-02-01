@@ -1,9 +1,14 @@
 package api
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
+	"log"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"github.com/bc-dunia/mcpdrill/internal/controlplane/scheduler"
 	"github.com/bc-dunia/mcpdrill/internal/types"
@@ -69,12 +74,25 @@ func (s *Server) handleRegisterWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.writeJSON(w, http.StatusCreated, &RegisterWorkerResponse{WorkerID: string(workerID)})
+	workerToken, err := s.issueWorkerToken(string(workerID))
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, NewInternalErrorResponse("failed to issue worker token"))
+		return
+	}
+
+	s.writeJSON(w, http.StatusCreated, &RegisterWorkerResponse{
+		WorkerID:    string(workerID),
+		WorkerToken: workerToken,
+	})
 }
 
 func (s *Server) handleWorkerHeartbeat(w http.ResponseWriter, r *http.Request, workerID string) {
 	if r.Method != http.MethodPost {
 		s.writeMethodNotAllowed(w, r.Method, "POST")
+		return
+	}
+
+	if !s.verifyWorkerToken(w, r, workerID) {
 		return
 	}
 
@@ -138,6 +156,10 @@ func (s *Server) handleWorkerTelemetry(w http.ResponseWriter, r *http.Request, w
 		return
 	}
 
+	if !s.verifyWorkerToken(w, r, workerID) {
+		return
+	}
+
 	var req TelemetryBatchRequest
 	if err := json.NewDecoder(limitedBody(w, r)).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, NewInvalidRequestErrorResponse(
@@ -147,7 +169,6 @@ func (s *Server) handleWorkerTelemetry(w http.ResponseWriter, r *http.Request, w
 		return
 	}
 
-	// Validate required correlation keys per spec
 	if validationErr := s.validateTelemetryCorrelationKeys(req, workerID); validationErr != nil {
 		s.writeError(w, http.StatusBadRequest, validationErr)
 		return
@@ -319,6 +340,10 @@ func (s *Server) handleGetAssignments(w http.ResponseWriter, r *http.Request, wo
 		return
 	}
 
+	if !s.verifyWorkerToken(w, r, workerID) {
+		return
+	}
+
 	if s.registry == nil {
 		s.writeError(w, http.StatusInternalServerError, NewInternalErrorResponse("registry not configured"))
 		return
@@ -341,6 +366,9 @@ func (s *Server) handleGetAssignments(w http.ResponseWriter, r *http.Request, wo
 	}
 
 	assignments := s.getAssignmentsForWorker(workerID)
+	if s.shouldRedactAssignmentSecrets() {
+		assignments = redactAssignments(assignments)
+	}
 	s.writeJSON(w, http.StatusOK, &GetAssignmentsResponse{Assignments: assignments})
 }
 
@@ -369,7 +397,20 @@ func (s *Server) AddAssignment(workerID string, assignment types.WorkerAssignmen
 		s.pendingAssignments = make(map[string][]types.WorkerAssignment)
 	}
 
-	s.pendingAssignments[workerID] = append(s.pendingAssignments[workerID], assignment)
+	limit := s.maxPendingAssignmentsPerWorker
+	if limit <= 0 {
+		limit = defaultMaxPendingAssignmentsPerWorker
+	}
+
+	queue := s.pendingAssignments[workerID]
+	if len(queue) >= limit {
+		dropCount := len(queue) - limit + 1
+		queue = queue[dropCount:]
+		log.Printf("[Server] Pending assignments limit hit for worker %s: dropped %d oldest", workerID, dropCount)
+	}
+
+	queue = append(queue, assignment)
+	s.pendingAssignments[workerID] = queue
 }
 
 type ServerAssignmentAdapter struct {
@@ -386,4 +427,90 @@ func (a *ServerAssignmentAdapter) AddAssignment(workerID string, assignment type
 
 func (s *Server) extractRunIDFromTelemetry(req TelemetryBatchRequest) string {
 	return req.RunID
+}
+
+func (s *Server) issueWorkerToken(workerID string) (string, error) {
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", err
+	}
+	token := hex.EncodeToString(tokenBytes)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.workerTokens == nil {
+		s.workerTokens = make(map[string]string)
+	}
+	s.workerTokens[workerID] = token
+	return token, nil
+}
+
+func (s *Server) verifyWorkerToken(w http.ResponseWriter, r *http.Request, workerID string) bool {
+	if !s.isWorkerAuthEnabled() {
+		return true
+	}
+
+	// Security: worker endpoints carry assignment secrets, so require a worker token.
+	token := r.Header.Get("X-Worker-Token")
+	if token == "" {
+		s.writeError(w, http.StatusUnauthorized, &ErrorResponse{
+			ErrorType:    ErrorTypeUnauthorized,
+			ErrorCode:    "WORKER_AUTH_REQUIRED",
+			ErrorMessage: "Worker token required",
+			Retryable:    false,
+		})
+		return false
+	}
+
+	s.mu.Lock()
+	expected, ok := s.workerTokens[workerID]
+	s.mu.Unlock()
+	if !ok || subtle.ConstantTimeCompare([]byte(token), []byte(expected)) != 1 {
+		s.writeError(w, http.StatusUnauthorized, &ErrorResponse{
+			ErrorType:    ErrorTypeUnauthorized,
+			ErrorCode:    "INVALID_WORKER_TOKEN",
+			ErrorMessage: "Invalid worker token",
+			Retryable:    false,
+		})
+		return false
+	}
+
+	return true
+}
+
+func redactAssignments(assignments []types.WorkerAssignment) []types.WorkerAssignment {
+	if len(assignments) == 0 {
+		return assignments
+	}
+	redacted := make([]types.WorkerAssignment, len(assignments))
+	for i, assignment := range assignments {
+		redacted[i] = assignment
+		if assignment.Target.Headers != nil {
+			headers := make(map[string]string, len(assignment.Target.Headers))
+			for key, value := range assignment.Target.Headers {
+				if isSensitiveHeader(key) {
+					headers[key] = "[redacted]"
+					continue
+				}
+				headers[key] = value
+			}
+			redacted[i].Target.Headers = headers
+		}
+		if assignment.Target.Auth != nil && len(assignment.Target.Auth.Tokens) > 0 {
+			redacted[i].Target.Auth = &types.AuthConfig{
+				Type:   assignment.Target.Auth.Type,
+				Tokens: []string{"[redacted]"},
+			}
+		}
+	}
+	return redacted
+}
+
+func isSensitiveHeader(header string) bool {
+	switch strings.ToLower(header) {
+	case "authorization", "proxy-authorization", "x-api-key", "x-auth-token":
+		return true
+	default:
+		return false
+	}
 }

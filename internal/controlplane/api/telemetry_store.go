@@ -74,21 +74,7 @@ func (ts *TelemetryStore) AddTelemetryBatch(runID string, batch TelemetryBatchRe
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
-	rt, ok := ts.runs[runID]
-	if !ok {
-		// Check if we need to evict
-		ts.evictIfNeeded()
-
-		rt = &runTelemetry{
-			runID:       runID,
-			startTimeMs: 0,
-			endTimeMs:   0,
-			operations:  make([]analysis.OperationResult, 0),
-			logs:        make([]OperationLog, 0),
-		}
-		ts.runs[runID] = rt
-		ts.runOrder = append(ts.runOrder, runID)
-	}
+	rt := ts.getOrCreateRunTelemetry(runID)
 
 	for _, op := range batch.Operations {
 		if rt.startTimeMs == 0 || op.TimestampMs < rt.startTimeMs {
@@ -169,6 +155,28 @@ func (ts *TelemetryStore) evictIfNeeded() {
 	}
 }
 
+// getOrCreateRunTelemetry returns the run telemetry entry, creating it if needed.
+// Must be called with lock held so eviction and run order are consistent.
+func (ts *TelemetryStore) getOrCreateRunTelemetry(runID string) *runTelemetry {
+	if rt, ok := ts.runs[runID]; ok {
+		return rt
+	}
+
+	// Check if we need to evict
+	ts.evictIfNeeded()
+
+	rt := &runTelemetry{
+		runID:       runID,
+		startTimeMs: 0,
+		endTimeMs:   0,
+		operations:  make([]analysis.OperationResult, 0),
+		logs:        make([]OperationLog, 0),
+	}
+	ts.runs[runID] = rt
+	ts.runOrder = append(ts.runOrder, runID)
+	return rt
+}
+
 // extractStageName is deprecated - stage should be explicitly provided in telemetry.
 // This function is kept for backward compatibility but returns empty string
 // to encourage explicit stage reporting.
@@ -198,15 +206,7 @@ func (ts *TelemetryStore) SetRunMetadata(runID, scenarioID, stopReason string) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
-	rt, ok := ts.runs[runID]
-	if !ok {
-		rt = &runTelemetry{
-			runID:      runID,
-			operations: make([]analysis.OperationResult, 0),
-			logs:       make([]OperationLog, 0),
-		}
-		ts.runs[runID] = rt
-	}
+	rt := ts.getOrCreateRunTelemetry(runID)
 
 	if scenarioID != "" {
 		rt.scenarioID = scenarioID

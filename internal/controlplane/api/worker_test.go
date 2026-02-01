@@ -17,7 +17,24 @@ func setupWorkerTestServer(t *testing.T) (*Server, *scheduler.Registry) {
 	registry := scheduler.NewRegistry()
 	server := NewServer("127.0.0.1:0", nil)
 	server.SetRegistry(registry)
+	server.SetWorkerAuthEnabled(false)
 	return server, registry
+}
+
+func registerWorkerWithToken(t *testing.T, server *Server, registry *scheduler.Registry, hostname string) (scheduler.WorkerID, string) {
+	t.Helper()
+	workerID, err := registry.RegisterWorker(
+		types.HostInfo{Hostname: hostname},
+		types.WorkerCapacity{MaxVUs: 100},
+	)
+	if err != nil {
+		t.Fatalf("failed to register worker: %v", err)
+	}
+	token, err := server.issueWorkerToken(string(workerID))
+	if err != nil {
+		t.Fatalf("failed to issue worker token: %v", err)
+	}
+	return workerID, token
 }
 
 func TestRegisterWorker_Success(t *testing.T) {
@@ -54,6 +71,9 @@ func TestRegisterWorker_Success(t *testing.T) {
 
 	if resp.WorkerID == "" {
 		t.Error("expected non-empty worker_id")
+	}
+	if resp.WorkerToken == "" {
+		t.Error("expected non-empty worker_token")
 	}
 }
 
@@ -165,13 +185,7 @@ func TestRegisterWorker_NoRegistry(t *testing.T) {
 func TestHeartbeat_Success(t *testing.T) {
 	server, registry := setupWorkerTestServer(t)
 
-	workerID, err := registry.RegisterWorker(
-		types.HostInfo{Hostname: "worker-1"},
-		types.WorkerCapacity{MaxVUs: 100},
-	)
-	if err != nil {
-		t.Fatalf("failed to register worker: %v", err)
-	}
+	workerID, token := registerWorkerWithToken(t, server, registry, "worker-1")
 
 	req := HeartbeatRequest{
 		Health: &types.WorkerHealth{
@@ -184,6 +198,7 @@ func TestHeartbeat_Success(t *testing.T) {
 	body, _ := json.Marshal(req)
 	httpReq := httptest.NewRequest(http.MethodPost, "/workers/"+string(workerID)+"/heartbeat", bytes.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-Worker-Token", token)
 	w := httptest.NewRecorder()
 
 	server.handleWorkerHeartbeat(w, httpReq, string(workerID))
@@ -205,12 +220,10 @@ func TestHeartbeat_Success(t *testing.T) {
 func TestHeartbeat_EmptyBody(t *testing.T) {
 	server, registry := setupWorkerTestServer(t)
 
-	workerID, _ := registry.RegisterWorker(
-		types.HostInfo{Hostname: "worker-1"},
-		types.WorkerCapacity{MaxVUs: 100},
-	)
+	workerID, token := registerWorkerWithToken(t, server, registry, "worker-1")
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/workers/"+string(workerID)+"/heartbeat", nil)
+	httpReq.Header.Set("X-Worker-Token", token)
 	w := httptest.NewRecorder()
 
 	server.handleWorkerHeartbeat(w, httpReq, string(workerID))
@@ -248,13 +261,11 @@ func TestHeartbeat_WorkerNotFound(t *testing.T) {
 func TestHeartbeat_InvalidJSON(t *testing.T) {
 	server, registry := setupWorkerTestServer(t)
 
-	workerID, _ := registry.RegisterWorker(
-		types.HostInfo{Hostname: "worker-1"},
-		types.WorkerCapacity{MaxVUs: 100},
-	)
+	workerID, token := registerWorkerWithToken(t, server, registry, "worker-1")
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/workers/"+string(workerID)+"/heartbeat", bytes.NewReader([]byte("invalid")))
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-Worker-Token", token)
 	w := httptest.NewRecorder()
 
 	server.handleWorkerHeartbeat(w, httpReq, string(workerID))
@@ -279,6 +290,7 @@ func TestHeartbeat_MethodNotAllowed(t *testing.T) {
 
 func TestHeartbeat_NoRegistry(t *testing.T) {
 	server := NewServer("127.0.0.1:0", nil)
+	server.SetWorkerAuthEnabled(false)
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/workers/worker-1/heartbeat", nil)
 	w := httptest.NewRecorder()
@@ -293,10 +305,7 @@ func TestHeartbeat_NoRegistry(t *testing.T) {
 func TestTelemetry_Success(t *testing.T) {
 	server, registry := setupWorkerTestServer(t)
 
-	workerID, _ := registry.RegisterWorker(
-		types.HostInfo{Hostname: "worker-1"},
-		types.WorkerCapacity{MaxVUs: 100},
-	)
+	workerID, token := registerWorkerWithToken(t, server, registry, "worker-1")
 
 	req := TelemetryBatchRequest{
 		RunID: "run_0000000000000001",
@@ -335,6 +344,7 @@ func TestTelemetry_Success(t *testing.T) {
 	body, _ := json.Marshal(req)
 	httpReq := httptest.NewRequest(http.MethodPost, "/workers/"+string(workerID)+"/telemetry", bytes.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-Worker-Token", token)
 	w := httptest.NewRecorder()
 
 	server.handleWorkerTelemetry(w, httpReq, string(workerID))
@@ -376,13 +386,11 @@ func TestTelemetry_WorkerNotFound(t *testing.T) {
 func TestTelemetry_InvalidJSON(t *testing.T) {
 	server, registry := setupWorkerTestServer(t)
 
-	workerID, _ := registry.RegisterWorker(
-		types.HostInfo{Hostname: "worker-1"},
-		types.WorkerCapacity{MaxVUs: 100},
-	)
+	workerID, token := registerWorkerWithToken(t, server, registry, "worker-1")
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/workers/"+string(workerID)+"/telemetry", bytes.NewReader([]byte("invalid")))
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-Worker-Token", token)
 	w := httptest.NewRecorder()
 
 	server.handleWorkerTelemetry(w, httpReq, string(workerID))
@@ -407,6 +415,7 @@ func TestTelemetry_MethodNotAllowed(t *testing.T) {
 
 func TestTelemetry_NoRegistry(t *testing.T) {
 	server := NewServer("127.0.0.1:0", nil)
+	server.SetWorkerAuthEnabled(false)
 
 	req := TelemetryBatchRequest{RunID: "run_0000000000000001", Operations: []types.OperationOutcome{}}
 	body, _ := json.Marshal(req)
@@ -444,12 +453,10 @@ func TestRouteWorkers_Register(t *testing.T) {
 func TestRouteWorkers_Heartbeat(t *testing.T) {
 	server, registry := setupWorkerTestServer(t)
 
-	workerID, _ := registry.RegisterWorker(
-		types.HostInfo{Hostname: "worker-1"},
-		types.WorkerCapacity{MaxVUs: 100},
-	)
+	workerID, token := registerWorkerWithToken(t, server, registry, "worker-1")
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/workers/"+string(workerID)+"/heartbeat", nil)
+	httpReq.Header.Set("X-Worker-Token", token)
 	w := httptest.NewRecorder()
 
 	server.routeWorkers(w, httpReq)
@@ -462,15 +469,13 @@ func TestRouteWorkers_Heartbeat(t *testing.T) {
 func TestRouteWorkers_Telemetry(t *testing.T) {
 	server, registry := setupWorkerTestServer(t)
 
-	workerID, _ := registry.RegisterWorker(
-		types.HostInfo{Hostname: "worker-1"},
-		types.WorkerCapacity{MaxVUs: 100},
-	)
+	workerID, token := registerWorkerWithToken(t, server, registry, "worker-1")
 
 	req := TelemetryBatchRequest{RunID: "run_0000000000000001", Operations: []types.OperationOutcome{}}
 	body, _ := json.Marshal(req)
 	httpReq := httptest.NewRequest(http.MethodPost, "/workers/"+string(workerID)+"/telemetry", bytes.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-Worker-Token", token)
 	w := httptest.NewRecorder()
 
 	server.routeWorkers(w, httpReq)
@@ -512,6 +517,7 @@ func TestConcurrentWorkerOperations(t *testing.T) {
 	var wg sync.WaitGroup
 	workerCount := 10
 	workerIDs := make([]scheduler.WorkerID, workerCount)
+	workerTokens := make([]string, workerCount)
 
 	for i := 0; i < workerCount; i++ {
 		wg.Add(1)
@@ -542,6 +548,7 @@ func TestConcurrentWorkerOperations(t *testing.T) {
 			}
 
 			workerIDs[idx] = scheduler.WorkerID(resp.WorkerID)
+			workerTokens[idx] = resp.WorkerToken
 		}(i)
 	}
 
@@ -555,9 +562,10 @@ func TestConcurrentWorkerOperations(t *testing.T) {
 		if workerIDs[i] == "" {
 			continue
 		}
+		token := workerTokens[i]
 
 		wg.Add(1)
-		go func(workerID scheduler.WorkerID) {
+		go func(workerID scheduler.WorkerID, token string) {
 			defer wg.Done()
 
 			for j := 0; j < 5; j++ {
@@ -568,6 +576,7 @@ func TestConcurrentWorkerOperations(t *testing.T) {
 				body, _ := json.Marshal(req)
 				httpReq := httptest.NewRequest(http.MethodPost, "/workers/"+string(workerID)+"/heartbeat", bytes.NewReader(body))
 				httpReq.Header.Set("Content-Type", "application/json")
+				httpReq.Header.Set("X-Worker-Token", token)
 				w := httptest.NewRecorder()
 
 				server.handleWorkerHeartbeat(w, httpReq, string(workerID))
@@ -576,7 +585,7 @@ func TestConcurrentWorkerOperations(t *testing.T) {
 					t.Errorf("heartbeat for %s: expected status %d, got %d", workerID, http.StatusOK, w.Code)
 				}
 			}
-		}(workerIDs[i])
+		}(workerIDs[i], token)
 	}
 
 	wg.Wait()
@@ -585,10 +594,7 @@ func TestConcurrentWorkerOperations(t *testing.T) {
 func TestTelemetry_UpdatesHealth(t *testing.T) {
 	server, registry := setupWorkerTestServer(t)
 
-	workerID, _ := registry.RegisterWorker(
-		types.HostInfo{Hostname: "worker-1"},
-		types.WorkerCapacity{MaxVUs: 100},
-	)
+	workerID, token := registerWorkerWithToken(t, server, registry, "worker-1")
 
 	req := TelemetryBatchRequest{
 		RunID: "run_0000000000000001",
@@ -605,6 +611,7 @@ func TestTelemetry_UpdatesHealth(t *testing.T) {
 	body, _ := json.Marshal(req)
 	httpReq := httptest.NewRequest(http.MethodPost, "/workers/"+string(workerID)+"/telemetry", bytes.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-Worker-Token", token)
 	w := httptest.NewRecorder()
 
 	server.handleWorkerTelemetry(w, httpReq, string(workerID))

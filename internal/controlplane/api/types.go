@@ -246,7 +246,8 @@ type RegisterWorkerRequest struct {
 
 // RegisterWorkerResponse is the response body for POST /workers/register.
 type RegisterWorkerResponse struct {
-	WorkerID string `json:"worker_id"`
+	WorkerID    string `json:"worker_id"`
+	WorkerToken string `json:"worker_token,omitempty"`
 }
 
 // HeartbeatRequest is the request body for POST /workers/{id}/heartbeat.

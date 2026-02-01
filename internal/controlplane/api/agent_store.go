@@ -2,12 +2,21 @@ package api
 
 import (
 	"context"
+	"errors"
+	"log"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/bc-dunia/mcpdrill/internal/agent"
 )
+
+const (
+	defaultMaxSamplesPerAgent = 1000
+	MaxSamplesPerRequest      = 10000
+)
+
+var ErrTooManySamples = errors.New("too many samples in request")
 
 // AgentInfo holds connected agent information
 type AgentInfo struct {
@@ -32,33 +41,36 @@ type AgentMetricsSample struct {
 
 // AgentStore manages agent state and metrics
 type AgentStore struct {
-	mu                 sync.RWMutex
-	agents             map[string]*AgentInfo           // agent_id -> info
-	agentsByPairKey    map[string][]string             // pair_key -> []agent_id
-	metrics            map[string][]AgentMetricsSample // agent_id -> samples (ring buffer)
-	maxSamplesPerAgent int
-	agentTimeout       time.Duration
+	mu                   sync.RWMutex
+	agents               map[string]*AgentInfo           // agent_id -> info
+	agentsByPairKey      map[string][]string             // pair_key -> []agent_id
+	metrics              map[string][]AgentMetricsSample // agent_id -> samples (ring buffer)
+	maxSamplesPerAgent   int
+	maxSamplesPerRequest int
+	agentTimeout         time.Duration
 }
 
 // NewAgentStore creates a new AgentStore with default settings
 func NewAgentStore() *AgentStore {
 	return &AgentStore{
-		agents:             make(map[string]*AgentInfo),
-		agentsByPairKey:    make(map[string][]string),
-		metrics:            make(map[string][]AgentMetricsSample),
-		maxSamplesPerAgent: 1000, // Default: keep last 1000 samples per agent
-		agentTimeout:       5 * time.Minute,
+		agents:               make(map[string]*AgentInfo),
+		agentsByPairKey:      make(map[string][]string),
+		metrics:              make(map[string][]AgentMetricsSample),
+		maxSamplesPerAgent:   defaultMaxSamplesPerAgent,
+		maxSamplesPerRequest: MaxSamplesPerRequest,
+		agentTimeout:         5 * time.Minute,
 	}
 }
 
 // NewAgentStoreWithConfig creates a new AgentStore with custom settings
 func NewAgentStoreWithConfig(maxSamples int, timeout time.Duration) *AgentStore {
 	return &AgentStore{
-		agents:             make(map[string]*AgentInfo),
-		agentsByPairKey:    make(map[string][]string),
-		metrics:            make(map[string][]AgentMetricsSample),
-		maxSamplesPerAgent: maxSamples,
-		agentTimeout:       timeout,
+		agents:               make(map[string]*AgentInfo),
+		agentsByPairKey:      make(map[string][]string),
+		metrics:              make(map[string][]AgentMetricsSample),
+		maxSamplesPerAgent:   maxSamples,
+		maxSamplesPerRequest: MaxSamplesPerRequest,
+		agentTimeout:         timeout,
 	}
 }
 
@@ -170,6 +182,15 @@ func (s *AgentStore) UpdateLastSeen(agentID string) {
 func (s *AgentStore) IngestMetrics(agentID string, samples []AgentMetricsSample) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	maxSamplesPerRequest := s.maxSamplesPerRequest
+	if maxSamplesPerRequest <= 0 {
+		maxSamplesPerRequest = MaxSamplesPerRequest
+	}
+	if len(samples) > maxSamplesPerRequest {
+		log.Printf("[AgentStore] Rejecting metrics batch: agent=%s samples=%d limit=%d", agentID, len(samples), maxSamplesPerRequest)
+		return ErrTooManySamples
+	}
 
 	// Update last seen
 	if info, ok := s.agents[agentID]; ok {
@@ -369,6 +390,23 @@ func (s *AgentStore) SetMaxSamplesPerAgent(max int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.maxSamplesPerAgent = max
+}
+
+// SetMaxSamplesPerRequest sets the maximum number of samples accepted per request.
+func (s *AgentStore) SetMaxSamplesPerRequest(max int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maxSamplesPerRequest = max
+}
+
+// MaxSamplesPerRequest returns the current max samples per request.
+func (s *AgentStore) MaxSamplesPerRequest() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.maxSamplesPerRequest <= 0 {
+		return MaxSamplesPerRequest
+	}
+	return s.maxSamplesPerRequest
 }
 
 // SetAgentTimeout sets the timeout after which agents are considered stale

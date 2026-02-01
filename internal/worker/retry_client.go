@@ -5,9 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"time"
 )
+
+const maxResponseBodyBytes = 64 * 1024
 
 type RetryConfig struct {
 	MaxRetries int
@@ -16,10 +19,11 @@ type RetryConfig struct {
 }
 
 type RetryHTTPClient struct {
-	ctx        context.Context
-	baseURL    string
-	httpClient *http.Client
-	config     RetryConfig
+	ctx         context.Context
+	baseURL     string
+	httpClient  *http.Client
+	config      RetryConfig
+	workerToken string
 }
 
 func NewRetryHTTPClient(ctx context.Context, baseURL string, httpClient *http.Client, config RetryConfig) *RetryHTTPClient {
@@ -29,6 +33,10 @@ func NewRetryHTTPClient(ctx context.Context, baseURL string, httpClient *http.Cl
 		httpClient: httpClient,
 		config:     config,
 	}
+}
+
+func (c *RetryHTTPClient) SetWorkerToken(token string) {
+	c.workerToken = token
 }
 
 func (c *RetryHTTPClient) Post(path string, body interface{}) (*http.Response, error) {
@@ -48,6 +56,9 @@ func (c *RetryHTTPClient) Post(path string, body interface{}) (*http.Response, e
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c.workerToken != "" {
+		req.Header.Set("X-Worker-Token", c.workerToken)
+	}
 	req.GetBody = func() (io.ReadCloser, error) {
 		return io.NopCloser(bytes.NewReader(jsonBytes)), nil
 	}
@@ -57,6 +68,9 @@ func (c *RetryHTTPClient) Post(path string, body interface{}) (*http.Response, e
 func (c *RetryHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	var lastErr error
 	backoff := c.config.Backoff
+	if c.workerToken != "" && req.Header.Get("X-Worker-Token") == "" {
+		req.Header.Set("X-Worker-Token", c.workerToken)
+	}
 
 	for attempt := 0; attempt <= c.config.MaxRetries; attempt++ {
 		if attempt > 0 {
@@ -114,5 +128,14 @@ func ReadResponseBody(resp *http.Response) ([]byte, error) {
 		return nil, nil
 	}
 	defer resp.Body.Close()
-	return io.ReadAll(resp.Body)
+	limited := io.LimitReader(resp.Body, maxResponseBodyBytes+1)
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxResponseBodyBytes {
+		log.Printf("[RetryHTTPClient] Response body truncated to %d bytes", maxResponseBodyBytes)
+		body = body[:maxResponseBodyBytes]
+	}
+	return body, nil
 }

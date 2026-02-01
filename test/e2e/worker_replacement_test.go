@@ -399,6 +399,7 @@ func TestWorkerReplacement_ReplaceIfPossible(t *testing.T) {
 	server := api.NewServer("127.0.0.1:0", rm)
 	server.SetRegistry(registry)
 	server.SetTelemetryStore(telemetryStore)
+	ConfigureTestServer(server)
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
@@ -531,6 +532,7 @@ func TestWorkerReplacement_FailFast(t *testing.T) {
 	server := api.NewServer("127.0.0.1:0", rm)
 	server.SetRegistry(registry)
 	server.SetTelemetryStore(telemetryStore)
+	ConfigureTestServer(server)
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
@@ -655,6 +657,7 @@ func TestWorkerReplacement_InsufficientCapacity(t *testing.T) {
 	server := api.NewServer("127.0.0.1:0", rm)
 	server.SetRegistry(registry)
 	server.SetTelemetryStore(telemetryStore)
+	ConfigureTestServer(server)
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}

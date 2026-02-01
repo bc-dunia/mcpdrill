@@ -5,13 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/bc-dunia/mcpdrill/internal/auth"
 	"github.com/bc-dunia/mcpdrill/internal/transport"
 )
+
+var privateNetworkCIDRs = []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"}
 
 func validateTargetURL(urlStr string) (string, error) {
 	if urlStr == "" {
@@ -45,6 +49,10 @@ func (s *Server) handleDiscoverTools(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !s.requireAdminDiscoveryAccess(w, r) {
+		return
+	}
+
 	var req struct {
 		TargetURL string            `json:"target_url"`
 		Headers   map[string]string `json:"headers,omitempty"`
@@ -69,7 +77,7 @@ func (s *Server) handleDiscoverTools(w http.ResponseWriter, r *http.Request) {
 	config := &transport.TransportConfig{
 		Endpoint:             validatedURL,
 		Headers:              req.Headers,
-		AllowPrivateNetworks: []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"},
+		AllowPrivateNetworks: s.discoveryPrivateNetworks(),
 		Timeouts: transport.TimeoutConfig{
 			ConnectTimeout:     10 * time.Second,
 			RequestTimeout:     30 * time.Second,
@@ -183,6 +191,10 @@ func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !s.requireAdminDiscoveryAccess(w, r) {
+		return
+	}
+
 	var req struct {
 		TargetURL string            `json:"target_url"`
 		Headers   map[string]string `json:"headers,omitempty"`
@@ -207,7 +219,7 @@ func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 	config := &transport.TransportConfig{
 		Endpoint:             validatedURL,
 		Headers:              req.Headers,
-		AllowPrivateNetworks: []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"},
+		AllowPrivateNetworks: s.discoveryPrivateNetworks(),
 		Timeouts: transport.TimeoutConfig{
 			ConnectTimeout:     10 * time.Second,
 			RequestTimeout:     30 * time.Second,
@@ -382,6 +394,10 @@ func (s *Server) handleTestTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !s.requireAdminDiscoveryAccess(w, r) {
+		return
+	}
+
 	var req struct {
 		TargetURL string                 `json:"target_url"`
 		ToolName  string                 `json:"tool_name"`
@@ -416,7 +432,7 @@ func (s *Server) handleTestTool(w http.ResponseWriter, r *http.Request) {
 	config := &transport.TransportConfig{
 		Endpoint:             validatedURL,
 		Headers:              req.Headers,
-		AllowPrivateNetworks: []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"},
+		AllowPrivateNetworks: s.discoveryPrivateNetworks(),
 		Timeouts: transport.TimeoutConfig{
 			ConnectTimeout:     10 * time.Second,
 			RequestTimeout:     60 * time.Second,
@@ -448,6 +464,60 @@ func (s *Server) handleTestTool(w http.ResponseWriter, r *http.Request) {
 			log.Printf("failed to close test-tool connection: %v", err)
 		}
 	}()
+
+	// MCP protocol requires initialize handshake before any other operations
+	initParams := &transport.InitializeParams{
+		ProtocolVersion: "2024-11-05",
+		Capabilities:    make(map[string]interface{}),
+		ClientInfo: transport.ClientInfo{
+			Name:    "mcpdrill",
+			Version: "1.0.0",
+		},
+	}
+
+	initOutcome, err := conn.Initialize(ctx, initParams)
+	if err != nil {
+		s.writeJSON(w, http.StatusOK, &struct {
+			Success   bool   `json:"success"`
+			Error     string `json:"error"`
+			LatencyMs int64  `json:"latency_ms"`
+		}{
+			Success:   false,
+			Error:     fmt.Sprintf("MCP initialize failed: %v", err),
+			LatencyMs: time.Since(startTime).Milliseconds(),
+		})
+		return
+	}
+
+	if !initOutcome.OK {
+		errMsg := "MCP initialize failed"
+		if initOutcome.Error != nil {
+			errMsg = fmt.Sprintf("MCP initialize failed: %v", initOutcome.Error.Message)
+		}
+		s.writeJSON(w, http.StatusOK, &struct {
+			Success   bool   `json:"success"`
+			Error     string `json:"error"`
+			LatencyMs int64  `json:"latency_ms"`
+		}{
+			Success:   false,
+			Error:     errMsg,
+			LatencyMs: time.Since(startTime).Milliseconds(),
+		})
+		return
+	}
+
+	if _, err = conn.SendInitialized(ctx); err != nil {
+		s.writeJSON(w, http.StatusOK, &struct {
+			Success   bool   `json:"success"`
+			Error     string `json:"error"`
+			LatencyMs int64  `json:"latency_ms"`
+		}{
+			Success:   false,
+			Error:     fmt.Sprintf("MCP initialized notification failed: %v", err),
+			LatencyMs: time.Since(startTime).Milliseconds(),
+		})
+		return
+	}
 
 	outcome, err := conn.ToolsCall(ctx, &transport.ToolsCallParams{
 		Name:      req.ToolName,
@@ -519,4 +589,55 @@ func (s *Server) handleTestTool(w http.ResponseWriter, r *http.Request) {
 		Result:    toolResult.Content,
 		LatencyMs: latencyMs,
 	})
+}
+
+func (s *Server) discoveryPrivateNetworks() []string {
+	if !s.allowPrivateDiscoveryNetworks() {
+		return nil
+	}
+	return append([]string(nil), privateNetworkCIDRs...)
+}
+
+func (s *Server) requireAdminDiscoveryAccess(w http.ResponseWriter, r *http.Request) bool {
+	if s.authConfig == nil || s.authConfig.Mode == auth.AuthModeNone {
+		// Security: discovery endpoints perform outbound requests, so require auth unless
+		// explicitly running insecure on loopback for local testing.
+		if s.authConfig != nil && s.authConfig.InsecureMode && isLoopbackRequest(r) {
+			return true
+		}
+		s.writeError(w, http.StatusForbidden, &ErrorResponse{
+			ErrorType:    ErrorTypeForbidden,
+			ErrorCode:    "INSUFFICIENT_PERMISSIONS",
+			ErrorMessage: "Admin role required for discovery endpoints",
+			Retryable:    false,
+		})
+		return false
+	}
+
+	if !auth.HasRole(r.Context(), auth.RoleAdmin) {
+		s.writeError(w, http.StatusForbidden, &ErrorResponse{
+			ErrorType:    ErrorTypeForbidden,
+			ErrorCode:    "INSUFFICIENT_PERMISSIONS",
+			ErrorMessage: "Admin role required for discovery endpoints",
+			Retryable:    false,
+		})
+		return false
+	}
+
+	return true
+}
+
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback()
 }

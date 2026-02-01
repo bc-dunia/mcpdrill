@@ -41,6 +41,7 @@ func TestScaleValidation_1000VUs(t *testing.T) {
 	server := api.NewServer("127.0.0.1:0", rm)
 	server.SetRegistry(registry)
 	server.SetTelemetryStore(telemetryStore)
+	ConfigureTestServer(server)
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
@@ -198,6 +199,7 @@ func TestScaleValidation_WorkerRegistrationThroughput(t *testing.T) {
 
 	server := api.NewServer("127.0.0.1:0", rm)
 	server.SetRegistry(registry)
+	ConfigureTestServer(server)
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
@@ -255,7 +257,7 @@ func TestScaleValidation_ConcurrentHeartbeats(t *testing.T) {
 	}
 
 	const (
-		numWorkers         = 20
+		numWorkers          = 20
 		heartbeatsPerWorker = 10
 	)
 
@@ -265,6 +267,7 @@ func TestScaleValidation_ConcurrentHeartbeats(t *testing.T) {
 
 	server := api.NewServer("127.0.0.1:0", rm)
 	server.SetRegistry(registry)
+	ConfigureTestServer(server)
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
@@ -447,14 +450,14 @@ func sendScaleTelemetry(w *scaleTestWorker, baseURL, runID string, numOps int) e
 	now := time.Now().UnixMilli()
 	for i := 0; i < numOps; i++ {
 		operations[i] = map[string]interface{}{
-			"op_id":      fmt.Sprintf("op-%d-%d", w.id, i),
-			"operation":  "tools_list",
-			"latency_ms": 50 + (i % 100),
-			"ok":         i%10 != 0,
-			"ts_ms":      now + int64(i*10),
+			"op_id":        fmt.Sprintf("op-%d-%d", w.id, i),
+			"operation":    "tools_list",
+			"latency_ms":   50 + (i % 100),
+			"ok":           i%10 != 0,
+			"ts_ms":        now + int64(i*10),
 			"execution_id": "exe_00000000000001",
-			"stage":      "preflight",
-			"stage_id": "stg_000000000001",
+			"stage":        "preflight",
+			"stage_id":     "stg_000000000001",
 		}
 	}
 

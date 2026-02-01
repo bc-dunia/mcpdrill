@@ -14,8 +14,11 @@ import (
 
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
-	if cfg.Mode != AuthModeNone {
-		t.Errorf("expected mode %q, got %q", AuthModeNone, cfg.Mode)
+	if cfg.Mode != AuthModeAPIKey {
+		t.Errorf("expected mode %q, got %q", AuthModeAPIKey, cfg.Mode)
+	}
+	if cfg.InsecureMode {
+		t.Error("expected insecure mode to be false by default")
 	}
 	if len(cfg.SkipPaths) != 2 {
 		t.Errorf("expected 2 skip paths, got %d", len(cfg.SkipPaths))

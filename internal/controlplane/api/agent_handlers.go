@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -178,6 +179,16 @@ func (s *Server) handleAgentMetrics(w http.ResponseWriter, r *http.Request) {
 
 	err := s.agentStore.IngestMetrics(req.AgentID, req.Samples)
 	if err != nil {
+		if errors.Is(err, ErrTooManySamples) {
+			s.writeError(w, http.StatusBadRequest, NewInvalidRequestErrorResponse(
+				"Too many samples in request",
+				map[string]interface{}{
+					"max_samples_per_request": s.agentStore.MaxSamplesPerRequest(),
+					"sample_count":            len(req.Samples),
+				},
+			))
+			return
+		}
 		s.writeError(w, http.StatusInternalServerError, NewInternalErrorResponse(err.Error()))
 		return
 	}

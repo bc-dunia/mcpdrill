@@ -1,6 +1,8 @@
 package worker
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"time"
 
 	"github.com/bc-dunia/mcpdrill/internal/types"
@@ -54,10 +56,10 @@ func generateOpID(t time.Time) string {
 }
 
 func randomHex(n int) string {
-	const hexChars = "0123456789abcdef"
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = hexChars[time.Now().UnixNano()%16]
+	b := make([]byte, n/2)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to time-based if crypto/rand fails (should never happen)
+		return time.Now().Format("20060102150405")[:n]
 	}
-	return string(b)
+	return hex.EncodeToString(b)[:n]
 }

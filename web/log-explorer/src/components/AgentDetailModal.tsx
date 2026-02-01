@@ -20,26 +20,34 @@ function formatPercent(value: number): string {
 }
 
 export function AgentDetailModal({ agentId, onClose }: AgentDetailModalProps) {
-  const [agent, setAgent] = useState<AgentDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+   const [agent, setAgent] = useState<AgentDetail | null>(null);
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState<string | null>(null);
 
-  const loadAgentDetail = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchAgentDetail(agentId);
-      setAgent(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load agent details');
-    } finally {
-      setLoading(false);
-    }
-  }, [agentId]);
+   const loadAgentDetail = useCallback(async (signal?: AbortSignal) => {
+     setLoading(true);
+     setError(null);
+     try {
+       const data = await fetchAgentDetail(agentId);
+       if (!signal?.aborted) {
+         setAgent(data);
+       }
+     } catch (err) {
+       if (!signal?.aborted) {
+         setError(err instanceof Error ? err.message : 'Failed to load agent details');
+       }
+     } finally {
+       if (!signal?.aborted) {
+         setLoading(false);
+       }
+     }
+   }, [agentId]);
 
-  useEffect(() => {
-    loadAgentDetail();
-  }, [loadAgentDetail]);
+   useEffect(() => {
+     const controller = new AbortController();
+     loadAgentDetail(controller.signal);
+     return () => controller.abort();
+   }, [loadAgentDetail]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -84,15 +92,15 @@ export function AgentDetailModal({ agentId, onClose }: AgentDetailModalProps) {
             </div>
           )}
 
-          {error && (
-            <div className="error-state">
-              <Icon name="alert-triangle" size="lg" />
-              <span>{error}</span>
-              <button className="btn btn-secondary btn-sm" onClick={loadAgentDetail}>
-                <Icon name="refresh" size="sm" /> Retry
-              </button>
-            </div>
-          )}
+           {error && (
+             <div className="error-state">
+               <Icon name="alert-triangle" size="lg" />
+               <span>{error}</span>
+               <button className="btn btn-secondary btn-sm" onClick={() => void loadAgentDetail()}>
+                 <Icon name="refresh" size="sm" /> Retry
+               </button>
+             </div>
+           )}
 
           {agent && !loading && !error && (
             <div className="agent-detail-content">
@@ -207,16 +215,16 @@ export function AgentDetailModal({ agentId, onClose }: AgentDetailModalProps) {
           )}
         </div>
 
-        <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>
-            Close
-          </button>
-          {agent && (
-            <button className="btn btn-secondary" onClick={loadAgentDetail} disabled={loading}>
-              <Icon name="refresh" size="sm" /> Refresh
-            </button>
-          )}
-        </div>
+         <div className="modal-footer">
+           <button className="btn btn-secondary" onClick={onClose}>
+             Close
+           </button>
+           {agent && (
+             <button className="btn btn-secondary" onClick={() => loadAgentDetail()} disabled={loading}>
+               <Icon name="refresh" size="sm" /> Refresh
+             </button>
+           )}
+         </div>
       </div>
     </div>
   );

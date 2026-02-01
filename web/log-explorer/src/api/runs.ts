@@ -408,22 +408,27 @@ export function exportAsJSON(logs: unknown[], filename: string): void {
 }
 
 export function exportAsCSV<T extends object>(logs: T[], filename: string): void {
-  if (logs.length === 0) return;
-  
-  const headers = Object.keys(logs[0]) as Array<keyof T>;
-  const csvRows = [
-    headers.join(','),
-    ...logs.map(log => 
-      headers.map(h => {
-        const val = log[h];
-        const str = String(val ?? '');
-        const needsQuotes = str.includes(',') || str.includes('"') || str.includes('\n');
-        return needsQuotes ? `"${str.replace(/"/g, '""')}"` : str;
-      }).join(',')
-    )
-  ];
-  
-  downloadFile(csvRows.join('\n'), filename, 'text/csv');
+   if (logs.length === 0) return;
+   
+   const headers = Object.keys(logs[0]) as Array<keyof T>;
+   const csvRows = [
+     headers.join(','),
+     ...logs.map(log => 
+       headers.map(h => {
+         const val = log[h];
+         const str = String(val ?? '');
+         const dangerousPrefix = /^[=+\-@\t\r]/.test(str);
+         const needsQuotes = str.includes(',') || str.includes('"') || str.includes('\n') || dangerousPrefix;
+         const escaped = needsQuotes ? `"${str.replace(/"/g, '""')}"` : str;
+         if (dangerousPrefix) {
+           return `'${escaped}`;
+         }
+         return escaped;
+       }).join(',')
+     )
+   ];
+   
+   downloadFile(csvRows.join('\n'), filename, 'text/csv');
 }
 
 function downloadFile(content: string, filename: string, mimeType: string): void {

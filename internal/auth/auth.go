@@ -9,7 +9,7 @@ import (
 type AuthMode string
 
 const (
-	// AuthModeNone disables authentication (default for backward compatibility).
+	// AuthModeNone disables authentication.
 	AuthModeNone AuthMode = "none"
 	// AuthModeAPIKey enables API key authentication.
 	AuthModeAPIKey AuthMode = "api_key"
@@ -33,6 +33,9 @@ const (
 type Config struct {
 	// Mode is the authentication mode (none, api_key, jwt).
 	Mode AuthMode `json:"mode"`
+	// InsecureMode must be explicitly set to true to allow AuthModeNone.
+	// This is a safety valve to prevent accidental unauthenticated deployments.
+	InsecureMode bool `json:"insecure_mode"`
 	// APIKeys is a list of valid API keys (for api_key mode).
 	// Each key can optionally have role mappings via APIKeyRoles.
 	APIKeys []string `json:"api_keys,omitempty"`
@@ -48,10 +51,10 @@ type Config struct {
 	SkipPaths []string `json:"skip_paths,omitempty"`
 }
 
-// DefaultConfig returns a default configuration with auth disabled.
+// DefaultConfig returns a default configuration with auth enabled.
 func DefaultConfig() *Config {
 	return &Config{
-		Mode:      AuthModeNone,
+		Mode:      AuthModeAPIKey,
 		SkipPaths: []string{"/healthz", "/readyz"},
 	}
 }

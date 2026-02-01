@@ -14,22 +14,30 @@ function formatTime(ms: number): string {
 
 function ErrorSignaturesComponent({ runId }: ErrorSignaturesProps) {
   const [signatures, setSignatures] = useState<ErrorSignature[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!runId) {
-      setLoading(false);
+      setInitialLoading(false);
       return;
     }
 
+    let isFirstLoad = true;
+    const controller = new AbortController();
+
     const loadSignatures = async () => {
-      setLoading(true);
+      if (isFirstLoad) {
+        setInitialLoading(true);
+      }
       setError(null);
       try {
         const data = await fetchErrorSignatures(runId);
-        setSignatures(data.signatures || []);
+        if (!controller.signal.aborted) {
+          setSignatures(data.signatures || []);
+        }
       } catch (err) {
+        if (controller.signal.aborted) return;
         if (err instanceof Error && err.message.includes('404')) {
           setSignatures([]);
         } else {
@@ -37,16 +45,24 @@ function ErrorSignaturesComponent({ runId }: ErrorSignaturesProps) {
           setSignatures([]);
         }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          if (isFirstLoad) {
+            setInitialLoading(false);
+            isFirstLoad = false;
+          }
+        }
       }
     };
 
     loadSignatures();
     const interval = setInterval(loadSignatures, CONFIG.REFRESH_INTERVALS.ERROR_SIGNATURES);
-    return () => clearInterval(interval);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
   }, [runId]);
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="error-signatures" role="region" aria-label="Error signatures">
         <h3>Top Errors</h3>

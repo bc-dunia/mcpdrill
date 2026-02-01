@@ -26,9 +26,12 @@ type TelemetryShipper struct {
 	batchSize   int
 	flushTicker *time.Ticker
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
+	sendMu    sync.Mutex
+	closeOnce sync.Once
+	closed    atomic.Bool
 
 	droppedCount atomic.Int64
 	shippedCount atomic.Int64
@@ -64,6 +67,18 @@ func NewTelemetryShipper(ctx context.Context, workerID string, client *RetryHTTP
 }
 
 func (s *TelemetryShipper) Ship(runID string, outcome types.OperationOutcome) {
+	if s.closed.Load() {
+		s.droppedCount.Add(1)
+		return
+	}
+
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	if s.closed.Load() {
+		s.droppedCount.Add(1)
+		return
+	}
+
 	select {
 	case s.buffer <- telemetryItem{runID: runID, outcome: outcome}:
 	default:
@@ -147,9 +162,14 @@ func (s *TelemetryShipper) shipBatch(runID string, ops []types.OperationOutcome)
 }
 
 func (s *TelemetryShipper) Close() {
-	s.cancel()
-	s.flushTicker.Stop()
-	close(s.buffer)
+	s.closeOnce.Do(func() {
+		s.closed.Store(true)
+		s.cancel()
+		s.flushTicker.Stop()
+		s.sendMu.Lock()
+		close(s.buffer)
+		s.sendMu.Unlock()
+	})
 	s.wg.Wait()
 }
 

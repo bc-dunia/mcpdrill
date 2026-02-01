@@ -178,6 +178,7 @@ func TestNetworkPartition_WorkerReregisters(t *testing.T) {
 
 	server := api.NewServer("127.0.0.1:0", rm)
 	server.SetRegistry(registry)
+	ConfigureTestServer(server)
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
@@ -220,6 +221,7 @@ func TestNetworkPartition_WorkerReregisters(t *testing.T) {
 	newRegistry := scheduler.NewRegistry()
 	newServer := api.NewServer("127.0.0.1:0", rm)
 	newServer.SetRegistry(newRegistry)
+	ConfigureTestServer(newServer)
 	if err := newServer.Start(); err != nil {
 		t.Fatalf("Failed to restart server: %v", err)
 	}
@@ -255,6 +257,7 @@ func TestNetworkPartition_HeartbeatRecovery(t *testing.T) {
 
 	server := api.NewServer("127.0.0.1:0", rm)
 	server.SetRegistry(registry)
+	ConfigureTestServer(server)
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
@@ -302,6 +305,7 @@ func TestNetworkPartition_TelemetryRecovery(t *testing.T) {
 	server := api.NewServer("127.0.0.1:0", rm)
 	server.SetRegistry(registry)
 	server.SetTelemetryStore(telemetryStore)
+	ConfigureTestServer(server)
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
@@ -325,14 +329,14 @@ func TestNetworkPartition_TelemetryRecovery(t *testing.T) {
 		"run_id": "run_0000000000000001",
 		"operations": []map[string]interface{}{
 			{
-				"op_id":     "op-1",
-				"operation": "tools_list",
-				"latency_ms": 50,
-				"ok":        true,
-				"ts_ms":     time.Now().UnixMilli(),
+				"op_id":        "op-1",
+				"operation":    "tools_list",
+				"latency_ms":   50,
+				"ok":           true,
+				"ts_ms":        time.Now().UnixMilli(),
 				"execution_id": "exe_00000000000001",
-				"stage":    "preflight",
-				"stage_id": "stg_000000000001",
+				"stage":        "preflight",
+				"stage_id":     "stg_000000000001",
 			},
 		},
 		"health": map[string]interface{}{
@@ -409,6 +413,7 @@ func TestRetryHTTPClient_NoRetryOn4xx(t *testing.T) {
 
 	server := api.NewServer("127.0.0.1:0", rm)
 	server.SetRegistry(registry)
+	ConfigureTestServer(server)
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}

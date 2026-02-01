@@ -25,7 +25,8 @@ type registerRequest struct {
 }
 
 type registerResponse struct {
-	WorkerID string `json:"worker_id"`
+	WorkerID    string `json:"worker_id"`
+	WorkerToken string `json:"worker_token,omitempty"`
 }
 
 type heartbeatRequest struct {
@@ -64,7 +65,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	workerID, err := register(ctx, *controlPlane, hostInfo, capacity)
+	workerID, workerToken, err := register(ctx, *controlPlane, hostInfo, capacity)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register with control plane: %v\n", err)
 		os.Exit(1)
@@ -84,14 +85,15 @@ func main() {
 		Backoff:    100 * time.Millisecond,
 		MaxBackoff: 5 * time.Second,
 	})
+	retryClient.SetWorkerToken(workerToken)
 
 	telemetryShipper := worker.NewTelemetryShipper(ctx, workerID, retryClient)
 	defer telemetryShipper.Close()
 
 	executor := worker.NewAssignmentExecutor(workerID, privateNets, telemetryShipper)
 
-	go heartbeatLoop(ctx, *controlPlane, workerID, *heartbeatInterval, executor)
-	go pollAssignments(ctx, *controlPlane, workerID, *pollInterval, executor)
+	go heartbeatLoop(ctx, *controlPlane, workerID, workerToken, *heartbeatInterval, executor)
+	go pollAssignments(ctx, *controlPlane, workerID, workerToken, *pollInterval, executor)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -134,35 +136,35 @@ func parsePrivateNetworks(s string) []string {
 	return result
 }
 
-func register(ctx context.Context, baseURL string, hostInfo types.HostInfo, capacity types.WorkerCapacity) (string, error) {
+func register(ctx context.Context, baseURL string, hostInfo types.HostInfo, capacity types.WorkerCapacity) (string, string, error) {
 	req := registerRequest{HostInfo: hostInfo, Capacity: capacity}
 	body, _ := json.Marshal(req)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/workers/register", bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("registration failed: %s - %s", resp.Status, string(respBody))
+		return "", "", fmt.Errorf("registration failed: %s - %s", resp.Status, string(respBody))
 	}
 
 	var result registerResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return result.WorkerID, nil
+	return result.WorkerID, result.WorkerToken, nil
 }
 
-func heartbeatLoop(ctx context.Context, baseURL, workerID string, interval time.Duration, executor *worker.AssignmentExecutor) {
+func heartbeatLoop(ctx context.Context, baseURL, workerID, workerToken string, interval time.Duration, executor *worker.AssignmentExecutor) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -171,7 +173,7 @@ func heartbeatLoop(ctx context.Context, baseURL, workerID string, interval time.
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			resp, err := sendHeartbeat(ctx, baseURL, workerID, executor)
+			resp, err := sendHeartbeat(ctx, baseURL, workerID, workerToken, executor)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Heartbeat failed: %v\n", err)
 				continue
@@ -187,7 +189,7 @@ func heartbeatLoop(ctx context.Context, baseURL, workerID string, interval time.
 	}
 }
 
-func sendHeartbeat(ctx context.Context, baseURL, workerID string, executor *worker.AssignmentExecutor) (*heartbeatResponse, error) {
+func sendHeartbeat(ctx context.Context, baseURL, workerID, workerToken string, executor *worker.AssignmentExecutor) (*heartbeatResponse, error) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
@@ -204,6 +206,9 @@ func sendHeartbeat(ctx context.Context, baseURL, workerID string, executor *work
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if workerToken != "" {
+		httpReq.Header.Set("X-Worker-Token", workerToken)
+	}
 
 	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
@@ -222,7 +227,7 @@ func sendHeartbeat(ctx context.Context, baseURL, workerID string, executor *work
 	return &result, nil
 }
 
-func pollAssignments(ctx context.Context, baseURL, workerID string, interval time.Duration, executor *worker.AssignmentExecutor) {
+func pollAssignments(ctx context.Context, baseURL, workerID, workerToken string, interval time.Duration, executor *worker.AssignmentExecutor) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -231,7 +236,7 @@ func pollAssignments(ctx context.Context, baseURL, workerID string, interval tim
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			assignments, err := getAssignments(ctx, baseURL, workerID)
+			assignments, err := getAssignments(ctx, baseURL, workerID, workerToken)
 			if err != nil {
 				continue
 			}
@@ -244,10 +249,13 @@ func pollAssignments(ctx context.Context, baseURL, workerID string, interval tim
 	}
 }
 
-func getAssignments(ctx context.Context, baseURL, workerID string) ([]types.WorkerAssignment, error) {
+func getAssignments(ctx context.Context, baseURL, workerID, workerToken string) ([]types.WorkerAssignment, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/workers/"+workerID+"/assignments", nil)
 	if err != nil {
 		return nil, err
+	}
+	if workerToken != "" {
+		httpReq.Header.Set("X-Worker-Token", workerToken)
 	}
 
 	resp, err := http.DefaultClient.Do(httpReq)

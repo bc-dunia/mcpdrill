@@ -61,65 +61,83 @@ async function fetchServerMetrics(runId: string): Promise<ServerMetricsResponse>
 }
 
 function ServerResourcesSectionComponent({ runId, isRunActive }: ServerResourcesSectionProps) {
-  const [dataPoints, setDataPoints] = useState<ServerMetricsDataPoint[]>([]);
-  const [aggregated, setAggregated] = useState<ServerMetricsAggregated | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [hasAgent, setHasAgent] = useState<boolean | null>(null);
-  const intervalRef = useRef<number | null>(null);
-  const isLoadingRef = useRef(false);
+   const [dataPoints, setDataPoints] = useState<ServerMetricsDataPoint[]>([]);
+   const [aggregated, setAggregated] = useState<ServerMetricsAggregated | null>(null);
+   const [loading, setLoading] = useState(true);
+   const [isCollapsed, setIsCollapsed] = useState(false);
+   const [hasAgent, setHasAgent] = useState<boolean | null>(null);
+   const intervalRef = useRef<number | null>(null);
+   const isLoadingRef = useRef(false);
+   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const loadMetrics = useCallback(async () => {
-    if (isLoadingRef.current) return;
-    isLoadingRef.current = true;
+   const loadMetrics = useCallback(async (signal?: AbortSignal) => {
+     if (isLoadingRef.current) return;
+     isLoadingRef.current = true;
 
-    try {
-      const response = await fetchServerMetrics(runId);
-      
-      if (response.samples && response.samples.length > 0) {
-        const points = convertSamplesToDataPoints(response.samples);
-        setDataPoints(points);
-        setAggregated(response.aggregated ?? null);
-        setHasAgent(true);
-      } else {
-        setHasAgent(false);
-      }
-    } catch {
-      setHasAgent(false);
-    } finally {
-      setLoading(false);
-      isLoadingRef.current = false;
-    }
-  }, [runId]);
+     try {
+       const response = await fetchServerMetrics(runId);
+       
+       if (!signal?.aborted) {
+         if (response.samples && response.samples.length > 0) {
+           const points = convertSamplesToDataPoints(response.samples);
+           setDataPoints(points);
+           setAggregated(response.aggregated ?? null);
+           setHasAgent(true);
+         } else {
+           setHasAgent(false);
+         }
+       }
+     } catch {
+       if (!signal?.aborted) {
+         setHasAgent(false);
+       }
+     } finally {
+       if (!signal?.aborted) {
+         setLoading(false);
+       }
+       isLoadingRef.current = false;
+     }
+   }, [runId]);
 
-  useEffect(() => {
-    const cached = loadFromStorage(runId);
-    if (cached && cached.dataPoints.length > 0) {
-      setDataPoints(cached.dataPoints);
-      setAggregated(cached.aggregated);
-      setHasAgent(true);
-      setLoading(false);
-    }
-    loadMetrics();
-  }, [runId, loadMetrics]);
+   useEffect(() => {
+     abortControllerRef.current = new AbortController();
+     const signal = abortControllerRef.current.signal;
 
-  useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+     const cached = loadFromStorage(runId);
+     if (cached && cached.dataPoints.length > 0) {
+       setDataPoints(cached.dataPoints);
+       setAggregated(cached.aggregated);
+       setHasAgent(true);
+       setLoading(false);
+     }
+     loadMetrics(signal);
 
-    if (isRunActive && hasAgent) {
-      intervalRef.current = window.setInterval(() => loadMetrics(), CONFIG.REFRESH_INTERVALS.SERVER_RESOURCES);
-    }
+     return () => {
+       abortControllerRef.current?.abort();
+     };
+   }, [runId, loadMetrics]);
 
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [isRunActive, hasAgent, loadMetrics]);
+   useEffect(() => {
+     if (intervalRef.current) {
+       clearInterval(intervalRef.current);
+       intervalRef.current = null;
+     }
+
+     if (isRunActive && hasAgent) {
+       intervalRef.current = window.setInterval(() => {
+         if (!abortControllerRef.current?.signal.aborted) {
+           loadMetrics(abortControllerRef.current?.signal);
+         }
+       }, CONFIG.REFRESH_INTERVALS.SERVER_RESOURCES);
+     }
+
+     return () => {
+       if (intervalRef.current) {
+         clearInterval(intervalRef.current);
+         intervalRef.current = null;
+       }
+     };
+   }, [isRunActive, hasAgent, loadMetrics]);
 
   useEffect(() => {
     if (dataPoints.length > 0) {
