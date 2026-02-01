@@ -156,11 +156,21 @@ export interface BackendRunConfig {
   };
 }
 
+// Legacy error body format (kept for backward compatibility)
 export interface ApiErrorBody {
   error?: string;
   error_message?: string;
   message?: string;
   detail?: string;
+}
+
+// Structured error response (matches backend api.ErrorResponse)
+export interface ErrorResponse {
+  error_type: string;
+  error_code: string;
+  error_message: string;
+  retryable: boolean;
+  details?: Record<string, unknown>;
 }
 
 export interface AgentInfo {

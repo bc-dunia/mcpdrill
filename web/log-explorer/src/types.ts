@@ -1,6 +1,7 @@
 export interface OperationLog {
   timestamp_ms: number;
   run_id: string;
+  execution_id?: string;
   stage: string;
   stage_id: string;
   worker_id: string;
@@ -12,6 +13,7 @@ export interface OperationLog {
   ok: boolean;
   error_type: string;
   error_code: string;
+  stream?: StreamInfo;
 }
 
 export interface LogQueryResponse {
@@ -482,4 +484,13 @@ export interface StageMarker {
   time: string;       // Formatted time string for X-axis positioning
   stage: string;      // 'preflight' | 'baseline' | 'ramp' | etc.
   label: string;      // Display text (uppercase stage name)
+}
+
+// Streaming operation telemetry (matches backend types.StreamInfo)
+export interface StreamInfo {
+  is_streaming: boolean;
+  events_count: number;
+  ended_normally: boolean;
+  stalled: boolean;
+  stall_duration_ms: number;
 }
