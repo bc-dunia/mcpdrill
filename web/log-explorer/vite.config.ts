@@ -9,11 +9,34 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api/runs': 'http://localhost:8080',
-      '/runs': 'http://localhost:8080',
-      '/discover-tools': 'http://localhost:8080',
-      '/test-connection': 'http://localhost:8080',
-      '/agents': 'http://localhost:8080',
+      '/api/runs': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/runs': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
+              proxyRes.headers['cache-control'] = 'no-cache';
+              proxyRes.headers['connection'] = 'keep-alive';
+            }
+          });
+        },
+      },
+      '/discover-tools': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/test-connection': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/agents': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
     },
   },
 })
