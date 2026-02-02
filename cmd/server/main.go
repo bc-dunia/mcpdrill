@@ -32,7 +32,26 @@ func main() {
 	redactAssignmentSecrets := flag.Bool("redact-assignment-secrets", false, "Redact sensitive headers and tokens in worker assignments")
 	rateLimit := flag.Float64("rate-limit", 100, "API rate limit in requests/second (0 to disable)")
 	rateBurst := flag.Int("rate-burst", 200, "API rate limit burst size")
+	devMode := flag.Bool("dev", false, "Development mode: binds to loopback, disables auth, allows private networks")
 	flag.Parse()
+
+	if *devMode {
+		*addr = "127.0.0.1:8080"
+		*insecure = true
+		*insecureWorkerAuth = true
+		*allowPrivateDiscovery = true
+		*allowPrivateNetworks = "127.0.0.0/8,::1/128,fe80::/10,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7,169.254.0.0/16"
+		*enableAgentIngest = true
+		*agentTokens = "dev-token"
+		*rateLimit = 0 // Disable rate limiting in dev mode
+		fmt.Println("")
+		fmt.Println("╔════════════════════════════════════════════════════════════╗")
+		fmt.Println("║  DEVELOPMENT MODE - DO NOT USE IN PRODUCTION               ║")
+		fmt.Println("║  Auth disabled, rate limiting disabled, private nets OK    ║")
+		fmt.Println("║  Bound to loopback only (127.0.0.1:8080)                   ║")
+		fmt.Println("╚════════════════════════════════════════════════════════════╝")
+		fmt.Println("")
+	}
 
 	// Build system policy with optional private network allowlist
 	systemPolicy := validation.DefaultSystemPolicy()
@@ -59,7 +78,9 @@ func main() {
 
 	server := api.NewServer(*addr, rm)
 	server.SetRegistry(registry)
-	server.SetTelemetryStore(api.NewTelemetryStore())
+	telemetryStore := api.NewTelemetryStore()
+	server.SetTelemetryStore(telemetryStore)
+	rm.SetTelemetryStore(telemetryStore)
 	server.SetMetricsCollector(metrics.NewCollector())
 	rm.SetAssignmentSender(api.NewServerAssignmentAdapter(server))
 	server.SetAllowPrivateNetworks(*allowPrivateDiscovery)

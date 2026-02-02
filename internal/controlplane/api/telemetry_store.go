@@ -570,7 +570,7 @@ func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, inclu
 	}
 
 	if includeTimeSeries && len(rt.logs) > 0 {
-		bucketSize := int64(5000)
+		bucketSize := ts.calculateBucketSize(rt)
 		timeBuckets := make(map[int64]*metrics.StabilityTimePoint)
 
 		for _, log := range rt.logs {
@@ -644,7 +644,9 @@ func (ts *TelemetryStore) GetMetricsTimeSeries(runID string) []metrics.MetricsTi
 		return nil
 	}
 
-	bucketSize := int64(5000)
+	// Calculate dynamic bucket size based on run duration
+	// Target: 20-30 data points for useful charts
+	bucketSize := ts.calculateBucketSize(rt)
 	buckets := make(map[int64]*metricsTimeBucket)
 
 	for _, log := range rt.logs {
@@ -711,6 +713,40 @@ type metricsTimeBucket struct {
 	latencies  []int
 	successOps int64
 	failedOps  int64
+}
+
+func (ts *TelemetryStore) calculateBucketSize(rt *runTelemetry) int64 {
+	if len(rt.logs) < 2 {
+		return 5000
+	}
+
+	minTs, maxTs := rt.logs[0].TimestampMs, rt.logs[0].TimestampMs
+	for _, log := range rt.logs {
+		if log.TimestampMs < minTs {
+			minTs = log.TimestampMs
+		}
+		if log.TimestampMs > maxTs {
+			maxTs = log.TimestampMs
+		}
+	}
+
+	durationMs := maxTs - minTs
+	if durationMs <= 0 {
+		return 5000
+	}
+
+	const targetBuckets = 25
+	bucketSize := durationMs / targetBuckets
+
+	const minBucketSize, maxBucketSize = 100, 5000
+	if bucketSize < minBucketSize {
+		bucketSize = minBucketSize
+	}
+	if bucketSize > maxBucketSize {
+		bucketSize = maxBucketSize
+	}
+
+	return bucketSize
 }
 
 func calculateLatencyPercentiles(latencies []int) (p50, p95, p99, mean float64) {

@@ -545,6 +545,11 @@ func (s *Server) handleStreamEvents(w http.ResponseWriter, r *http.Request, runI
 		return
 	}
 
+	rc := http.NewResponseController(w)
+	if err := rc.SetWriteDeadline(time.Time{}); err == nil {
+		defer rc.SetWriteDeadline(time.Now().Add(60 * time.Second))
+	}
+
 	// Set SSE headers per spec: text/event-stream; charset=utf-8
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
