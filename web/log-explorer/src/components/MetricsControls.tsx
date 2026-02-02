@@ -245,8 +245,13 @@ export function MetricsRunStatus({
                 className="btn btn-primary btn-sm btn-new-run" 
                 onClick={onNavigateToWizard}
                 aria-label="Start a new test run"
+                aria-describedby="new-run-tooltip"
+                title="Start a new test run in the wizard"
               >
-                <Icon name="plus" size="sm" aria-hidden={true} /> New Run
+                <Icon name="plus" size="sm" aria-hidden={true} /> New Run…
+                <span id="new-run-tooltip" className="sr-only">
+                  Start a new test run in the wizard
+                </span>
               </button>
             )}
           </span>
@@ -302,10 +307,22 @@ function parseStopReason(stopReason: StopReason): { title: string; description: 
     };
   }
   
-  if (reason.includes('user_requested') || stopReason.actor === 'user') {
+  const userActors = ['user', 'ui'];
+  if (reason.includes('user_requested') || userActors.includes(stopReason.actor)) {
     return {
       title: 'Test stopped by user',
       description: `Stop mode: ${stopReason.mode}`,
+      isError: false,
+    };
+  }
+  
+  const isAutomaticCompletion = ['autoramp', 'scheduler', 'system'].includes(stopReason.actor) &&
+    reason === 'stop_requested';
+  
+  if (isAutomaticCompletion) {
+    return {
+      title: 'Test completed',
+      description: 'All stages finished successfully',
       isError: false,
     };
   }

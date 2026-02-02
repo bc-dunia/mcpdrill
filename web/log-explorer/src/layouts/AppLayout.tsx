@@ -68,7 +68,7 @@ export function AppLayout() {
               <span className="nav-icon" aria-hidden="true">
                 <Icon name="rocket" size="md" />
               </span>
-              New Run
+              New Run…
             </NavLink>
             <NavLink
               to="/compare"

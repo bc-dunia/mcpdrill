@@ -382,7 +382,7 @@ export function LogExplorer() {
                   className="btn btn-primary" 
                   onClick={handleNavigateToWizard}
                 >
-                  <Icon name="plus" size="sm" aria-hidden={true} /> Create New Run
+                  <Icon name="plus" size="sm" aria-hidden={true} /> Create New Run…
                 </button>
               </div>
             </>

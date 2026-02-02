@@ -4,7 +4,7 @@ const translations = {
   en: {
     // Navigation
     'nav.logs': 'Log Explorer',
-    'nav.newRun': 'New Run',
+    'nav.newRun': 'New Run…',
     'nav.compare': 'Compare Runs',
     // Common
     'common.loading': 'Loading...',
