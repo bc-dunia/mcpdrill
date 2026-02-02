@@ -711,6 +711,37 @@ func (rm *RunManager) ListImmediateStopRunsForWorker(workerID string) []string {
 	return immediateStopRuns
 }
 
+// GetRunConfig returns the raw configuration for a run.
+// Returns an error if the run is not found.
+func (rm *RunManager) GetRunConfig(runID string) ([]byte, error) {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+
+	record, ok := rm.runs[runID]
+	if !ok {
+		return nil, NewNotFoundError(runID)
+	}
+
+	if record.Config == nil {
+		return nil, NewConfigNotAvailableError(runID)
+	}
+
+	configCopy := make([]byte, len(record.Config))
+	copy(configCopy, record.Config)
+	return configCopy, nil
+}
+
+// CloneRun creates a new run with the same configuration as an existing run.
+// Returns the new run ID on success, or an error if the source run is not found.
+func (rm *RunManager) CloneRun(sourceRunID, actor string) (string, error) {
+	config, err := rm.GetRunConfig(sourceRunID)
+	if err != nil {
+		return "", err
+	}
+
+	return rm.CreateRun(config, actor)
+}
+
 // GetRun returns the current view of a run.
 // Returns an error if the run is not found.
 func (rm *RunManager) GetRun(runID string) (*RunView, error) {

@@ -4,6 +4,7 @@ import { Icon } from './Icon';
 import { formatDuration, formatTime } from '../utils/formatting';
 import { StopRunDialog } from './StopRunDialog';
 import { useToast } from './Toast';
+import { cloneRun, startRun } from '../api/runs';
 
 const API_BASE = '';
 
@@ -31,6 +32,7 @@ interface MetricsRunStatusProps {
   isRunActive: boolean;
   currentRunState?: string;
   onNavigateToWizard?: () => void;
+  onRunAgain?: (newRunId: string) => void;
   runId: string;
   onStopped: () => void;
 }
@@ -200,15 +202,35 @@ export function MetricsRunStatus({
   isRunActive,
   currentRunState,
   onNavigateToWizard,
+  onRunAgain,
   runId,
   onStopped,
 }: MetricsRunStatusProps) {
   const [showStopDialog, setShowStopDialog] = useState(false);
+  const [isCloning, setIsCloning] = useState(false);
+  const { showToast } = useToast();
 
   const handleStopped = useCallback(() => {
     setShowStopDialog(false);
     onStopped();
   }, [onStopped]);
+
+  const handleRunAgain = useCallback(async () => {
+    if (!onRunAgain) return;
+    
+    setIsCloning(true);
+    try {
+      const result = await cloneRun(runId, 'ui');
+      await startRun(result.run_id);
+      showToast('New run started with same configuration', 'success');
+      onRunAgain(result.run_id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to restart run';
+      showToast(message, 'error');
+    } finally {
+      setIsCloning(false);
+    }
+  }, [runId, onRunAgain, showToast]);
 
   return (
     <>
@@ -240,6 +262,18 @@ export function MetricsRunStatus({
           <span className="progress-status progress-status-completed">
             <span className={`status-dot-static status-${currentRunState}`} aria-hidden="true" />
             {currentRunState?.replace(/_/g, ' ')}
+            {onRunAgain && (
+              <button 
+                className="btn btn-secondary btn-sm btn-run-again" 
+                onClick={handleRunAgain}
+                disabled={isCloning}
+                aria-label="Run again with the same configuration"
+                title="Start a new run with the same configuration"
+              >
+                <Icon name={isCloning ? 'loader' : 'rotate-ccw'} size="sm" aria-hidden={true} /> 
+                {isCloning ? 'Starting…' : 'Run Again'}
+              </button>
+            )}
             {onNavigateToWizard && (
               <button 
                 className="btn btn-primary btn-sm btn-new-run" 

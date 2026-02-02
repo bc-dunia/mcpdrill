@@ -73,6 +73,16 @@ type GetRunResponse struct {
 	*runmanager.RunView
 }
 
+// CloneRunRequest is the request body for POST /runs/{id}/clone.
+type CloneRunRequest struct {
+	Actor string `json:"actor"`
+}
+
+// CloneRunResponse is the response body for POST /runs/{id}/clone.
+type CloneRunResponse struct {
+	RunID string `json:"run_id"`
+}
+
 // ErrorResponse is the standard error response format.
 // Matches ref/04-data-models.md Section 5.1 error envelope.
 type ErrorResponse struct {
@@ -302,22 +312,24 @@ type OperationLog struct {
 	ErrorType   string            `json:"error_type,omitempty"`
 	ErrorCode   string            `json:"error_code,omitempty"`
 	Stream      *types.StreamInfo `json:"stream,omitempty"`
+	TokenIndex  *int              `json:"token_index,omitempty"`
 }
 
 // LogFilters contains filter parameters for log queries.
 type LogFilters struct {
-	Stage     string
-	StageID   string
-	WorkerID  string
-	VUID      string
-	SessionID string
-	Operation string
-	ToolName  string
-	ErrorType string
-	ErrorCode string
-	Limit     int
-	Offset    int
-	Order     string // "asc" or "desc"
+	Stage      string
+	StageID    string
+	WorkerID   string
+	VUID       string
+	SessionID  string
+	Operation  string
+	ToolName   string
+	ErrorType  string
+	ErrorCode  string
+	TokenIndex *int
+	Limit      int
+	Offset     int
+	Order      string // "asc" or "desc"
 }
 
 // LogQueryResponse is the response body for GET /runs/{id}/logs.

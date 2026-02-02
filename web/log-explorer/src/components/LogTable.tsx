@@ -45,6 +45,8 @@ function LogTableComponent({ logs, loading, pagination, onPageChange, onLimitCha
   const canGoPrev = offset > 0;
   const canGoNext = offset + limit < total;
   const [jumpPage, setJumpPage] = useState(String(currentPage));
+  
+  const hasTokenData = logs.some(log => log.token_index !== undefined && log.token_index !== null);
 
   const handlePrev = () => {
     if (canGoPrev) {
@@ -85,6 +87,7 @@ function LogTableComponent({ logs, loading, pagination, onPageChange, onLimitCha
               <th scope="col">Worker</th>
               <th scope="col">VU</th>
               <th scope="col">Session</th>
+              {hasTokenData && <th scope="col">Token</th>}
               <th scope="col">Operation</th>
               <th scope="col">Tool</th>
               <th scope="col">Latency</th>
@@ -176,6 +179,17 @@ function LogTableComponent({ logs, loading, pagination, onPageChange, onLimitCha
                     <span className="muted">—</span>
                   )}
                 </td>
+                {hasTokenData && (
+                  <td className="cell-token">
+                    {log.token_index !== undefined && log.token_index !== null ? (
+                      <span className="token-badge" title={`Auth token #${log.token_index}`}>
+                        #{log.token_index}
+                      </span>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
+                )}
                 <td className="cell-operation">
                   <code>{log.operation}</code>
                 </td>

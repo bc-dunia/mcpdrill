@@ -22,6 +22,7 @@ const (
 	ErrKindInvalidState
 	ErrKindTerminalState
 	ErrKindInvalidTransition
+	ErrKindConfigNotAvailable
 	ErrKindInternal
 )
 
@@ -72,6 +73,15 @@ func NewInvalidTransitionError(runID string, from, to RunState) *RunManagerError
 		RunID:   runID,
 		State:   from,
 		Message: fmt.Sprintf("invalid state transition from %s to %s", from, to),
+	}
+}
+
+// NewConfigNotAvailableError creates a config-not-available error.
+func NewConfigNotAvailableError(runID string) *RunManagerError {
+	return &RunManagerError{
+		Kind:    ErrKindConfigNotAvailable,
+		RunID:   runID,
+		Message: fmt.Sprintf("config not available for run %s", runID),
 	}
 }
 

@@ -85,8 +85,9 @@ export function subscribeToRunEvents(
   createSSEHandler(eventSource, 'run_event', (event) => {
     onEvent(event);
     if (event.type === 'STATE_TRANSITION') {
-      const toState = event.payload?.to_state || event.data.to_state;
-      if (toState === 'completed' || toState === 'failed' || toState === 'stopped') {
+      const toState = String(event.payload?.to_state || event.data.to_state || '').toLowerCase();
+      const terminalStates = ['completed', 'failed', 'stopped', 'aborted'];
+      if (terminalStates.includes(toState)) {
         eventSource.close();
       }
     }

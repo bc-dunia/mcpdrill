@@ -8569,14 +8569,60 @@ h1.logo-text,
   margin: 0;
 }
 
+.tool-metrics-controls-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-2) 0;
+}
+
+.tool-metrics-controls-bar .tool-metrics-search {
+  flex: 1;
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.tool-metrics-controls-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.toggle-compact {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.toggle-compact input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent-primary);
+}
+
+.toggle-compact-label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 @media (max-width: 768px) {
-  .tool-metrics-header {
+  .tool-metrics-controls-bar {
     flex-direction: column;
     align-items: stretch;
-    gap: var(--space-3);
+    gap: var(--space-2);
   }
   
-  .tool-metrics-controls {
+  .tool-metrics-controls-bar .tool-metrics-search {
+    max-width: none;
+  }
+  
+  .tool-metrics-controls-right {
+    margin-left: 0;
     justify-content: flex-end;
   }
   

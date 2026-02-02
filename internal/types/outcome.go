@@ -27,6 +27,7 @@ type OperationOutcome struct {
 	StageID     string      `json:"stage_id,omitempty"`
 	VUID        string      `json:"vu_id,omitempty"`
 	SessionID   string      `json:"session_id,omitempty"`
+	TokenIndex  *int        `json:"token_index,omitempty"`
 }
 
 // ErrorResponse represents a standard API error response.

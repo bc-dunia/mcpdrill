@@ -133,6 +133,7 @@ func (ts *TelemetryStore) AddTelemetryBatch(runID string, batch TelemetryBatchRe
 				ErrorType:   op.ErrorType,
 				ErrorCode:   op.ErrorCode,
 				Stream:      op.Stream,
+				TokenIndex:  op.TokenIndex,
 			}
 			rt.logs = append(rt.logs, log)
 		}
@@ -347,6 +348,11 @@ func matchesFilters(log OperationLog, filters LogFilters) bool {
 	}
 	if filters.ErrorCode != "" && log.ErrorCode != filters.ErrorCode {
 		return false
+	}
+	if filters.TokenIndex != nil {
+		if log.TokenIndex == nil || *log.TokenIndex != *filters.TokenIndex {
+			return false
+		}
 	}
 	return true
 }

@@ -296,6 +296,65 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request, runID stri
 	s.writeJSON(w, http.StatusOK, &GetRunResponse{RunView: run})
 }
 
+func (s *Server) handleCloneRun(w http.ResponseWriter, r *http.Request, runID string) {
+	if r.Method != http.MethodPost {
+		s.writeMethodNotAllowed(w, r.Method, "POST")
+		return
+	}
+
+	if s.authConfig != nil && s.authConfig.Mode != auth.AuthModeNone {
+		if !auth.HasAnyRole(r.Context(), auth.RoleAdmin, auth.RoleOperator) {
+			s.writeError(w, http.StatusForbidden, &ErrorResponse{
+				ErrorType:    ErrorTypeForbidden,
+				ErrorCode:    "INSUFFICIENT_PERMISSIONS",
+				ErrorMessage: "This action requires operator or admin role",
+			})
+			return
+		}
+	}
+
+	var req CloneRunRequest
+	if err := json.NewDecoder(limitedBody(w, r)).Decode(&req); err != nil && err.Error() != "EOF" {
+		s.writeError(w, http.StatusBadRequest, NewInvalidRequestErrorResponse(
+			"Invalid JSON request body",
+			map[string]interface{}{"parse_error": err.Error()},
+		))
+		return
+	}
+
+	if req.Actor == "" {
+		req.Actor = "api"
+	}
+
+	newRunID, err := s.runManager.CloneRun(runID, req.Actor)
+	if err != nil {
+		if rmErr := runmanager.AsRunManagerError(err); rmErr != nil {
+			switch rmErr.Kind {
+			case runmanager.ErrKindNotFound:
+				s.writeError(w, http.StatusNotFound, NewNotFoundErrorResponse(runID))
+				return
+			case runmanager.ErrKindConfigNotAvailable:
+				s.writeError(w, http.StatusConflict, &ErrorResponse{
+					ErrorType:    ErrorTypeFailedPrecondition,
+					ErrorCode:    "RUN_CONFIG_NOT_AVAILABLE",
+					ErrorMessage: "Run configuration is not available for cloning",
+					Retryable:    false,
+					Details:      map[string]interface{}{"run_id": runID},
+				})
+				return
+			}
+		}
+		if validationErr, ok := err.(*validation.ValidationError); ok {
+			s.writeError(w, http.StatusBadRequest, NewValidationErrorResponse(validationErr.Report))
+			return
+		}
+		s.writeError(w, http.StatusInternalServerError, NewInternalErrorResponse(err.Error()))
+		return
+	}
+
+	s.writeJSON(w, http.StatusCreated, &CloneRunResponse{RunID: newRunID})
+}
+
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		s.writeMethodNotAllowed(w, r.Method, "GET")

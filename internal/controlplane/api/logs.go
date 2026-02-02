@@ -109,6 +109,17 @@ func parseLogFilters(r *http.Request) (LogFilters, error) {
 		filters.Order = order
 	}
 
+	if tokenIndexStr := q.Get("token_index"); tokenIndexStr != "" {
+		tokenIndex, err := strconv.Atoi(tokenIndexStr)
+		if err != nil {
+			return filters, &InvalidParamError{Param: "token_index", Value: tokenIndexStr, Reason: "must be an integer"}
+		}
+		if tokenIndex < 0 {
+			return filters, &InvalidParamError{Param: "token_index", Value: tokenIndexStr, Reason: "must be non-negative"}
+		}
+		filters.TokenIndex = &tokenIndex
+	}
+
 	return filters, nil
 }
 

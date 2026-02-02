@@ -566,3 +566,16 @@ export async function fetchErrorSignatures(runId: string): Promise<ErrorSignatur
   
   return response.json();
 }
+
+export interface CloneRunResponse {
+  run_id: string;
+}
+
+export async function cloneRun(runId: string, actor: string = 'ui'): Promise<CloneRunResponse> {
+  const response = await fetch(`${API_BASE}/runs/${runId}/clone`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actor }),
+  });
+  return handleResponse<CloneRunResponse>(response, 'Failed to clone run');
+}

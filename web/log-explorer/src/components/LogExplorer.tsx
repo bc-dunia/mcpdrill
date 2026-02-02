@@ -243,6 +243,11 @@ export function LogExplorer() {
     navigate('/wizard');
   }, [navigate]);
 
+  const handleRunAgain = useCallback((newRunId: string) => {
+    loadRuns();
+    navigate(`/runs/${newRunId}/metrics`);
+  }, [navigate, loadRuns]);
+
   const handleErrorClick = useCallback((errorType: string) => {
     handleNavigateToLogs('error_type', errorType);
   }, [handleNavigateToLogs]);
@@ -343,7 +348,7 @@ export function LogExplorer() {
       )}
 
       {selectedRunId && activeTab === 'metrics' && (
-        <MetricsDashboard runId={selectedRunId} run={selectedRun} onNavigateToWizard={handleNavigateToWizard} onNavigateToLogs={handleNavigateToLogs} />
+        <MetricsDashboard runId={selectedRunId} run={selectedRun} onNavigateToWizard={handleNavigateToWizard} onNavigateToLogs={handleNavigateToLogs} onRunAgain={handleRunAgain} />
       )}
 
       {!selectedRunId && (

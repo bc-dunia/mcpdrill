@@ -349,6 +349,8 @@ func (s *Server) routeRuns(w http.ResponseWriter, r *http.Request) {
 		s.handleStopRun(w, r, runID)
 	case "emergency-stop":
 		s.handleEmergencyStop(w, r, runID)
+	case "clone":
+		s.handleCloneRun(w, r, runID)
 	case "events":
 		s.handleStreamEvents(w, r, runID)
 	case "logs":

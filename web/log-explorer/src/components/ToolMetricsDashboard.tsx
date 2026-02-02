@@ -351,8 +351,8 @@ function ToolMetricsDashboardComponent({ runId, onToolClick }: ToolMetricsDashbo
   const filteredAndSortedTools = useMemo(() => {
     let tools = Object.entries(toolMetrics).map(([name, metrics]) => {
       const successRate = metrics.total_ops > 0 
-        ? (metrics.success_ops / metrics.total_ops) * 100 
-        : 100;
+        ? Math.min(100, Math.max(0, (metrics.success_ops / metrics.total_ops) * 100))
+        : 0;
       return { name, metrics, successRate };
     });
 
@@ -428,8 +428,8 @@ function ToolMetricsDashboardComponent({ runId, onToolClick }: ToolMetricsDashbo
         toolName: name,
         value: metrics.total_ops,
         successRate: metrics.total_ops > 0 
-          ? (metrics.success_ops / metrics.total_ops) * 100 
-          : 100,
+          ? Math.min(100, Math.max(0, (metrics.success_ops / metrics.total_ops) * 100))
+          : 0,
       }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 8);
@@ -460,12 +460,6 @@ function ToolMetricsDashboardComponent({ runId, onToolClick }: ToolMetricsDashbo
     setLoading(true);
     fetchData();
   }, [fetchData]);
-
-  const getErrorRateClass = (rate: number): string => {
-    if (rate < 1) return 'tool-metrics-rate-good';
-    if (rate <= 5) return 'tool-metrics-rate-warn';
-    return 'tool-metrics-rate-bad';
-  };
 
   const getSuccessRateClass = (rate: number): string => {
     if (rate >= 99) return 'tool-metrics-rate-good';
@@ -526,85 +520,56 @@ function ToolMetricsDashboardComponent({ runId, onToolClick }: ToolMetricsDashbo
 
   return (
     <div className="tool-metrics-dashboard" role="region" aria-label="Tool Metrics Dashboard">
-      {/* Header */}
-      <div className="tool-metrics-header">
-        <div className="tool-metrics-title">
-          <Icon name="chart-bar" size="md" aria-hidden={true} />
-          <h2>Tool Performance</h2>
-          <span className="tool-metrics-count">{Object.keys(toolMetrics).length} tools</span>
-        </div>
-        <div className="tool-metrics-controls">
-          <label className="tool-metrics-auto-refresh">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              aria-describedby="auto-refresh-desc"
-            />
-            <span className="tool-metrics-toggle-slider" aria-hidden="true" />
-            <span className="tool-metrics-toggle-label">Auto-refresh</span>
-          </label>
-          <span id="auto-refresh-desc" className="sr-only">
-            Refresh metrics every 2 seconds
-          </span>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={loading}
-            className="btn btn-secondary btn-sm"
-            aria-label="Refresh metrics"
-          >
-            <Icon name={loading ? 'loader' : 'refresh'} size="sm" aria-hidden={true} />
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="tool-metrics-kpi-grid" role="region" aria-label="Key performance indicators">
-        <div className="tool-metrics-kpi-card" title="Sum of all tool operations">
-          <span className="tool-metrics-kpi-value">
+      <div className="metrics-summary-grid-compact" role="region" aria-label="Tool metrics summary">
+        <div className="summary-card-mini" title="Sum of all tool operations">
+          <span className="summary-value">
             {kpiMetrics.totalCalls.toLocaleString()}
           </span>
-          <span className="tool-metrics-kpi-label">Total Calls</span>
+          <span className="summary-label">Total Calls</span>
+        </div>
+        <div className="summary-card-mini" title="Number of unique tools">
+          <span className="summary-value">
+            {Object.keys(toolMetrics).length}
+          </span>
+          <span className="summary-label">Tools</span>
         </div>
         <div 
-          className={`tool-metrics-kpi-card ${kpiMetrics.errorRate > 5 ? 'kpi-error' : kpiMetrics.errorRate > 1 ? 'kpi-warn' : ''}`} 
+          className={`summary-card-mini ${kpiMetrics.errorRate > 5 ? 'card-error' : ''}`} 
           title="Overall error percentage"
         >
-          <span className={`tool-metrics-kpi-value ${getErrorRateClass(kpiMetrics.errorRate)}`}>
+          <span className={`summary-value ${kpiMetrics.errorRate > 1 ? 'text-danger' : ''}`}>
             {kpiMetrics.errorRate.toFixed(2)}%
           </span>
-          <span className="tool-metrics-kpi-label">Error Rate</span>
+          <span className="summary-label">Error Rate</span>
         </div>
-        <div className="tool-metrics-kpi-card" title="Average P95 latency across all tools">
-          <span className="tool-metrics-kpi-value">
+        <div className="summary-card-mini" title="Average P95 latency across all tools">
+          <span className={`summary-value ${kpiMetrics.avgP95 > 500 ? 'text-warning' : ''}`}>
             {formatLatency(kpiMetrics.avgP95)}
           </span>
-          <span className="tool-metrics-kpi-label">Avg P95</span>
+          <span className="summary-label">Avg P95</span>
+        </div>
+        <div className="summary-card-mini" title="Average P99 latency across all tools">
+          <span className="summary-value">
+            {formatLatency(Object.values(toolMetrics).reduce((sum, t) => sum + t.latency_p99, 0) / Math.max(1, Object.keys(toolMetrics).length))}
+          </span>
+          <span className="summary-label">Avg P99</span>
         </div>
         <div 
-          className="tool-metrics-kpi-card" 
-          title={kpiMetrics.worstTool ? `Tool with highest error rate` : 'No data'}
+          className="summary-card-mini" 
+          title={kpiMetrics.worstTool ? `Tool with highest error rate: ${kpiMetrics.worstTool.name}` : 'No data'}
         >
-          <span className="tool-metrics-kpi-value tool-metrics-kpi-worst" title={kpiMetrics.worstTool?.name}>
+          <span className="summary-value" style={{ fontSize: '12px' }}>
             {kpiMetrics.worstTool 
-              ? (kpiMetrics.worstTool.name.length > 12 
-                  ? kpiMetrics.worstTool.name.slice(0, 12) + '...' 
+              ? (kpiMetrics.worstTool.name.length > 10 
+                  ? kpiMetrics.worstTool.name.slice(0, 10) + '...' 
                   : kpiMetrics.worstTool.name)
               : '—'}
           </span>
-          <span className="tool-metrics-kpi-sublabel">
-            {kpiMetrics.worstTool 
-              ? `${kpiMetrics.worstTool.errorRate.toFixed(1)}% err · ${formatLatency(kpiMetrics.worstTool.p95)}`
-              : ''}
-          </span>
-          <span className="tool-metrics-kpi-label">Top Error Rate</span>
+          <span className="summary-label">Top Errors</span>
         </div>
       </div>
 
-      {/* Search and Filters */}
-      <div className="tool-metrics-filters">
+      <div className="tool-metrics-controls-bar">
         <div className="tool-metrics-search">
           <Icon name="search" size="sm" aria-hidden={true} />
           <input
@@ -632,16 +597,34 @@ function ToolMetricsDashboardComponent({ runId, onToolClick }: ToolMetricsDashbo
             checked={errorsOnly}
             onChange={(e) => setErrorsOnly(e.target.checked)}
           />
-          <span>Show errors only</span>
+          <span>Errors only</span>
         </label>
         {(debouncedSearch || errorsOnly) && (
           <span className="tool-metrics-filter-count">
-            {filteredAndSortedTools.length} of {Object.keys(toolMetrics).length}
+            {filteredAndSortedTools.length}/{Object.keys(toolMetrics).length}
           </span>
         )}
+        <div className="tool-metrics-controls-right">
+          <label className="toggle-compact">
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+            />
+            <span className="toggle-compact-label">Auto</span>
+          </label>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={loading}
+            className="btn btn-ghost btn-sm"
+            aria-label="Refresh metrics"
+          >
+            <Icon name={loading ? 'loader' : 'refresh'} size="sm" aria-hidden={true} />
+          </button>
+        </div>
       </div>
 
-      {/* Main Table */}
       <div className="tool-metrics-table-container" role="region" aria-label="Tool metrics table">
         <div className="tool-metrics-table-scroll">
           <table className="tool-metrics-table" role="grid">
@@ -776,7 +759,6 @@ function ToolMetricsDashboardComponent({ runId, onToolClick }: ToolMetricsDashbo
         </div>
       </div>
 
-      {/* Charts Grid */}
       <ErrorBoundary fallback={
         <div className="tool-metrics-chart-error">
           <Icon name="alert-triangle" size="lg" />

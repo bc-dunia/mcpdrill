@@ -14,6 +14,7 @@ export interface OperationLog {
   error_type: string;
   error_code: string;
   stream?: StreamInfo;
+  token_index?: number;
 }
 
 export interface LogQueryResponse {
@@ -51,6 +52,7 @@ export interface LogFilters {
   tool_name: string;
   error_type: string;
   error_code: string;
+  token_index?: number;
 }
 
 export interface PaginationState {

@@ -11,6 +11,7 @@ interface MetricsDashboardProps {
   run?: RunInfo;
   onNavigateToWizard?: () => void;
   onNavigateToLogs?: (key: keyof LogFilters, value: string) => void;
+  onRunAgain?: (newRunId: string) => void;
 }
 
 function calculateSummary(
@@ -39,7 +40,7 @@ function calculateSummary(
   return {
     total_ops: totalOps,
     failed_ops: failedOps,
-    success_rate: totalOps > 0 ? ((totalOps - failedOps) / totalOps) * 100 : 100,
+    success_rate: totalOps > 0 ? Math.max(0, ((totalOps - failedOps) / totalOps) * 100) : 0,
     avg_latency: avgLatency,
     peak_throughput: peakThroughput,
     avg_error_rate: avgErrorRate,
@@ -47,7 +48,7 @@ function calculateSummary(
   };
 }
 
-export function MetricsDashboard({ runId, run, onNavigateToWizard, onNavigateToLogs }: MetricsDashboardProps) {
+export function MetricsDashboard({ runId, run, onNavigateToWizard, onNavigateToLogs, onRunAgain }: MetricsDashboardProps) {
   const [activeMetricsTab, setActiveMetricsTab] = useState<'overview' | 'tools'>('overview');
   const [stopReasonDismissed, setStopReasonDismissed] = useState(false);
 
@@ -139,6 +140,7 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard, onNavigateToL
         isRunActive={isRunActive}
         currentRunState={currentRunState}
         onNavigateToWizard={onNavigateToWizard}
+        onRunAgain={onRunAgain}
         runId={runId}
         onStopped={loadRunState}
       />
