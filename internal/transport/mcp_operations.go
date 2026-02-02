@@ -3,27 +3,32 @@ package transport
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/bc-dunia/mcpdrill/internal/mcp"
 )
 
-const (
-	MCPProtocolVersion = "2025-03-26"
-	MCPClientName      = "mcpdrill"
-	MCPClientVersion   = "1.0.0"
+var (
+	MCPProtocolVersion = mcp.DefaultProtocolVersion
+	MCPClientName      = mcp.ClientName
+	MCPClientVersion   = mcp.ClientVersion
 )
 
-func NewInitializeRequest(id string) *JSONRPCRequest {
+func NewInitializeRequest(id string, params *InitializeParams) *JSONRPCRequest {
+	if params == nil {
+		params = &InitializeParams{
+			ProtocolVersion: mcp.DefaultProtocolVersion,
+			Capabilities:    map[string]interface{}{},
+			ClientInfo: ClientInfo{
+				Name:    mcp.ClientName,
+				Version: mcp.ClientVersion,
+			},
+		}
+	}
 	return &JSONRPCRequest{
 		JSONRPC: "2.0",
 		ID:      id,
 		Method:  string(OpInitialize),
-		Params: InitializeParams{
-			ProtocolVersion: MCPProtocolVersion,
-			Capabilities:    map[string]interface{}{},
-			ClientInfo: ClientInfo{
-				Name:    MCPClientName,
-				Version: MCPClientVersion,
-			},
-		},
+		Params:  *params,
 	}
 }
 

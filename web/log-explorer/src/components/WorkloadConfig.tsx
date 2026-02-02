@@ -103,10 +103,16 @@ export function WorkloadConfig({ config, onChange, targetUrl, headers, fetchedTo
 
   const addOperation = useCallback(() => {
     const usedOps = new Set(config.op_mix.map(op => op.operation));
+    const toolsCallOp = OPERATIONS.find(op => op.value === 'tools/call');
     const availableOp = OPERATIONS.find(op => !usedOps.has(op.value) && !op.disabled);
+    
     if (availableOp) {
       onChange({
         op_mix: [...config.op_mix, { operation: availableOp.value, weight: 1 }],
+      });
+    } else if (toolsCallOp && !toolsCallOp.disabled) {
+      onChange({
+        op_mix: [...config.op_mix, { operation: 'tools/call', weight: 1 }],
       });
     }
   }, [config.op_mix, onChange]);
@@ -283,12 +289,46 @@ export function WorkloadConfig({ config, onChange, targetUrl, headers, fetchedTo
                   )}
                 </div>
               )}
+
+              {op.operation === 'resources/read' && (
+                <div className="operation-extra">
+                  <div className="field-row">
+                    <label htmlFor={`${opId}-uri`}>Resource URI</label>
+                    <input
+                      id={`${opId}-uri`}
+                      type="text"
+                      value={op.uri || ''}
+                      onChange={e => updateOperation(index, { uri: e.target.value })}
+                      placeholder="e.g., file:///docs/readme.md"
+                      className="input"
+                    />
+                    <span className="field-hint">The URI of the resource to read</span>
+                  </div>
+                </div>
+              )}
+
+              {op.operation === 'prompts/get' && (
+                <div className="operation-extra">
+                  <div className="field-row">
+                    <label htmlFor={`${opId}-prompt-name`}>Prompt Name</label>
+                    <input
+                      id={`${opId}-prompt-name`}
+                      type="text"
+                      value={op.prompt_name || ''}
+                      onChange={e => updateOperation(index, { prompt_name: e.target.value })}
+                      placeholder="e.g., summarize, translate"
+                      className="input"
+                    />
+                    <span className="field-hint">The name of the prompt template to retrieve</span>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
-      {config.op_mix.length < OPERATIONS.filter(op => !op.disabled).length && (
+      {config.op_mix.length < 20 && (
         <button type="button" onClick={addOperation} className="btn btn-secondary add-operation-btn">
           + Add Operation
         </button>

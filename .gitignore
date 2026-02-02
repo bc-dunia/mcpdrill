@@ -91,6 +91,11 @@ ref/
 __snapshots__/
 .nyc_output/
 
+# Web frontend test artifacts
+web/log-explorer/test-results/
+web/log-explorer/playwright-report/
+web/log-explorer/.vitest/
+
 # ===================
 # Go Specific
 # ===================

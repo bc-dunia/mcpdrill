@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { RunInfo, MetricsDataPoint, MetricsSummary, LogFilters } from '../types';
 import { Icon } from './Icon';
 import { useMetricsData, type LatestTotals } from '../hooks/useMetricsData';
 import { MetricsCharts, MetricsTabs } from './MetricsCharts';
 import { MetricsControls, MetricsRunStatus, MetricsStopReason } from './MetricsControls';
 import { ConnectionStatus } from './ConnectionStatus';
+import { TruncationBanner } from './TruncationBanner';
 
 interface MetricsDashboardProps {
   runId: string;
@@ -51,6 +52,7 @@ function calculateSummary(
 export function MetricsDashboard({ runId, run, onNavigateToWizard, onNavigateToLogs, onRunAgain }: MetricsDashboardProps) {
   const [activeMetricsTab, setActiveMetricsTab] = useState<'overview' | 'tools'>('overview');
   const [stopReasonDismissed, setStopReasonDismissed] = useState(false);
+  const [truncationDismissed, setTruncationDismissed] = useState(false);
 
   const {
     dataPoints,
@@ -69,6 +71,7 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard, onNavigateToL
     elapsedMs,
     latestTotals,
     stageMarkers,
+    truncationInfo,
     handleManualRefresh,
     loadMetrics,
     loadRunState,
@@ -78,6 +81,10 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard, onNavigateToL
     () => calculateSummary(dataPoints, latestTotals, durationMs),
     [dataPoints, latestTotals, durationMs]
   );
+
+  useEffect(() => {
+    setTruncationDismissed(false);
+  }, [runId]);
 
   return (
     <section className="metrics-dashboard" aria-labelledby="metrics-dashboard-heading">
@@ -133,6 +140,13 @@ export function MetricsDashboard({ runId, run, onNavigateToWizard, onNavigateToL
             {loading ? 'Retrying...' : 'Try Again'}
           </button>
         </div>
+      )}
+
+      {!truncationDismissed && (
+        <TruncationBanner
+          truncationInfo={truncationInfo}
+          onDismiss={() => setTruncationDismissed(true)}
+        />
       )}
 
       <MetricsRunStatus

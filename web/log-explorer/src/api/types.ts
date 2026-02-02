@@ -1,7 +1,9 @@
 export interface BackendOperationMix {
   operation: string;
   weight: number;
-  custom_operation_name?: string | null;
+  uri?: string;
+  prompt_name?: string;
+  arguments?: Record<string, unknown>;
 }
 
 export interface BackendToolTemplate {

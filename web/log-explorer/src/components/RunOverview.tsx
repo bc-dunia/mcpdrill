@@ -297,17 +297,17 @@ export function RunOverview() {
       <section className="run-overview-actions">
         <button 
           className="btn btn-secondary"
-          onClick={() => navigate(`/runs/${runId}/logs`)}
-        >
-          <Icon name="list" size="sm" />
-          View Logs
-        </button>
-        <button 
-          className="btn btn-secondary"
           onClick={() => navigate(`/runs/${runId}/metrics`)}
         >
           <Icon name="chart-bar" size="sm" />
           View Metrics
+        </button>
+        <button 
+          className="btn btn-secondary"
+          onClick={() => navigate(`/runs/${runId}/logs`)}
+        >
+          <Icon name="list" size="sm" />
+          View Logs
         </button>
         <button 
           className="btn btn-secondary"

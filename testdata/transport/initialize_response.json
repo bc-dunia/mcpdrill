@@ -2,7 +2,7 @@
   "jsonrpc": "2.0",
   "id": "init_001",
   "result": {
-    "protocolVersion": "2025-03-26",
+    "protocolVersion": "2025-11-25",
     "capabilities": {
       "tools": { "listChanged": true },
       "resources": {}

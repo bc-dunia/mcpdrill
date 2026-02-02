@@ -28,9 +28,9 @@ type TelemetryStoreConfig struct {
 // DefaultTelemetryStoreConfig returns sensible defaults.
 func DefaultTelemetryStoreConfig() *TelemetryStoreConfig {
 	return &TelemetryStoreConfig{
-		MaxOperationsPerRun: 100000, // 100K operations per run
-		MaxLogsPerRun:       100000, // 100K logs per run
-		MaxTotalRuns:        100,    // 100 runs max in memory
+		MaxOperationsPerRun: 20000000, // 20M ops (~33 min at 10K ops/sec)
+		MaxLogsPerRun:       20000000, // 20M logs
+		MaxTotalRuns:        100,      // 100 runs max in memory
 	}
 }
 
@@ -508,8 +508,9 @@ func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, inclu
 	var totalSessions, activeSessions, droppedSessions, terminatedSessions int64
 	var totalLifetimeMs float64
 
-	// Check if run has ended
-	runEnded := rt.endTimeMs > 0 || rt.stopReason != ""
+	// Check if run has ended - only use stopReason, not endTimeMs
+	// endTimeMs tracks "last telemetry seen", not "run actually ended"
+	runEnded := rt.stopReason != ""
 
 	var sessionMetricsList []metrics.ConnectionMetrics
 	for sessionID, state := range sessionStates {

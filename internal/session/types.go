@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bc-dunia/mcpdrill/internal/config"
+	"github.com/bc-dunia/mcpdrill/internal/mcp"
 	"github.com/bc-dunia/mcpdrill/internal/transport"
 )
 
@@ -82,6 +83,14 @@ type SessionConfig struct {
 
 	// Adapter is the transport adapter used to create connections.
 	Adapter transport.Adapter
+
+	// ProtocolVersion is the MCP protocol version to use for initialization.
+	// Empty string means use default (mcp.DefaultProtocolVersion).
+	ProtocolVersion string
+
+	// ProtocolVersionPolicy determines how to handle version negotiation.
+	// Empty string means use strict policy.
+	ProtocolVersionPolicy mcp.VersionPolicy
 }
 
 // DefaultSessionConfig returns a default session configuration.

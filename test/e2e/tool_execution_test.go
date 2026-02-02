@@ -160,7 +160,7 @@ func TestToolsListOperation(t *testing.T) {
 
 	// Initialize session first
 	initResp := sendMCPRequest(t, mcpURL, "initialize", map[string]interface{}{
-		"protocolVersion": "2024-11-05",
+		"protocolVersion": "2025-11-25",
 		"capabilities":    map[string]interface{}{},
 		"clientInfo": map[string]interface{}{
 			"name":    "test-client",

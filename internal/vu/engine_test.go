@@ -38,7 +38,7 @@ func (m *mockConnection) Initialize(ctx context.Context, params *transport.Initi
 		Operation: transport.OpInitialize,
 		OK:        true,
 		SessionID: m.sessionID,
-		Result:    json.RawMessage(`{"protocolVersion":"2024-11-05","capabilities":{},"serverInfo":{"name":"mock","version":"1.0"}}`),
+		Result:    json.RawMessage(`{"protocolVersion":"2025-11-25","capabilities":{},"serverInfo":{"name":"mock","version":"1.0"}}`),
 	}, nil
 }
 

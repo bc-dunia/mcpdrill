@@ -75,8 +75,12 @@ func (o *ResourcesReadOperation) Validate(params map[string]interface{}) error {
 	if !ok {
 		return NewValidationError(OpNameResourcesRead, "uri", "required")
 	}
-	if _, isString := uri.(string); !isString {
+	uriStr, isString := uri.(string)
+	if !isString {
 		return NewValidationError(OpNameResourcesRead, "uri", "must be a string")
+	}
+	if uriStr == "" {
+		return NewValidationError(OpNameResourcesRead, "uri", "cannot be empty")
 	}
 
 	return nil

@@ -1,0 +1,128 @@
+{
+  "schema_version": "run-config/v1",
+  "scenario_id": "quick-start",
+  "target": {
+    "kind": "server",
+    "url": "http://127.0.0.1:3000/mcp",
+    "transport": "streamable_http",
+    "headers": {},
+    "auth": { "type": "none" },
+    "identification": {
+      "run_id_header": { "name": "X-MCP-Drill-Run", "value_template": "{{run_id}}" },
+      "user_agent": { "value": "mcpdrill/${run_id}" }
+    },
+    "timeouts": {
+      "connect_timeout_ms": 5000,
+      "request_timeout_ms": 30000,
+      "stream_stall_timeout_ms": 60000
+    },
+    "tls": { "verify": true, "ca_bundle_ref": null },
+    "redirect_policy": { "mode": "deny", "max_redirects": 0 }
+  },
+  "environment": {
+    "allowlist": {
+      "mode": "deny_by_default",
+      "allowed_targets": [
+        { "kind": "exact", "value": "http://127.0.0.1:3000/mcp" }
+      ]
+    },
+    "forbidden_patterns": []
+  },
+  "session_policy": {
+    "mode": "reuse",
+    "pool_size": null,
+    "ttl_ms": null,
+    "max_idle_ms": null
+  },
+  "workload": {
+    "in_flight_per_vu": 1,
+    "think_time": { "mode": "jitter", "base_ms": 100, "jitter_ms": 50 },
+    "operation_mix": [
+      { "operation": "tools_list", "weight": 1 },
+      { "operation": "tools_call", "weight": 5 }
+    ],
+    "tools": {
+      "selection": { "mode": "weighted" },
+      "templates": [
+        {
+          "template_id": "echo",
+          "tool_name": "fast_echo",
+          "weight": 1,
+          "arguments": { "message": "hello" }
+        }
+      ]
+    },
+    "payload_profiles": []
+  },
+  "stages": [
+    {
+      "stage_id": "stg_0000000000000001",
+      "stage": "preflight",
+      "enabled": true,
+      "duration_ms": 15000,
+      "load": { "target_vus": 1, "target_rps": null },
+      "stop_conditions": []
+    },
+    {
+      "stage_id": "stg_0000000000000002",
+      "stage": "baseline",
+      "enabled": true,
+      "duration_ms": 20000,
+      "load": { "target_vus": 1, "target_rps": null },
+      "stop_conditions": [
+        {
+          "id": "baseline_error_rate",
+          "metric": "error_rate",
+          "comparator": ">",
+          "threshold": 0.05,
+          "window_ms": 5000,
+          "sustain_windows": 1,
+          "scope": {}
+        }
+      ]
+    },
+    {
+      "stage_id": "stg_0000000000000003",
+      "stage": "ramp",
+      "enabled": true,
+      "duration_ms": 30000,
+      "load": { "target_vus": 5, "target_rps": null },
+      "stop_conditions": [
+        {
+          "id": "error_rate",
+          "metric": "error_rate",
+          "comparator": ">",
+          "threshold": 0.1,
+          "window_ms": 10000,
+          "sustain_windows": 1,
+          "scope": {}
+        }
+      ]
+    }
+  ],
+  "safety": {
+    "ramp_by_default": true,
+    "emergency_stop_enabled": true,
+    "identification_required": false,
+    "worker_failure_policy": "fail_fast",
+    "hard_caps": {
+      "max_vus": 100,
+      "max_rps": 1000,
+      "max_connections": 200,
+      "max_duration_ms": 300000,
+      "max_in_flight_per_vu": 10,
+      "max_telemetry_q_depth": 100000
+    },
+    "stop_policy": { "mode": "drain", "drain_timeout_ms": 30000 }
+  },
+  "reporting": {
+    "formats": ["json"],
+    "retention": { "raw_logs_days": 7, "metrics_days": 30, "reports_days": 90 },
+    "include": { "store_raw_logs": true, "store_metrics_snapshot": true, "store_event_log": true },
+    "redaction": { "redact_headers": ["Authorization", "X-Api-Key"] }
+  },
+  "telemetry": {
+    "structured_logs": { "enabled": true, "sample_rate": 1.0 },
+    "traces": { "enabled": false, "propagation": { "accept_incoming_traceparent": false } }
+  }
+}

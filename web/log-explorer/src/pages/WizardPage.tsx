@@ -16,6 +16,7 @@ export function WizardPage() {
   const navigate = useNavigate();
 
   const handleRunStarted = useCallback((runId: string) => {
+    window.scrollTo(0, 0);
     navigate(`/runs/${runId}/metrics`);
   }, [navigate]);
 

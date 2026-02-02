@@ -540,11 +540,11 @@ func TestTelemetryStore_RunEviction(t *testing.T) {
 func TestTelemetryStore_DefaultConfig(t *testing.T) {
 	config := DefaultTelemetryStoreConfig()
 
-	if config.MaxOperationsPerRun != 100000 {
-		t.Errorf("Expected MaxOperationsPerRun=100000, got %d", config.MaxOperationsPerRun)
+	if config.MaxOperationsPerRun != 20000000 {
+		t.Errorf("Expected MaxOperationsPerRun=20000000, got %d", config.MaxOperationsPerRun)
 	}
-	if config.MaxLogsPerRun != 100000 {
-		t.Errorf("Expected MaxLogsPerRun=100000, got %d", config.MaxLogsPerRun)
+	if config.MaxLogsPerRun != 20000000 {
+		t.Errorf("Expected MaxLogsPerRun=20000000, got %d", config.MaxLogsPerRun)
 	}
 	if config.MaxTotalRuns != 100 {
 		t.Errorf("Expected MaxTotalRuns=100, got %d", config.MaxTotalRuns)

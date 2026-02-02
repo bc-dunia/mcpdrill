@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bc-dunia/mcpdrill/internal/mcp"
 	"github.com/bc-dunia/mcpdrill/internal/session"
 	"github.com/bc-dunia/mcpdrill/internal/transport"
 	"github.com/bc-dunia/mcpdrill/internal/types"
@@ -217,12 +218,14 @@ func (e *AssignmentExecutor) buildTransportConfig(a types.WorkerAssignment) *tra
 // buildSessionConfig creates session configuration from assignment.
 func (e *AssignmentExecutor) buildSessionConfig(a types.WorkerAssignment, transportCfg *transport.TransportConfig, adapter transport.Adapter) *session.SessionConfig {
 	cfg := &session.SessionConfig{
-		Mode:            mapSessionMode(a.SessionPolicy.Mode),
-		PoolSize:        a.SessionPolicy.PoolSize,
-		TTLMs:           a.SessionPolicy.TTLMs,
-		MaxIdleMs:       a.SessionPolicy.MaxIdleMs,
-		TransportConfig: transportCfg,
-		Adapter:         adapter,
+		Mode:                  mapSessionMode(a.SessionPolicy.Mode),
+		PoolSize:              a.SessionPolicy.PoolSize,
+		TTLMs:                 a.SessionPolicy.TTLMs,
+		MaxIdleMs:             a.SessionPolicy.MaxIdleMs,
+		TransportConfig:       transportCfg,
+		Adapter:               adapter,
+		ProtocolVersion:       a.Target.ProtocolVersion,
+		ProtocolVersionPolicy: mcp.ParseVersionPolicy(a.Target.ProtocolVersionPolicy),
 	}
 
 	// Set defaults if not specified

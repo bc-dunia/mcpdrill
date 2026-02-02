@@ -46,12 +46,14 @@ func (s *Server) handleGetLogs(w http.ResponseWriter, r *http.Request, runID str
 		return
 	}
 
+	_, logsTruncated := s.telemetryStore.IsTruncated(runID)
 	s.writeJSON(w, http.StatusOK, &LogQueryResponse{
-		RunID:  runID,
-		Total:  total,
-		Offset: filters.Offset,
-		Limit:  filters.Limit,
-		Logs:   logs,
+		RunID:         runID,
+		Total:         total,
+		Offset:        filters.Offset,
+		Limit:         filters.Limit,
+		Logs:          logs,
+		LogsTruncated: logsTruncated,
 	})
 }
 

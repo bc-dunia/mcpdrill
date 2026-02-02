@@ -16,11 +16,13 @@ type AuthConfig struct {
 
 // TargetConfig contains the target configuration for an assignment.
 type TargetConfig struct {
-	URL            string                `json:"url"`
-	Transport      string                `json:"transport"`
-	Headers        map[string]string     `json:"headers,omitempty"`
-	RedirectPolicy *RedirectPolicyConfig `json:"redirect_policy,omitempty"`
-	Auth           *AuthConfig           `json:"auth,omitempty"`
+	URL                   string                `json:"url"`
+	Transport             string                `json:"transport"`
+	Headers               map[string]string     `json:"headers,omitempty"`
+	RedirectPolicy        *RedirectPolicyConfig `json:"redirect_policy,omitempty"`
+	Auth                  *AuthConfig           `json:"auth,omitempty"`
+	ProtocolVersion       string                `json:"protocol_version,omitempty"`
+	ProtocolVersionPolicy string                `json:"protocol_version_policy,omitempty"`
 }
 
 // WorkloadConfig contains the workload configuration for an assignment.

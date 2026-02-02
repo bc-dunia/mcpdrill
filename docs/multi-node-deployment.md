@@ -346,7 +346,7 @@ spec:
 
 **Example**:
 ```bash
-./server --addr :9090
+./mcpdrill-server --addr :9090
 ```
 
 ### Worker Flags
@@ -361,7 +361,7 @@ spec:
 
 **Example**:
 ```bash
-./worker \
+./mcpdrill-worker \
   --control-plane http://control-plane:8080 \
   --heartbeat-interval 5s \
   --telemetry-interval 5s
@@ -584,7 +584,7 @@ curl http://control-plane:8080/readyz
 
 4. **Increase heartbeat interval** (if high latency):
    ```bash
-   ./worker --control-plane http://control-plane:8080 --heartbeat-interval 20s
+   ./mcpdrill-worker --control-plane http://control-plane:8080 --heartbeat-interval 20s
    ```
 
 ### Insufficient Capacity
@@ -690,7 +690,7 @@ curl http://control-plane:8080/readyz
 
 2. **Reduce poll interval**:
    ```bash
-   ./worker --control-plane http://control-plane:8080 --assignment-poll-interval 2s
+   ./mcpdrill-worker --control-plane http://control-plane:8080 --assignment-poll-interval 2s
    ```
 
 3. **Check run state**:
@@ -718,7 +718,7 @@ curl http://control-plane:8080/readyz
 
 2. **Reduce telemetry interval**:
    ```bash
-   ./worker --control-plane http://control-plane:8080 --telemetry-interval 5s
+   ./mcpdrill-worker --control-plane http://control-plane:8080 --telemetry-interval 5s
    ```
 
 3. **Check control plane logs**:

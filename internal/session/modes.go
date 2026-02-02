@@ -8,8 +8,47 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bc-dunia/mcpdrill/internal/mcp"
 	"github.com/bc-dunia/mcpdrill/internal/transport"
 )
+
+func buildInitializeParams(config *SessionConfig) *transport.InitializeParams {
+	version := config.ProtocolVersion
+	if version == "" {
+		version = mcp.DefaultProtocolVersion
+	}
+	return &transport.InitializeParams{
+		ProtocolVersion: version,
+		Capabilities:    make(map[string]interface{}),
+		ClientInfo: transport.ClientInfo{
+			Name:    mcp.ClientName,
+			Version: mcp.ClientVersion,
+		},
+	}
+}
+
+func validateProtocolVersion(config *SessionConfig, outcome *transport.OperationOutcome) error {
+	if config.ProtocolVersionPolicy == mcp.VersionPolicyNone {
+		return nil
+	}
+
+	result, err := transport.ParseInitializeResult(outcome.Result)
+	if err != nil {
+		return err
+	}
+
+	requested := config.ProtocolVersion
+	if requested == "" {
+		requested = mcp.DefaultProtocolVersion
+	}
+
+	policy := config.ProtocolVersionPolicy
+	if policy == "" {
+		policy = mcp.VersionPolicyStrict
+	}
+
+	return mcp.ValidateNegotiation(requested, result.ProtocolVersion, policy)
+}
 
 type ModeHandler interface {
 	Acquire(ctx context.Context, vuID string) (*SessionInfo, error)
@@ -198,14 +237,7 @@ func (rm *ReuseMode) createSession(ctx context.Context, vuID string) (*SessionIn
 		return nil, &SessionError{Op: "connect", Err: err}
 	}
 
-	params := &transport.InitializeParams{
-		ProtocolVersion: "2025-03-26",
-		Capabilities:    make(map[string]interface{}),
-		ClientInfo: transport.ClientInfo{
-			Name:    "mcpdrill",
-			Version: "1.0.0",
-		},
-	}
+	params := buildInitializeParams(rm.config)
 
 	outcome, err := conn.Initialize(ctx, params)
 	if err != nil {
@@ -219,6 +251,11 @@ func (rm *ReuseMode) createSession(ctx context.Context, vuID string) (*SessionIn
 			return nil, &SessionError{Op: "initialize", Err: outcome.Error}
 		}
 		return nil, &SessionError{Op: "initialize", Err: errSessionClosed}
+	}
+
+	if err := validateProtocolVersion(rm.config, outcome); err != nil {
+		closeWithLog(conn, "connection")
+		return nil, &SessionError{Op: "version_negotiation", Err: err}
 	}
 
 	_, err = conn.SendInitialized(ctx)
@@ -315,14 +352,7 @@ func (pm *PerRequestMode) createSession(ctx context.Context, vuID string) (*Sess
 		return nil, &SessionError{Op: "connect", Err: err}
 	}
 
-	params := &transport.InitializeParams{
-		ProtocolVersion: "2025-03-26",
-		Capabilities:    make(map[string]interface{}),
-		ClientInfo: transport.ClientInfo{
-			Name:    "mcpdrill",
-			Version: "1.0.0",
-		},
-	}
+	params := buildInitializeParams(pm.config)
 
 	outcome, err := conn.Initialize(ctx, params)
 	if err != nil {
@@ -336,6 +366,11 @@ func (pm *PerRequestMode) createSession(ctx context.Context, vuID string) (*Sess
 			return nil, &SessionError{Op: "initialize", Err: outcome.Error}
 		}
 		return nil, &SessionError{Op: "initialize", Err: errSessionClosed}
+	}
+
+	if err := validateProtocolVersion(pm.config, outcome); err != nil {
+		closeWithLog(conn, "connection")
+		return nil, &SessionError{Op: "version_negotiation", Err: err}
 	}
 
 	_, err = conn.SendInitialized(ctx)
@@ -438,14 +473,7 @@ func (pm *PoolMode) createSession(ctx context.Context) (*SessionInfo, error) {
 		return nil, &SessionError{Op: "connect", Err: err}
 	}
 
-	params := &transport.InitializeParams{
-		ProtocolVersion: "2025-03-26",
-		Capabilities:    make(map[string]interface{}),
-		ClientInfo: transport.ClientInfo{
-			Name:    "mcpdrill",
-			Version: "1.0.0",
-		},
-	}
+	params := buildInitializeParams(pm.config)
 
 	outcome, err := conn.Initialize(ctx, params)
 	if err != nil {
@@ -459,6 +487,11 @@ func (pm *PoolMode) createSession(ctx context.Context) (*SessionInfo, error) {
 			return nil, &SessionError{Op: "initialize", Err: outcome.Error}
 		}
 		return nil, &SessionError{Op: "initialize", Err: errSessionClosed}
+	}
+
+	if err := validateProtocolVersion(pm.config, outcome); err != nil {
+		closeWithLog(conn, "connection")
+		return nil, &SessionError{Op: "version_negotiation", Err: err}
 	}
 
 	_, err = conn.SendInitialized(ctx)
@@ -662,14 +695,7 @@ func (cm *ChurnMode) createSession(ctx context.Context, vuID string) (*SessionIn
 		return nil, &SessionError{Op: "connect", Err: err}
 	}
 
-	params := &transport.InitializeParams{
-		ProtocolVersion: "2025-03-26",
-		Capabilities:    make(map[string]interface{}),
-		ClientInfo: transport.ClientInfo{
-			Name:    "mcpdrill",
-			Version: "1.0.0",
-		},
-	}
+	params := buildInitializeParams(cm.config)
 
 	outcome, err := conn.Initialize(ctx, params)
 	if err != nil {
@@ -683,6 +709,11 @@ func (cm *ChurnMode) createSession(ctx context.Context, vuID string) (*SessionIn
 			return nil, &SessionError{Op: "initialize", Err: outcome.Error}
 		}
 		return nil, &SessionError{Op: "initialize", Err: errSessionClosed}
+	}
+
+	if err := validateProtocolVersion(cm.config, outcome); err != nil {
+		closeWithLog(conn, "connection")
+		return nil, &SessionError{Op: "version_negotiation", Err: err}
 	}
 
 	_, err = conn.SendInitialized(ctx)

@@ -78,6 +78,8 @@ func (v *SemanticValidator) Validate(data []byte) *ValidationReport {
 	v.validateLoadNonnegative(config, report)
 	v.validateOperationMixNonempty(config, report)
 	v.validateToolsCallRequiresTools(config, report)
+	v.validateResourcesReadRequiresURI(config, report)
+	v.validatePromptsGetRequiresName(config, report)
 	v.validateCapsRequired(config, report)
 	v.validateCapsConsistent(config, report)
 	v.validateCapsWithinSystemPolicy(config, report)
@@ -354,6 +356,74 @@ func (v *SemanticValidator) validateToolsCallRequiresTools(config map[string]int
 		report.AddError(CodeToolsCallRequiresTemplates,
 			"tools_call operation requires at least one tool template",
 			"/workload/tools/templates")
+	}
+}
+
+func (v *SemanticValidator) validateResourcesReadRequiresURI(config map[string]interface{}, report *ValidationReport) {
+	workload, ok := config["workload"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	opMix, ok := workload["operation_mix"].([]interface{})
+	if !ok {
+		opMix, ok = workload["op_mix"].([]interface{})
+	}
+	if !ok {
+		return
+	}
+
+	for i, op := range opMix {
+		opMap, ok := op.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		operation, ok := opMap["operation"].(string)
+		if !ok {
+			continue
+		}
+		if operation == "resources_read" || operation == "resources/read" {
+			uri, _ := opMap["uri"].(string)
+			if uri == "" {
+				report.AddError(CodeRequiredFieldMissing,
+					"resources_read operation requires 'uri' field",
+					"/workload/operation_mix/"+strconv.Itoa(i)+"/uri")
+			}
+		}
+	}
+}
+
+func (v *SemanticValidator) validatePromptsGetRequiresName(config map[string]interface{}, report *ValidationReport) {
+	workload, ok := config["workload"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	opMix, ok := workload["operation_mix"].([]interface{})
+	if !ok {
+		opMix, ok = workload["op_mix"].([]interface{})
+	}
+	if !ok {
+		return
+	}
+
+	for i, op := range opMix {
+		opMap, ok := op.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		operation, ok := opMap["operation"].(string)
+		if !ok {
+			continue
+		}
+		if operation == "prompts_get" || operation == "prompts/get" {
+			promptName, _ := opMap["prompt_name"].(string)
+			if promptName == "" {
+				report.AddError(CodeRequiredFieldMissing,
+					"prompts_get operation requires 'prompt_name' field",
+					"/workload/operation_mix/"+strconv.Itoa(i)+"/prompt_name")
+			}
+		}
 	}
 }
 

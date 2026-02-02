@@ -164,10 +164,10 @@ func handleMyCustomTool(
 
 ```bash
 # Rebuild the mock server
-go build -o mcpdrill-server ./cmd/server
+go build -o mcpdrill-mockserver ./cmd/mockserver
 
-# Start the server
-./mcpdrill-server --addr :3000
+# Start the mock server
+./mcpdrill-mockserver --addr :3000
 
 # Test your tool
 curl -X POST http://localhost:3000/mcp \

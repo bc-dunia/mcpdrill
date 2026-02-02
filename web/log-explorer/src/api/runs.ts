@@ -13,6 +13,7 @@ import type {
   BackendToolTemplate,
   BackendStopCondition,
   BackendRunConfig,
+  BackendOperationMix,
   ApiErrorBody,
   AgentInfo,
   StopMode,
@@ -64,8 +65,6 @@ function mapOperation(op: OpMixEntry['operation']): string {
     'prompts/list': 'prompts_list',
     'prompts/get': 'prompts_get',
     'ping': 'ping',
-    'custom': 'custom',
-    'initialize': 'initialize',
   };
   return mapping[op] || 'tools_list';
 }
@@ -149,10 +148,24 @@ function convertToBackendConfig(config: RunConfig): BackendRunConfig {
         base_ms: 100,
         jitter_ms: 0,
       },
-      operation_mix: config.workload.op_mix.map(op => ({
-        operation: mapOperation(op.operation),
-        weight: op.weight,
-      })),
+      operation_mix: config.workload.op_mix.map(op => {
+        const entry: BackendOperationMix = {
+          operation: mapOperation(op.operation),
+          weight: op.weight,
+        };
+        if (op.operation === 'resources/read' && op.uri) {
+          entry.uri = op.uri;
+        }
+        if (op.operation === 'prompts/get') {
+          if (op.prompt_name) {
+            entry.prompt_name = op.prompt_name;
+          }
+          if (op.arguments && Object.keys(op.arguments).length > 0) {
+            entry.arguments = op.arguments;
+          }
+        }
+        return entry;
+      }),
       tools: {
         selection: {
           mode: toolTemplates.length > 0 ? 'round_robin' : 'round_robin',

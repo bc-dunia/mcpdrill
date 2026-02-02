@@ -275,6 +275,39 @@ func (e *VUExecutor) executeOperation(ctx context.Context, sess *session.Session
 		e.vu.OperationsFailed.Add(1)
 		span.SetAttributes(attribute.Bool("error", true))
 		span.SetAttributes(attribute.String("error.type", "no_connection"))
+
+		endTime := time.Now()
+		traceID, spanID := otel.GetTraceInfo(ctx)
+		noConnOutcome := &transport.OperationOutcome{
+			Operation: transport.OperationType(op.Operation),
+			ToolName:  op.ToolName,
+			StartTime: startTime,
+			LatencyMs: endTime.Sub(startTime).Milliseconds(),
+			OK:        false,
+			Error: &transport.OperationError{
+				Type:    transport.ErrorTypeConnect,
+				Code:    "NO_CONNECTION",
+				Message: "no connection available for session",
+			},
+		}
+		if e.resultChan != nil {
+			result := &OperationResult{
+				Operation: op.Operation,
+				ToolName:  op.ToolName,
+				Outcome:   noConnOutcome,
+				VUID:      e.vu.ID,
+				SessionID: sess.ID,
+				StartTime: startTime,
+				EndTime:   endTime,
+				TraceID:   traceID,
+				SpanID:    spanID,
+			}
+			select {
+			case e.resultChan <- result:
+			default:
+				e.metrics.DroppedResults.Add(1)
+			}
+		}
 		return
 	}
 
@@ -284,6 +317,39 @@ func (e *VUExecutor) executeOperation(ctx context.Context, sess *session.Session
 		e.vu.OperationsFailed.Add(1)
 		span.SetAttributes(attribute.Bool("error", true))
 		span.SetAttributes(attribute.String("error.type", "unknown_operation"))
+
+		endTime := time.Now()
+		traceID, spanID := otel.GetTraceInfo(ctx)
+		unknownOpOutcome := &transport.OperationOutcome{
+			Operation: transport.OperationType(op.Operation),
+			ToolName:  op.ToolName,
+			StartTime: startTime,
+			LatencyMs: endTime.Sub(startTime).Milliseconds(),
+			OK:        false,
+			Error: &transport.OperationError{
+				Type:    transport.ErrorTypeProtocol,
+				Code:    "UNKNOWN_OPERATION",
+				Message: "operation not registered: " + string(op.Operation),
+			},
+		}
+		if e.resultChan != nil {
+			result := &OperationResult{
+				Operation: op.Operation,
+				ToolName:  op.ToolName,
+				Outcome:   unknownOpOutcome,
+				VUID:      e.vu.ID,
+				SessionID: sess.ID,
+				StartTime: startTime,
+				EndTime:   endTime,
+				TraceID:   traceID,
+				SpanID:    spanID,
+			}
+			select {
+			case e.resultChan <- result:
+			default:
+				e.metrics.DroppedResults.Add(1)
+			}
+		}
 		return
 	}
 

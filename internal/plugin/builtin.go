@@ -181,8 +181,12 @@ func (o *PromptsGetOperation) Validate(params map[string]interface{}) error {
 	if !ok {
 		return NewValidationError(OpNamePromptsGet, "name", "required")
 	}
-	if _, isString := name.(string); !isString {
+	nameStr, isString := name.(string)
+	if !isString {
 		return NewValidationError(OpNamePromptsGet, "name", "must be a string")
+	}
+	if nameStr == "" {
+		return NewValidationError(OpNamePromptsGet, "name", "cannot be empty")
 	}
 
 	if args, ok := params["arguments"]; ok {

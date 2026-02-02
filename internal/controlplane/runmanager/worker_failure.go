@@ -277,11 +277,13 @@ func (rm *RunManager) handleReplaceIfPossibleLocked(record *RunRecord, workerID 
 			VUIDEnd:     assignment.VUIDRange.End,
 			DurationMs:  rm.getStageDuration(parsedConfig, stageID),
 			Target: types.TargetConfig{
-				URL:            parsedConfig.Target.URL,
-				Transport:      parsedConfig.Target.Transport,
-				Headers:        buildTargetHeaders(record.RunID, &parsedConfig.Target),
-				RedirectPolicy: buildRedirectPolicy(parsedConfig.Target.RedirectPolicy),
-				Auth:           buildAuthConfig(parsedConfig.Target.Auth),
+				URL:                   parsedConfig.Target.URL,
+				Transport:             parsedConfig.Target.Transport,
+				Headers:               buildTargetHeaders(record.RunID, &parsedConfig.Target),
+				RedirectPolicy:        buildRedirectPolicy(parsedConfig.Target.RedirectPolicy),
+				Auth:                  buildAuthConfig(parsedConfig.Target.Auth),
+				ProtocolVersion:       parsedConfig.Target.ProtocolVersion,
+				ProtocolVersionPolicy: parsedConfig.Target.ProtocolVersionPolicy,
 			},
 			Workload: types.WorkloadConfig{
 				OpMix: convertOpMix(parsedConfig.Workload.OpMix),

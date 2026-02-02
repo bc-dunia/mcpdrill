@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bc-dunia/mcpdrill/internal/mcp"
 	"github.com/bc-dunia/mcpdrill/internal/types"
 )
 
@@ -173,8 +174,16 @@ func (s *mockServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 
 	switch req.Method {
 	case "initialize":
+		var initParams types.InitializeParams
+		if req.Params != nil {
+			json.Unmarshal(req.Params, &initParams)
+		}
+		version := initParams.ProtocolVersion
+		if version == "" || !mcp.IsSupported(version) {
+			version = mcp.DefaultProtocolVersion
+		}
 		result := types.InitializeResult{
-			ProtocolVersion: "2024-11-05",
+			ProtocolVersion: version,
 			Capabilities:    map[string]interface{}{},
 			ServerInfo:      types.ServerInfo{Name: "mockserver", Version: "1.0.0"},
 		}
@@ -189,6 +198,20 @@ func (s *mockServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "tools/call":
 		s.handleToolsCall(w, r, req)
+		return
+	case "resources/list":
+		result := buildResourcesList()
+		writeJSONRPCResult(w, req.ID, result)
+		return
+	case "resources/read":
+		s.handleResourcesRead(w, req)
+		return
+	case "prompts/list":
+		result := buildPromptsList()
+		writeJSONRPCResult(w, req.ID, result)
+		return
+	case "prompts/get":
+		s.handlePromptsGet(w, req)
 		return
 	default:
 		writeJSONRPCError(w, req.ID, -32601, "method not found")
@@ -381,6 +404,196 @@ func buildToolsList() []types.Tool {
 		})
 	}
 	return tools
+}
+
+// buildResourcesList returns a list of mock resources.
+func buildResourcesList() types.ResourcesListResult {
+	return types.ResourcesListResult{
+		Resources: []types.Resource{
+			{
+				URI:         "file:///docs/readme.md",
+				Name:        "README",
+				Description: "Project documentation",
+				MimeType:    "text/markdown",
+			},
+			{
+				URI:         "file:///config/settings.json",
+				Name:        "Settings",
+				Description: "Application configuration",
+				MimeType:    "application/json",
+			},
+			{
+				URI:         "file:///data/sample.csv",
+				Name:        "Sample Data",
+				Description: "Sample CSV data file",
+				MimeType:    "text/csv",
+			},
+		},
+	}
+}
+
+// handleResourcesRead handles the resources/read method.
+func (s *mockServer) handleResourcesRead(w http.ResponseWriter, req types.JSONRPCRequest) {
+	var params types.ResourcesReadParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		writeJSONRPCError(w, req.ID, -32602, "invalid params")
+		return
+	}
+
+	if params.URI == "" {
+		writeJSONRPCError(w, req.ID, -32602, "missing uri parameter")
+		return
+	}
+
+	// Return mock content based on URI
+	var content types.ResourceContent
+	switch params.URI {
+	case "file:///docs/readme.md":
+		content = types.ResourceContent{
+			URI:      params.URI,
+			MimeType: "text/markdown",
+			Text:     "# Mock Project\n\nThis is a mock README file for testing purposes.\n\n## Features\n\n- Feature 1\n- Feature 2\n- Feature 3\n",
+		}
+	case "file:///config/settings.json":
+		content = types.ResourceContent{
+			URI:      params.URI,
+			MimeType: "application/json",
+			Text:     `{"debug": true, "timeout": 30, "maxRetries": 3}`,
+		}
+	case "file:///data/sample.csv":
+		content = types.ResourceContent{
+			URI:      params.URI,
+			MimeType: "text/csv",
+			Text:     "id,name,value\n1,alpha,100\n2,beta,200\n3,gamma,300\n",
+		}
+	default:
+		// Return generic content for unknown URIs
+		content = types.ResourceContent{
+			URI:      params.URI,
+			MimeType: "text/plain",
+			Text:     fmt.Sprintf("Mock content for resource: %s", params.URI),
+		}
+	}
+
+	result := types.ResourcesReadResult{
+		Contents: []types.ResourceContent{content},
+	}
+	writeJSONRPCResult(w, req.ID, result)
+}
+
+// buildPromptsList returns a list of mock prompts.
+func buildPromptsList() types.PromptsListResult {
+	return types.PromptsListResult{
+		Prompts: []types.Prompt{
+			{
+				Name:        "summarize",
+				Description: "Summarize the given text",
+				Arguments: []types.PromptArgument{
+					{Name: "text", Description: "Text to summarize", Required: true},
+					{Name: "max_length", Description: "Maximum summary length", Required: false},
+				},
+			},
+			{
+				Name:        "translate",
+				Description: "Translate text to another language",
+				Arguments: []types.PromptArgument{
+					{Name: "text", Description: "Text to translate", Required: true},
+					{Name: "target_language", Description: "Target language code", Required: true},
+				},
+			},
+			{
+				Name:        "code_review",
+				Description: "Review code for issues and improvements",
+				Arguments: []types.PromptArgument{
+					{Name: "code", Description: "Code to review", Required: true},
+					{Name: "language", Description: "Programming language", Required: false},
+				},
+			},
+		},
+	}
+}
+
+// handlePromptsGet handles the prompts/get method.
+func (s *mockServer) handlePromptsGet(w http.ResponseWriter, req types.JSONRPCRequest) {
+	var params types.PromptsGetParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		writeJSONRPCError(w, req.ID, -32602, "invalid params")
+		return
+	}
+
+	if params.Name == "" {
+		writeJSONRPCError(w, req.ID, -32602, "missing name parameter")
+		return
+	}
+
+	var result types.PromptsGetResult
+	switch params.Name {
+	case "summarize":
+		text, _ := params.Arguments["text"].(string)
+		if text == "" {
+			text = "[no text provided]"
+		}
+		result = types.PromptsGetResult{
+			Description: "Summarize the given text",
+			Messages: []types.PromptMessage{
+				{
+					Role: "user",
+					Content: types.PromptContent{
+						Type: "text",
+						Text: fmt.Sprintf("Please summarize the following text:\n\n%s", text),
+					},
+				},
+			},
+		}
+	case "translate":
+		text, _ := params.Arguments["text"].(string)
+		targetLang, _ := params.Arguments["target_language"].(string)
+		if text == "" {
+			text = "[no text provided]"
+		}
+		if targetLang == "" {
+			targetLang = "en"
+		}
+		result = types.PromptsGetResult{
+			Description: "Translate text to another language",
+			Messages: []types.PromptMessage{
+				{
+					Role: "user",
+					Content: types.PromptContent{
+						Type: "text",
+						Text: fmt.Sprintf("Translate the following text to %s:\n\n%s", targetLang, text),
+					},
+				},
+			},
+		}
+	case "code_review":
+		code, _ := params.Arguments["code"].(string)
+		language, _ := params.Arguments["language"].(string)
+		if code == "" {
+			code = "[no code provided]"
+		}
+		langHint := ""
+		if language != "" {
+			langHint = fmt.Sprintf(" (written in %s)", language)
+		}
+		result = types.PromptsGetResult{
+			Description: "Review code for issues and improvements",
+			Messages: []types.PromptMessage{
+				{
+					Role: "user",
+					Content: types.PromptContent{
+						Type: "text",
+						Text: fmt.Sprintf("Please review the following code%s for potential issues, bugs, and improvements:\n\n```\n%s\n```", langHint, code),
+					},
+				},
+			},
+		}
+	default:
+		writeJSONRPCError(w, req.ID, -32602, fmt.Sprintf("unknown prompt: %s", params.Name))
+		return
+	}
+
+	writeJSONRPCResult(w, req.ID, result)
 }
 
 func writeJSONRPCResult(w http.ResponseWriter, id interface{}, result interface{}) {

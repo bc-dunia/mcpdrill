@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { RunInfo, LiveMetrics, MetricsDataPoint, StabilityMetrics, StageMarker } from '../types';
+import type { RunInfo, LiveMetrics, MetricsDataPoint, StabilityMetrics, StageMarker, TruncationInfo } from '../types';
 import { fetchRun, subscribeToRunEvents, type RunEvent } from '../api/index';
 import { formatTime } from '../utils/formatting';
 import { saveWithEviction, loadFromLocalStorage } from '../utils/storage';
@@ -110,6 +110,7 @@ interface UseMetricsDataResult {
   elapsedMs: number;
   latestTotals: LatestTotals;
   stageMarkers: StageMarker[];
+  truncationInfo: TruncationInfo;
   handleManualRefresh: () => void;
   loadMetrics: () => Promise<void>;
   loadStability: () => Promise<void>;
@@ -133,6 +134,11 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
   const [elapsedMs, setElapsedMs] = useState<number>(0);
   const [latestTotals, setLatestTotals] = useState<LatestTotals>({ total_ops: 0, success_ops: 0, failed_ops: 0 });
   const [stageMarkers, setStageMarkers] = useState<StageMarker[]>([]);
+  const [truncationInfo, setTruncationInfo] = useState<TruncationInfo>({
+    operationsTruncated: false,
+    logsTruncated: false,
+    dataTruncated: false,
+  });
 
   const intervalRef = useRef<number | null>(null);
   const fallbackIntervalRef = useRef<number | null>(null);
@@ -204,6 +210,9 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
       if (metrics.duration_ms !== undefined) {
         setDurationMs(metrics.duration_ms);
       }
+      if (metrics.operations_truncated) {
+        setTruncationInfo(prev => ({ ...prev, operationsTruncated: true }));
+      }
       setError(null);
     } catch (err) {
       if (currentRunIdRef.current === thisRunId) {
@@ -267,6 +276,9 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
       if (metrics.duration_ms !== undefined) {
         setDurationMs(metrics.duration_ms);
       }
+      if (metrics.operations_truncated) {
+        setTruncationInfo(prev => ({ ...prev, operationsTruncated: true }));
+      }
       setError(null);
     } catch (err) {
       if (currentRunIdRef.current === thisRunId) {
@@ -303,6 +315,9 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
       const data = await fetchStability(thisRunId);
       if (currentRunIdRef.current !== thisRunId || stabilityRequestIdRef.current !== thisRequestId) return;
       setStability(data);
+      if (data.data_truncated) {
+        setTruncationInfo(prev => ({ ...prev, dataTruncated: true }));
+      }
     } catch {
       if (currentRunIdRef.current === thisRunId && stabilityRequestIdRef.current === thisRequestId) {
         setStability(null);
@@ -332,6 +347,7 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
     setError(null);
     setCurrentStage(null);
     setStageMarkers([]);
+    setTruncationInfo({ operationsTruncated: false, logsTruncated: false, dataTruncated: false });
     
     const cached = loadMetricsFromStorage(runId);
     if (cached && cached.dataPoints.length > 0) {
@@ -379,14 +395,12 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
       if (!sseConnected) {
         intervalRef.current = window.setInterval(() => loadMetrics(), CONFIG.REFRESH_INTERVALS.METRICS);
       } else {
-        const FALLBACK_INTERVAL = 5000;
-        const SSE_STALE_THRESHOLD = 5000;
         fallbackIntervalRef.current = window.setInterval(() => {
           const timeSinceLastEvent = Date.now() - lastSseEventRef.current;
-          if (timeSinceLastEvent > SSE_STALE_THRESHOLD) {
+          if (timeSinceLastEvent > CONFIG.REFRESH_INTERVALS.METRICS) {
             loadMetrics();
           }
-        }, FALLBACK_INTERVAL);
+        }, CONFIG.REFRESH_INTERVALS.METRICS);
       }
     }
 
@@ -613,6 +627,7 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
     elapsedMs,
     latestTotals,
     stageMarkers,
+    truncationInfo,
     handleManualRefresh,
     loadMetrics,
     loadStability,

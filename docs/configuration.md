@@ -1,6 +1,57 @@
 # Configuration Reference
 
-Complete reference for MCP Drill test configuration.
+Complete reference for MCP Drill configuration.
+
+## Server Configuration
+
+The control plane server accepts the following command-line flags:
+
+### Telemetry Storage Limits
+
+| Flag | Default | Recommended Max | Description |
+|------|---------|-----------------|-------------|
+| `--max-ops-per-run` | 20,000,000 | 50,000,000 | Maximum operations stored per run (0=unlimited) |
+| `--max-logs-per-run` | 20,000,000 | 50,000,000 | Maximum logs stored per run (0=unlimited) |
+| `--max-total-runs` | 100 | - | Maximum runs kept in memory before eviction (0=unlimited) |
+
+> **Note**: Values exceeding 50M will trigger a warning due to high memory usage (25GB+). Values up to 100M are supported for enterprise deployments.
+
+**Memory Considerations**:
+
+| Limit | Estimated RAM | @ 1K ops/sec | @ 5K ops/sec | @ 10K ops/sec |
+|-------|---------------|--------------|--------------|---------------|
+| 20M (default) | 6-10 GB | ~5.5 hours | ~67 min | ~33 min |
+| 50M (recommended max) | 15-25 GB | ~14 hours | ~2.8 hours | ~1.4 hours |
+| 100M (enterprise) | 30-50 GB | ~28 hours | ~5.5 hours | ~2.8 hours |
+
+> **Tip**: Check your actual throughput in the Web UI metrics. High VU counts with fast tools can easily reach 5,000-10,000+ ops/sec.
+
+When limits are exceeded, new data is dropped and the UI displays a truncation warning. Metrics remain accurate for the stored data.
+
+### Examples
+
+```bash
+# Default (20M operations, ~33 min at 10K ops/sec)
+./mcpdrill-server --addr :8080
+
+# High capacity for longer soak tests (50M, requires 16+ GB RAM)
+./mcpdrill-server --addr :8080 \
+  --max-ops-per-run 50000000 \
+  --max-logs-per-run 50000000 \
+  --max-total-runs 20
+
+# Enterprise: very long soak tests (100M, requires 50+ GB RAM)
+./mcpdrill-server --addr :8080 \
+  --max-ops-per-run 100000000 \
+  --max-logs-per-run 100000000 \
+  --max-total-runs 10
+```
+
+---
+
+## Test Run Configuration
+
+Full schema for test run configuration files.
 
 ## Full Schema
 
@@ -112,22 +163,42 @@ Complete reference for MCP Drill test configuration.
 
 ## Operations
 
-| Operation | Description |
-|-----------|-------------|
-| `tools/list` | List available tools from server |
-| `tools/call` | Call a specific tool |
-| `ping` | Simple connectivity check |
+| Operation | Description | Required Fields |
+|-----------|-------------|-----------------|
+| `tools_list` | List available tools from server | - |
+| `tools_call` | Call a specific tool | Uses `workload.tools.templates` |
+| `resources_list` | List available resources | - |
+| `resources_read` | Read a specific resource | `uri` |
+| `prompts_list` | List available prompts | - |
+| `prompts_get` | Get a specific prompt | `prompt_name` |
+| `ping` | Simple connectivity check | - |
 
-### tools/call Example
+### Operation Examples
 
+**tools_call** - Uses tool templates defined in `workload.tools.templates`:
 ```json
 {
-  "operation": "tools/call",
-  "weight": 5,
-  "tool_name": "calculate",
-  "arguments": {
-    "expression": "2 + 2 * 3"
-  }
+  "operation": "tools_call",
+  "weight": 5
+}
+```
+
+**resources_read** - Requires `uri` field:
+```json
+{
+  "operation": "resources_read",
+  "weight": 2,
+  "uri": "file:///docs/readme.md"
+}
+```
+
+**prompts_get** - Requires `prompt_name` field:
+```json
+{
+  "operation": "prompts_get",
+  "weight": 1,
+  "prompt_name": "summarize",
+  "arguments": { "text": "Hello world" }
 }
 ```
 
@@ -141,30 +212,38 @@ Complete reference for MCP Drill test configuration.
 
 ## Example Configurations
 
-### Basic Load Test
+> **Tip**: Use the Web UI wizard at http://localhost:5173 to generate valid run configurations. The wizard handles all required fields and schema compliance automatically.
+
+For complete, validated examples, see the `examples/` directory, particularly `examples/quick-start.json`.
+
+### Minimal Configuration Reference
+
+The run config requires `schema_version: "run-config/v1"` and uses underscore-style operation names (`tools_list`, not `tools/list`). Here's a simplified reference:
 
 ```json
 {
+  "schema_version": "run-config/v1",
   "scenario_id": "basic-test",
   "target": {
     "url": "http://localhost:3000/mcp",
     "transport": "streamable_http"
   },
-  "stages": [
-    {
-      "stage_id": "stg_0000000000000001",
-      "stage": "ramp",
-      "duration_ms": 60000,
-      "load": { "target_vus": 50 }
-    }
-  ],
   "workload": {
-    "op_mix": [
-      { "operation": "tools/list", "weight": 1 }
-    ]
+    "operation_mix": [
+      { "operation": "tools_list", "weight": 1 },
+      { "operation": "tools_call", "weight": 3 }
+    ],
+    "tools": {
+      "selection": { "mode": "weighted" },
+      "templates": [
+        { "template_id": "echo", "tool_name": "fast_echo", "weight": 1, "arguments": { "message": "test" } }
+      ]
+    }
   }
 }
 ```
+
+> **Note**: This is a simplified reference. Production configs require additional fields like `stages`, `safety`, `session_policy`, etc. See `examples/quick-start.json` for a complete valid config.
 
 ### Soak Test with Stop Conditions
 

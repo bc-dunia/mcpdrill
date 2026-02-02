@@ -65,6 +65,42 @@ If URL validation fails:
 - Ensure target is in allowed hosts
 - Use explicit IP addresses if needed
 
+## Data Truncation
+
+### "Data Truncated" Warning in UI
+
+This warning appears when the test exceeds storage limits. By default, the server stores up to 20 million operations per run.
+
+**Symptoms:**
+- Yellow banner: "Data truncated: Some operations exceeded storage limits"
+- Metrics may be incomplete for long-running tests
+
+**Solutions:**
+
+1. **Increase limits** when starting the server:
+   ```bash
+   # Extended capacity (20M, ~5.5 hours at 1000 ops/sec)
+   ./mcpdrill-server --max-ops-per-run 20000000 --max-logs-per-run 20000000
+   
+   # High capacity (50M, requires 16+ GB RAM)
+   ./mcpdrill-server --max-ops-per-run 50000000 --max-logs-per-run 50000000
+   
+   # Enterprise (100M, requires 50+ GB RAM)
+   ./mcpdrill-server --max-ops-per-run 100000000 --max-logs-per-run 100000000
+   ```
+
+2. **Run shorter stages** - break very long soak tests into multiple shorter runs
+
+**Memory usage estimate:**
+
+| Limit | RAM Required | @ 1K ops/sec | @ 10K ops/sec |
+|-------|--------------|--------------|---------------|
+| 20M (default) | 6-10 GB | ~5.5 hours | ~33 min |
+| 50M (recommended max) | 15-25 GB | ~14 hours | ~1.4 hours |
+| 100M (enterprise) | 30-50 GB | ~28 hours | ~2.8 hours |
+
+> **Note**: Throughput varies significantly by VU count and tool complexity. Check your actual ops/sec in the metrics dashboard.
+
 ## Web UI Issues
 
 ### UI Not Loading

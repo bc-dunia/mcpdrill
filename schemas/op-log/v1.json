@@ -60,7 +60,7 @@
     "session_id": {"type": ["string", "null"], "maxLength": 256},
     "op_id": {"type": "string", "minLength": 1, "maxLength": 128},
     "attempt": {"type": "integer", "minimum": 1, "maximum": 1000},
-    "operation": {"type": "string", "enum": ["initialize", "tools_list", "tools_call", "resources_list", "resources_read", "prompts_list", "prompts_get", "ping", "custom"]},
+    "operation": {"type": "string", "enum": ["initialize", "tools_list", "tools_call", "resources_list", "resources_read", "prompts_list", "prompts_get", "ping", "custom", "tools/list", "tools/call", "resources/list", "resources/read", "prompts/list", "prompts/get"]},
     "operation_name": {"type": ["string", "null"], "maxLength": 200},
     "tool_name": {"type": ["string", "null"], "maxLength": 200},
     "latency_ms": {"type": "integer", "minimum": 0, "maximum": 3600000},

@@ -24,6 +24,14 @@ func normalizeOpName(op string) string {
 		return "tools/list"
 	case "tools_call":
 		return "tools/call"
+	case "resources_list":
+		return "resources/list"
+	case "resources_read":
+		return "resources/read"
+	case "prompts_list":
+		return "prompts/list"
+	case "prompts_get":
+		return "prompts/get"
 	default:
 		return op
 	}

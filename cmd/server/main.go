@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -32,8 +33,22 @@ func main() {
 	redactAssignmentSecrets := flag.Bool("redact-assignment-secrets", false, "Redact sensitive headers and tokens in worker assignments")
 	rateLimit := flag.Float64("rate-limit", 100, "API rate limit in requests/second (0 to disable)")
 	rateBurst := flag.Int("rate-burst", 200, "API rate limit burst size")
+	maxOpsPerRun := flag.Int("max-ops-per-run", 20000000, "Max operations stored per run (0=unlimited)")
+	maxLogsPerRun := flag.Int("max-logs-per-run", 20000000, "Max logs stored per run (0=unlimited)")
+	maxTotalRuns := flag.Int("max-total-runs", 100, "Max runs in memory before eviction (0=unlimited)")
 	devMode := flag.Bool("dev", false, "Development mode: binds to loopback, disables auth, allows private networks")
 	flag.Parse()
+
+	if *maxOpsPerRun < 0 || *maxLogsPerRun < 0 || *maxTotalRuns < 0 {
+		slog.Error("telemetry limits cannot be negative")
+		os.Exit(1)
+	}
+	if *maxOpsPerRun == 0 || *maxLogsPerRun == 0 {
+		slog.Warn("unlimited telemetry storage enabled, monitor memory usage to avoid OOM")
+	}
+	if *maxOpsPerRun > 50000000 || *maxLogsPerRun > 50000000 {
+		slog.Warn("telemetry limits exceed recommended maximum (50M), very high memory usage expected (25GB+)")
+	}
 
 	if *devMode {
 		*addr = "127.0.0.1:8080"
@@ -78,7 +93,11 @@ func main() {
 
 	server := api.NewServer(*addr, rm)
 	server.SetRegistry(registry)
-	telemetryStore := api.NewTelemetryStore()
+	telemetryStore := api.NewTelemetryStoreWithConfig(&api.TelemetryStoreConfig{
+		MaxOperationsPerRun: *maxOpsPerRun,
+		MaxLogsPerRun:       *maxLogsPerRun,
+		MaxTotalRuns:        *maxTotalRuns,
+	})
 	server.SetTelemetryStore(telemetryStore)
 	rm.SetTelemetryStore(telemetryStore)
 	server.SetMetricsCollector(metrics.NewCollector())

@@ -53,13 +53,41 @@ type InitializeResult struct {
 	ProtocolVersion string                 `json:"protocolVersion"`
 	Capabilities    map[string]interface{} `json:"capabilities"`
 	ServerInfo      ServerInfo             `json:"serverInfo"`
+	Instructions    string                 `json:"instructions,omitempty"`
 }
 
 // Tool represents an MCP tool definition.
 type Tool struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	InputSchema json.RawMessage `json:"inputSchema,omitempty"`
+	Name         string           `json:"name"`
+	Title        string           `json:"title,omitempty"`
+	Description  string           `json:"description,omitempty"`
+	InputSchema  json.RawMessage  `json:"inputSchema,omitempty"`
+	OutputSchema json.RawMessage  `json:"outputSchema,omitempty"`
+	Execution    *ToolExecution   `json:"execution,omitempty"`
+	Annotations  *ToolAnnotations `json:"annotations,omitempty"`
+	Icons        []Icon           `json:"icons,omitempty"`
+}
+
+// ToolExecution describes how a tool supports async tasks.
+type ToolExecution struct {
+	// TaskSupport indicates task support: "forbidden", "optional", or "required"
+	TaskSupport string `json:"taskSupport,omitempty"`
+}
+
+// ToolAnnotations provides hints about tool behavior.
+type ToolAnnotations struct {
+	Title           string `json:"title,omitempty"`
+	ReadOnlyHint    bool   `json:"readOnlyHint,omitempty"`
+	DestructiveHint bool   `json:"destructiveHint,omitempty"`
+	IdempotentHint  bool   `json:"idempotentHint,omitempty"`
+	OpenWorldHint   bool   `json:"openWorldHint,omitempty"`
+}
+
+// Icon represents an icon for a tool, resource, or prompt.
+type Icon struct {
+	Src      string   `json:"src"`
+	MimeType string   `json:"mimeType,omitempty"`
+	Sizes    []string `json:"sizes,omitempty"`
 }
 
 // ToolsListResult contains the result of a tools/list request.
@@ -82,8 +110,9 @@ type ToolContent struct {
 
 // ToolsCallResult contains the result of a tools/call request.
 type ToolsCallResult struct {
-	Content []ToolContent `json:"content"`
-	IsError bool          `json:"isError,omitempty"`
+	Content           []ToolContent          `json:"content"`
+	StructuredContent map[string]interface{} `json:"structuredContent,omitempty"`
+	IsError           bool                   `json:"isError,omitempty"`
 }
 
 // Resource represents an MCP resource definition.

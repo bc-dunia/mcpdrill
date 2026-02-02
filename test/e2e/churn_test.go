@@ -272,7 +272,7 @@ func formatChurnSessionID(n int64) string {
 
 func (m *mockChurnConnection) Initialize(ctx context.Context, params *transport.InitializeParams) (*transport.OperationOutcome, error) {
 	result, _ := json.Marshal(map[string]interface{}{
-		"protocolVersion": "2025-03-26",
+		"protocolVersion": "2025-11-25",
 		"capabilities":    map[string]interface{}{},
 		"serverInfo": map[string]interface{}{
 			"name":    "mock-server",

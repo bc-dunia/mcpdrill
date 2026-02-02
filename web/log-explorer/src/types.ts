@@ -23,6 +23,7 @@ export interface LogQueryResponse {
   offset: number;
   limit: number;
   logs: OperationLog[];
+  logs_truncated?: boolean;
 }
 
 export interface StopReason {
@@ -111,6 +112,8 @@ export interface OpMixEntry {
   weight: number;
   tool_name?: string;
   arguments?: Record<string, unknown>;
+  uri?: string;
+  prompt_name?: string;
 }
 
 export interface WorkloadConfig {
@@ -263,6 +266,7 @@ export interface LiveMetrics {
   duration_ms: number;
   timestamp?: number;
   time_series?: MetricsTimePoint[];
+  operations_truncated?: boolean;
 }
 
 export interface MetricsDataPoint {
@@ -423,6 +427,7 @@ export interface StabilityMetrics {
   events?: ConnectionEvent[];
   session_metrics?: ConnectionMetrics[];
   time_series?: StabilityTimePoint[];
+  data_truncated?: boolean;
 }
 
 // Server Telemetry Types (from mcpdrill-agent)
@@ -476,6 +481,13 @@ export interface ServerMetricsDataPoint {
   load_avg_1: number;
   load_avg_5: number;
   load_avg_15: number;
+}
+
+// Truncation info for warning banner
+export interface TruncationInfo {
+  operationsTruncated: boolean;
+  logsTruncated: boolean;
+  dataTruncated: boolean;
 }
 
 // Stage marker for visualizing stage boundaries on charts

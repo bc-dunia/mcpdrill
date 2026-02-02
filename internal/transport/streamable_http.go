@@ -193,7 +193,7 @@ func (c *StreamableHTTPConnection) Close() error {
 
 func (c *StreamableHTTPConnection) Initialize(ctx context.Context, params *InitializeParams) (*OperationOutcome, error) {
 	requestID := c.nextRequestID()
-	req := NewInitializeRequest(requestID)
+	req := NewInitializeRequest(requestID, params)
 
 	outcome := c.doRequest(ctx, req, OpInitialize, requestID)
 	return outcome, nil

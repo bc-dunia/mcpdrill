@@ -10,11 +10,23 @@ import (
 )
 
 func ConvertToOutcome(result *vu.OperationResult, a types.WorkerAssignment, workerID string) types.OperationOutcome {
+	// Calculate latency: prefer transport-measured latency, fallback to executor timing
+	// Use microseconds divided by 1000 to preserve sub-millisecond precision
+	latencyMs := int(result.EndTime.Sub(result.StartTime).Microseconds() / 1000)
+	if result.Outcome != nil && result.Outcome.LatencyMs > 0 {
+		// Transport layer measured latency is more accurate (network timing)
+		latencyMs = int(result.Outcome.LatencyMs)
+	}
+	// Ensure minimum 1ms for any completed operation to avoid 0 values
+	if latencyMs == 0 && !result.EndTime.IsZero() && !result.StartTime.IsZero() {
+		latencyMs = 1
+	}
+
 	outcome := types.OperationOutcome{
 		OpID:        result.TraceID,
 		Operation:   string(result.Operation),
 		ToolName:    result.ToolName,
-		LatencyMs:   int(result.EndTime.Sub(result.StartTime).Milliseconds()),
+		LatencyMs:   latencyMs,
 		OK:          result.Outcome != nil && result.Outcome.OK,
 		TimestampMs: result.StartTime.UnixMilli(),
 		WorkerID:    workerID,

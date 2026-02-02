@@ -334,11 +334,12 @@ type LogFilters struct {
 
 // LogQueryResponse is the response body for GET /runs/{id}/logs.
 type LogQueryResponse struct {
-	RunID  string         `json:"run_id"`
-	Total  int            `json:"total"`
-	Offset int            `json:"offset"`
-	Limit  int            `json:"limit"`
-	Logs   []OperationLog `json:"logs"`
+	RunID         string         `json:"run_id"`
+	Total         int            `json:"total"`
+	Offset        int            `json:"offset"`
+	Limit         int            `json:"limit"`
+	Logs          []OperationLog `json:"logs"`
+	LogsTruncated bool           `json:"logs_truncated,omitempty"`
 }
 
 // ListRunsResponse is the response body for GET /runs.
@@ -348,17 +349,18 @@ type ListRunsResponse struct {
 
 // RunMetricsResponse is the response body for GET /runs/{id}/metrics.
 type RunMetricsResponse struct {
-	RunID          string                                `json:"run_id"`
-	Throughput     float64                               `json:"throughput"`
-	LatencyP50     float64                               `json:"latency_p50_ms"`
-	LatencyP95     float64                               `json:"latency_p95_ms"`
-	LatencyP99     float64                               `json:"latency_p99_ms"`
-	ErrorRate      float64                               `json:"error_rate"`
-	TotalOps       int64                                 `json:"total_ops"`
-	FailedOps      int64                                 `json:"failed_ops"`
-	DurationMs     int64                                 `json:"duration_ms"`
-	ByTool         map[string]*analysis.OperationMetrics `json:"by_tool,omitempty"`
-	TimeSeriesData []metrics.MetricsTimePoint            `json:"time_series,omitempty"`
+	RunID               string                                `json:"run_id"`
+	Throughput          float64                               `json:"throughput"`
+	LatencyP50          float64                               `json:"latency_p50_ms"`
+	LatencyP95          float64                               `json:"latency_p95_ms"`
+	LatencyP99          float64                               `json:"latency_p99_ms"`
+	ErrorRate           float64                               `json:"error_rate"`
+	TotalOps            int64                                 `json:"total_ops"`
+	FailedOps           int64                                 `json:"failed_ops"`
+	DurationMs          int64                                 `json:"duration_ms"`
+	ByTool              map[string]*analysis.OperationMetrics `json:"by_tool,omitempty"`
+	TimeSeriesData      []metrics.MetricsTimePoint            `json:"time_series,omitempty"`
+	OperationsTruncated bool                                  `json:"operations_truncated,omitempty"`
 }
 
 // CompareRunsResponse represents an A/B comparison of two runs
@@ -383,4 +385,5 @@ type StabilityResponse struct {
 	Events               []metrics.ConnectionEvent    `json:"events,omitempty"`
 	SessionMetrics       []metrics.ConnectionMetrics  `json:"session_metrics,omitempty"`
 	TimeSeriesData       []metrics.StabilityTimePoint `json:"time_series,omitempty"`
+	DataTruncated        bool                         `json:"data_truncated,omitempty"`
 }

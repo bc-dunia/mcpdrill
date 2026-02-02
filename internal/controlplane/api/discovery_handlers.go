@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bc-dunia/mcpdrill/internal/auth"
+	"github.com/bc-dunia/mcpdrill/internal/mcp"
 	"github.com/bc-dunia/mcpdrill/internal/transport"
 )
 
@@ -106,11 +107,11 @@ func (s *Server) handleDiscoverTools(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	initParams := &transport.InitializeParams{
-		ProtocolVersion: "2024-11-05",
+		ProtocolVersion: mcp.DefaultProtocolVersion,
 		Capabilities:    make(map[string]interface{}),
 		ClientInfo: transport.ClientInfo{
-			Name:    "mcpdrill",
-			Version: "1.0.0",
+			Name:    mcp.ClientName,
+			Version: mcp.ClientVersion,
 		},
 	}
 
@@ -257,11 +258,11 @@ func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 
 	// MCP protocol requires initialize handshake before any other operations
 	initParams := &transport.InitializeParams{
-		ProtocolVersion: "2024-11-05",
+		ProtocolVersion: mcp.DefaultProtocolVersion,
 		Capabilities:    make(map[string]interface{}),
 		ClientInfo: transport.ClientInfo{
-			Name:    "mcpdrill",
-			Version: "1.0.0",
+			Name:    mcp.ClientName,
+			Version: mcp.ClientVersion,
 		},
 	}
 
@@ -467,11 +468,11 @@ func (s *Server) handleTestTool(w http.ResponseWriter, r *http.Request) {
 
 	// MCP protocol requires initialize handshake before any other operations
 	initParams := &transport.InitializeParams{
-		ProtocolVersion: "2024-11-05",
+		ProtocolVersion: mcp.DefaultProtocolVersion,
 		Capabilities:    make(map[string]interface{}),
 		ClientInfo: transport.ClientInfo{
-			Name:    "mcpdrill",
-			Version: "1.0.0",
+			Name:    mcp.ClientName,
+			Version: mcp.ClientVersion,
 		},
 	}
 

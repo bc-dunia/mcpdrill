@@ -869,12 +869,14 @@ type parsedAuth struct {
 }
 
 type parsedTarget struct {
-	URL            string                `json:"url"`
-	Transport      string                `json:"transport"`
-	Headers        map[string]string     `json:"headers,omitempty"`
-	Auth           *parsedAuth           `json:"auth,omitempty"`
-	Identification *parsedIdentification `json:"identification,omitempty"`
-	RedirectPolicy *parsedRedirectPolicy `json:"redirect_policy,omitempty"`
+	URL                   string                `json:"url"`
+	Transport             string                `json:"transport"`
+	Headers               map[string]string     `json:"headers,omitempty"`
+	Auth                  *parsedAuth           `json:"auth,omitempty"`
+	Identification        *parsedIdentification `json:"identification,omitempty"`
+	RedirectPolicy        *parsedRedirectPolicy `json:"redirect_policy,omitempty"`
+	ProtocolVersion       string                `json:"protocol_version,omitempty"`
+	ProtocolVersionPolicy string                `json:"protocol_version_policy,omitempty"`
 }
 
 type parsedIdentification struct {

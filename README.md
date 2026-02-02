@@ -1,9 +1,10 @@
 # MCP Drill
 
+A high-performance stress testing platform for MCP servers and gateways.
+
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A high-performance stress testing platform for MCP servers and gateways.
 
 **Simulate thousands of concurrent MCP clients, identify performance bottlenecks, and validate your infrastructure before production.**
 
@@ -20,35 +21,37 @@ A high-performance stress testing platform for MCP servers and gateways.
 
 ## Quick Start
 
-### 1. Install & Run (One Command)
+### 1. Start Backend Services
 
 ```bash
 git clone https://github.com/bc-dunia/mcpdrill.git
 cd mcpdrill
 
-# Build and start all services with one command
+# Build and start all backend services
 make dev
 ```
 
 This starts (loopback only, no authentication required):
+
 - **Mock Server**: http://localhost:3000/mcp
 - **Control Plane**: http://localhost:8080
 - **Worker**: Auto-connected
 
 To stop: `make dev-stop`
 
-### 2. Start Web UI (Optional)
+### 2. Start Web UI
 
 ```bash
 cd web/log-explorer
 npm install
 npm run dev
-# Open http://localhost:5173
 ```
+
+Open **http://localhost:5173** — the dashboard is now ready.
 
 ### 3. Run Your First Test
 
-Use the included quick-start configuration:
+Use the Web UI's **"New Run"** button to create and start a test, or via CLI:
 
 ```bash
 # Create a run using the quick-start config
@@ -58,23 +61,17 @@ curl -X POST http://localhost:8080/runs \
 
 # Start the run (replace with your run_id from the response)
 curl -X POST http://localhost:8080/runs/{run_id}/start
-
-# Stream events (shows state transitions, VU assignments, etc.)
-curl -N http://localhost:8080/runs/{run_id}/events
-
-# View operation logs
-curl http://localhost:8080/runs/{run_id}/logs?limit=10
 ```
 
 > **Note**: The quick-start config targets `http://127.0.0.1:3000/mcp` (IPv4 localhost). Using `localhost` may fail due to IPv6 resolution on some systems.
 
 ### 4. View Results
 
-- **API**: `curl http://localhost:8080/runs/run_0000000000000001`
-- **Web UI**: Build and access at `http://localhost:8080/ui/logs/`
+Watch real-time metrics in the Web UI at **http://localhost:5173**, or query the API:
 
 ```bash
-cd web/log-explorer && npm install && npm run build
+curl http://localhost:8080/runs/{run_id}
+curl http://localhost:8080/runs/{run_id}/logs?limit=10
 ```
 
 ## Key Features
@@ -92,12 +89,12 @@ cd web/log-explorer && npm install && npm run build
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Control Plane                         │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐        │
-│  │Run Manager │  │ Scheduler  │  │  HTTP API  │        │
-│  └────────────┘  └────────────┘  └────────────┘        │
-└─────────────────────────┬───────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│                    Control Plane                 │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
+│  │Run Manager │  │ Scheduler  │  │  HTTP API  │  │
+│  └────────────┘  └────────────┘  └────────────┘  │
+└─────────────────────────┬────────────────────────┘
                           │
             ┌─────────────┼─────────────┐
             │             │             │
@@ -159,30 +156,34 @@ curl -X POST http://localhost:3000/mcp \
 
 ### Example Test Configuration
 
+> **Tip**: Use the **Web UI wizard** at http://localhost:5173 to create valid test configurations without manual JSON editing.
+
+For a complete, validated example, see [`examples/quick-start.json`](examples/quick-start.json). Here's a simplified reference:
+
 ```json
 {
+  "schema_version": "run-config/v1",
   "scenario_id": "mock-server-test",
   "target": {
-    "url": "http://localhost:3000/mcp",
+    "url": "http://127.0.0.1:3000/mcp",
     "transport": "streamable_http"
   },
-  "stages": [
-    {
-      "stage_id": "stg_0000000000000001",
-      "stage": "ramp",
-      "duration_ms": 30000,
-      "load": { "target_vus": 10 }
-    }
-  ],
   "workload": {
-    "op_mix": [
-      { "operation": "tools/list", "weight": 1 },
-      { "operation": "tools/call", "weight": 3, "tool_name": "fast_echo", "arguments": {"message": "hello"} },
-      { "operation": "tools/call", "weight": 2, "tool_name": "calculate", "arguments": {"expression": "2 + 2"} }
-    ]
+    "operation_mix": [
+      { "operation": "tools_list", "weight": 1 },
+      { "operation": "tools_call", "weight": 5 }
+    ],
+    "tools": {
+      "selection": { "mode": "weighted" },
+      "templates": [
+        { "template_id": "echo", "tool_name": "fast_echo", "weight": 1, "arguments": { "message": "hello" } }
+      ]
+    }
   }
 }
 ```
+
+> **Note**: This is a simplified reference. The full config requires additional fields (`stages`, `safety`, `session_policy`, etc.). See `examples/quick-start.json` for a complete working example.
 
 See [Tool Testing Guide](docs/tool-testing-guide.md) for detailed documentation on each tool.
 
@@ -284,19 +285,11 @@ Pre-built configurations in `examples/`:
 - `examples/tool-testing/` - Tool validation scenarios
 - `examples/multi-node/` - Docker Compose setup
 
-## Contributing
-
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes with tests
-4. Submit a pull request
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Resources**: [Issues](https://github.com/bc-dunia/mcpdrill/issues) · [Discussions](https://github.com/bc-dunia/mcpdrill/discussions)
+<sub>MCP Drill was originally created to validate the production stability of [Peta](https://github.com/dunialabs/peta-core), an MCP control plane and runtime. If you're building MCP infrastructure that needs to scale, Peta handles the hard parts — routing, auth, observability — so you can focus on your agents.</sub>
+

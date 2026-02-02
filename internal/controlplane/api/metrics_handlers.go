@@ -63,18 +63,20 @@ func (s *Server) handleGetRunMetrics(w http.ResponseWriter, r *http.Request, run
 		timeSeries = s.telemetryStore.GetMetricsTimeSeries(runID)
 	}
 
+	opsTruncated, _ := s.telemetryStore.IsTruncated(runID)
 	s.writeJSON(w, http.StatusOK, &RunMetricsResponse{
-		RunID:          runID,
-		Throughput:     throughput,
-		LatencyP50:     float64(metricsData.LatencyP50),
-		LatencyP95:     float64(metricsData.LatencyP95),
-		LatencyP99:     float64(metricsData.LatencyP99),
-		ErrorRate:      metricsData.ErrorRate,
-		TotalOps:       int64(metricsData.TotalOps),
-		FailedOps:      int64(metricsData.FailureOps),
-		DurationMs:     duration,
-		ByTool:         metricsData.ByTool,
-		TimeSeriesData: timeSeries,
+		RunID:               runID,
+		Throughput:          throughput,
+		LatencyP50:          float64(metricsData.LatencyP50),
+		LatencyP95:          float64(metricsData.LatencyP95),
+		LatencyP99:          float64(metricsData.LatencyP99),
+		ErrorRate:           metricsData.ErrorRate,
+		TotalOps:            int64(metricsData.TotalOps),
+		FailedOps:           int64(metricsData.FailureOps),
+		DurationMs:          duration,
+		ByTool:              metricsData.ByTool,
+		TimeSeriesData:      timeSeries,
+		OperationsTruncated: opsTruncated,
 	})
 }
 
@@ -113,6 +115,7 @@ func (s *Server) handleGetRunStability(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
+	opsTruncated, logsTruncated := s.telemetryStore.IsTruncated(runID)
 	s.writeJSON(w, http.StatusOK, &StabilityResponse{
 		RunID:                runID,
 		TotalSessions:        stabilityMetrics.TotalSessions,
@@ -128,6 +131,7 @@ func (s *Server) handleGetRunStability(w http.ResponseWriter, r *http.Request, r
 		Events:               stabilityMetrics.Events,
 		SessionMetrics:       stabilityMetrics.SessionMetrics,
 		TimeSeriesData:       stabilityMetrics.TimeSeriesData,
+		DataTruncated:        opsTruncated || logsTruncated,
 	})
 }
 

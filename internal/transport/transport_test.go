@@ -315,7 +315,7 @@ func TestParseSSEFromBytes(t *testing.T) {
 
 func TestMCPOperations(t *testing.T) {
 	t.Run("NewInitializeRequest", func(t *testing.T) {
-		req := NewInitializeRequest("init_001")
+		req := NewInitializeRequest("init_001", nil)
 		if req.JSONRPC != "2.0" {
 			t.Errorf("expected jsonrpc '2.0', got '%s'", req.JSONRPC)
 		}
@@ -331,6 +331,28 @@ func TestMCPOperations(t *testing.T) {
 		}
 		if params.ProtocolVersion != MCPProtocolVersion {
 			t.Errorf("expected protocol version '%s', got '%s'", MCPProtocolVersion, params.ProtocolVersion)
+		}
+	})
+
+	t.Run("NewInitializeRequest_CustomParams", func(t *testing.T) {
+		customParams := &InitializeParams{
+			ProtocolVersion: "2025-03-26",
+			Capabilities:    map[string]interface{}{"test": true},
+			ClientInfo: ClientInfo{
+				Name:    "test-client",
+				Version: "2.0.0",
+			},
+		}
+		req := NewInitializeRequest("init_002", customParams)
+		params, ok := req.Params.(InitializeParams)
+		if !ok {
+			t.Fatalf("expected InitializeParams, got %T", req.Params)
+		}
+		if params.ProtocolVersion != "2025-03-26" {
+			t.Errorf("expected protocol version '2025-03-26', got '%s'", params.ProtocolVersion)
+		}
+		if params.ClientInfo.Name != "test-client" {
+			t.Errorf("expected client name 'test-client', got '%s'", params.ClientInfo.Name)
 		}
 	})
 
@@ -464,8 +486,8 @@ func TestParseResults(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if result.ProtocolVersion != "2025-03-26" {
-			t.Errorf("expected protocol version '2025-03-26', got '%s'", result.ProtocolVersion)
+		if result.ProtocolVersion != "2025-11-25" {
+			t.Errorf("expected protocol version '2025-11-25', got '%s'", result.ProtocolVersion)
 		}
 		if result.ServerInfo.Name != "test-server" {
 			t.Errorf("expected server name 'test-server', got '%s'", result.ServerInfo.Name)
@@ -586,7 +608,7 @@ func TestStreamableHTTPConnection(t *testing.T) {
 				JSONRPC: "2.0",
 				ID:      req.ID,
 				Result: json.RawMessage(`{
-					"protocolVersion": "2025-03-26",
+					"protocolVersion": "2025-11-25",
 					"capabilities": {},
 					"serverInfo": {"name": "test", "version": "1.0"}
 				}`),
@@ -597,8 +619,8 @@ func TestStreamableHTTPConnection(t *testing.T) {
 		adapter := NewStreamableHTTPAdapter()
 		config := &TransportConfig{
 			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-			Endpoint: server.URL,
-			Timeouts: DefaultTimeoutConfig(),
+			Endpoint:             server.URL,
+			Timeouts:             DefaultTimeoutConfig(),
 		}
 
 		conn, err := adapter.Connect(context.Background(), config)
@@ -639,8 +661,8 @@ func TestStreamableHTTPConnection(t *testing.T) {
 		adapter := NewStreamableHTTPAdapter()
 		config := &TransportConfig{
 			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-			Endpoint: server.URL,
-			Timeouts: DefaultTimeoutConfig(),
+			Endpoint:             server.URL,
+			Timeouts:             DefaultTimeoutConfig(),
 		}
 
 		conn, _ := adapter.Connect(context.Background(), config)
@@ -675,8 +697,8 @@ func TestStreamableHTTPConnection(t *testing.T) {
 		adapter := NewStreamableHTTPAdapter()
 		config := &TransportConfig{
 			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-			Endpoint: server.URL,
-			Timeouts: DefaultTimeoutConfig(),
+			Endpoint:             server.URL,
+			Timeouts:             DefaultTimeoutConfig(),
 		}
 
 		conn, _ := adapter.Connect(context.Background(), config)
@@ -711,8 +733,8 @@ func TestStreamableHTTPConnection(t *testing.T) {
 		adapter := NewStreamableHTTPAdapter()
 		config := &TransportConfig{
 			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-			Endpoint: server.URL,
-			Timeouts: DefaultTimeoutConfig(),
+			Endpoint:             server.URL,
+			Timeouts:             DefaultTimeoutConfig(),
 		}
 
 		conn, _ := adapter.Connect(context.Background(), config)
@@ -763,8 +785,8 @@ func TestStreamableHTTPConnection(t *testing.T) {
 		adapter := NewStreamableHTTPAdapter()
 		config := &TransportConfig{
 			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-			Endpoint: server.URL,
-			Timeouts: DefaultTimeoutConfig(),
+			Endpoint:             server.URL,
+			Timeouts:             DefaultTimeoutConfig(),
 		}
 
 		conn, _ := adapter.Connect(context.Background(), config)
@@ -811,8 +833,8 @@ func TestStreamableHTTPConnection(t *testing.T) {
 		adapter := NewStreamableHTTPAdapter()
 		config := &TransportConfig{
 			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-			Endpoint: server.URL,
-			Timeouts: DefaultTimeoutConfig(),
+			Endpoint:             server.URL,
+			Timeouts:             DefaultTimeoutConfig(),
 		}
 
 		conn, _ := adapter.Connect(context.Background(), config)
@@ -850,9 +872,9 @@ func TestStreamableHTTPConnection(t *testing.T) {
 
 				adapter := NewStreamableHTTPAdapter()
 				config := &TransportConfig{
-			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-					Endpoint: server.URL,
-					Timeouts: DefaultTimeoutConfig(),
+					AllowPrivateNetworks: []string{"127.0.0.0/8"},
+					Endpoint:             server.URL,
+					Timeouts:             DefaultTimeoutConfig(),
 				}
 
 				conn, _ := adapter.Connect(context.Background(), config)
@@ -889,8 +911,8 @@ func TestStreamableHTTPConnection(t *testing.T) {
 		adapter := NewStreamableHTTPAdapter()
 		config := &TransportConfig{
 			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-			Endpoint: server.URL,
-			Timeouts: DefaultTimeoutConfig(),
+			Endpoint:             server.URL,
+			Timeouts:             DefaultTimeoutConfig(),
 		}
 
 		conn, _ := adapter.Connect(context.Background(), config)
@@ -925,8 +947,8 @@ func TestStreamableHTTPConnection(t *testing.T) {
 		adapter := NewStreamableHTTPAdapter()
 		config := &TransportConfig{
 			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-			Endpoint: server.URL,
-			Timeouts: DefaultTimeoutConfig(),
+			Endpoint:             server.URL,
+			Timeouts:             DefaultTimeoutConfig(),
 		}
 
 		conn, _ := adapter.Connect(context.Background(), config)
@@ -968,8 +990,8 @@ func TestStreamableHTTPConnection(t *testing.T) {
 		adapter := NewStreamableHTTPAdapter()
 		config := &TransportConfig{
 			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-			Endpoint: server.URL,
-			Timeouts: DefaultTimeoutConfig(),
+			Endpoint:             server.URL,
+			Timeouts:             DefaultTimeoutConfig(),
 		}
 
 		conn, _ := adapter.Connect(context.Background(), config)
@@ -1009,8 +1031,8 @@ func TestStreamableHTTPConnection(t *testing.T) {
 		adapter := NewStreamableHTTPAdapter()
 		config := &TransportConfig{
 			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-			Endpoint: server.URL,
-			Timeouts: DefaultTimeoutConfig(),
+			Endpoint:             server.URL,
+			Timeouts:             DefaultTimeoutConfig(),
 			Headers: map[string]string{
 				HeaderAuthorization: "Bearer test_token",
 			},
@@ -1036,7 +1058,7 @@ func TestStreamableHTTPConnection(t *testing.T) {
 		adapter := NewStreamableHTTPAdapter()
 		config := &TransportConfig{
 			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-			Endpoint: server.URL,
+			Endpoint:             server.URL,
 			Timeouts: TimeoutConfig{
 				ConnectTimeout:     5 * time.Second,
 				RequestTimeout:     50 * time.Millisecond,
@@ -1066,8 +1088,8 @@ func TestStreamableHTTPConnection(t *testing.T) {
 		adapter := NewStreamableHTTPAdapter()
 		config := &TransportConfig{
 			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-			Endpoint: server.URL,
-			Timeouts: DefaultTimeoutConfig(),
+			Endpoint:             server.URL,
+			Timeouts:             DefaultTimeoutConfig(),
 		}
 
 		conn, _ := adapter.Connect(context.Background(), config)
@@ -1089,8 +1111,8 @@ func TestStreamableHTTPConnection(t *testing.T) {
 		adapter := NewStreamableHTTPAdapter()
 		config := &TransportConfig{
 			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-			Endpoint: "http://localhost:9999",
-			Timeouts: DefaultTimeoutConfig(),
+			Endpoint:             "http://localhost:9999",
+			Timeouts:             DefaultTimeoutConfig(),
 		}
 
 		conn, _ := adapter.Connect(context.Background(), config)
@@ -1132,9 +1154,9 @@ func TestConcurrentOperations(t *testing.T) {
 
 	adapter := NewStreamableHTTPAdapter()
 	config := &TransportConfig{
-			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-		Endpoint: server.URL,
-		Timeouts: DefaultTimeoutConfig(),
+		AllowPrivateNetworks: []string{"127.0.0.0/8"},
+		Endpoint:             server.URL,
+		Timeouts:             DefaultTimeoutConfig(),
 	}
 
 	conn, _ := adapter.Connect(context.Background(), config)
@@ -1185,8 +1207,8 @@ func TestSSEStreamStall(t *testing.T) {
 
 	adapter := NewStreamableHTTPAdapter()
 	config := &TransportConfig{
-			AllowPrivateNetworks: []string{"127.0.0.0/8"},
-		Endpoint: server.URL,
+		AllowPrivateNetworks: []string{"127.0.0.0/8"},
+		Endpoint:             server.URL,
 		Timeouts: TimeoutConfig{
 			ConnectTimeout:     5 * time.Second,
 			RequestTimeout:     5 * time.Second,

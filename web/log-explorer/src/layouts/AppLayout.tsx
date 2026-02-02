@@ -38,6 +38,13 @@ export function AppLayout() {
         <a href="#main-content" className="skip-link">
           Skip to main content
         </a>
+        <div className="promo-banner promo-banner-top">
+          <span>Looking to run MCP infrastructure reliably in production?</span>
+          {' '}
+          <a href="https://github.com/dunialabs/peta-core" target="_blank" rel="noopener noreferrer">
+            Check out Peta →
+          </a>
+        </div>
         <header className="app-header">
           <div className="logo">
             <span className="logo-icon" aria-hidden="true">
@@ -97,6 +104,14 @@ export function AppLayout() {
             </Suspense>
           </ErrorBoundary>
         </main>
+        <footer className="promo-banner promo-banner-bottom">
+          <span>MCP Drill was originally created to validate the production stability of</span>
+          {' '}
+          <a href="https://github.com/dunialabs/peta-core" target="_blank" rel="noopener noreferrer">
+            Peta
+          </a>
+          <span>, an MCP control plane and runtime.</span>
+        </footer>
       </div>
     </ToastProvider>
   );

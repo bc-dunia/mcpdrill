@@ -2,22 +2,23 @@
 
 MCP Drill includes a React-based Web UI for visual test management and monitoring.
 
-## Setup
+## Development Setup
 
-Build the Web UI:
+Start the UI development server:
 
 ```bash
 cd web/log-explorer
 npm install
-npm run build
-cd ../..
+npm run dev
 ```
 
-The server automatically serves the UI from `./web/log-explorer/dist/` when the directory exists.
+This starts the Vite development server with hot reloading.
 
 ## Access
 
-Open `http://localhost:8080/ui/logs/` in your browser.
+Open **http://localhost:5173** in your browser.
+
+> **Note**: The UI connects to the control plane at `http://localhost:8080`. Make sure the backend is running (`make dev`).
 
 ## Features
 
