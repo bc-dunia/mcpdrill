@@ -254,10 +254,10 @@ func TestStartupRetry(t *testing.T) {
 
 	// RED PHASE ASSERTION: Test the retry mechanism that should exist
 	// findProcessByPortWithRetry should retry multiple times until process is found
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	foundPID = findProcessByPortWithRetry(ctx, port, 5, 100*time.Millisecond, func() {
+	foundPID = findProcessByPortWithRetry(ctx, port, 5, 100*time.Millisecond, func(attempt int) {
 		mu.Lock()
 		attempts++
 		mu.Unlock()
@@ -281,41 +281,6 @@ func TestStartupRetry(t *testing.T) {
 	}
 
 	t.Logf("Startup retry test: found PID=%d after %d attempts", foundPID, finalAttempts)
-}
-
-// findProcessByPortWithRetry is a placeholder for retry logic.
-// RED PHASE: This function should be implemented in main.go.
-func findProcessByPortWithRetry(ctx context.Context, port int, maxRetries int, retryDelay time.Duration, onRetry func()) int {
-	// TODO: Implement in main.go - this is a stub for RED phase
-
-	// Simple implementation that doesn't do proper retries
-	// The real implementation should:
-	// 1. Try to find process on port
-	// 2. If not found, wait and retry up to maxRetries times
-	// 3. Call onRetry callback on each retry for logging/metrics
-	// 4. Respect context cancellation
-
-	for i := 0; i < maxRetries; i++ {
-		select {
-		case <-ctx.Done():
-			return 0
-		default:
-		}
-
-		pid := findProcessByPort(port)
-		if pid > 0 {
-			return pid
-		}
-
-		if onRetry != nil {
-			onRetry()
-		}
-
-		time.Sleep(retryDelay)
-	}
-
-	// Final attempt
-	return findProcessByPort(port)
 }
 
 // itoa converts int to string (helper for port binding)

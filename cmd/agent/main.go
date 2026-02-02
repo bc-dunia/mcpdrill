@@ -19,6 +19,7 @@ import (
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/load"
 	"github.com/shirou/gopsutil/v3/mem"
+	psnet "github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
 )
 
@@ -101,10 +102,15 @@ func main() {
 
 	// Resolve targetPID from --listen-port if not already set from --pid
 	if *listenPort > 0 {
-		foundPID := findProcessByPort(*listenPort)
+		// Try to find process with retry (process may still be starting up)
+		foundPID := findProcessByPortWithRetry(ctx, *listenPort, 5, 1*time.Second, func(attempt int) {
+			log.Printf("PID lookup attempt %d failed for port %d, retrying...", attempt, *listenPort)
+		})
 		if foundPID > 0 {
 			targetPID = foundPID
 			fmt.Printf("Found process PID: %d\n", targetPID)
+		} else {
+			log.Printf("Warning: No process found on port %d after retries, continuing with host metrics only", *listenPort)
 		}
 	}
 
@@ -288,18 +294,86 @@ func sendMetrics(ctx context.Context, baseURL, token, agentID, pairKey string, s
 	return nil
 }
 
+func findProcessByPortWithRetry(ctx context.Context, port int, maxRetries int, retryDelay time.Duration, onRetry func(attempt int)) int {
+	results := make(chan int, maxRetries+1)
+
+	for i := 0; i <= maxRetries; i++ {
+		select {
+		case pid := <-results:
+			if pid > 0 {
+				return pid
+			}
+		case <-ctx.Done():
+			return drainResults(results)
+		default:
+		}
+
+		go func() {
+			results <- findProcessByPort(port)
+		}()
+
+		if onRetry != nil && i > 0 {
+			onRetry(i)
+		}
+
+		if i < maxRetries {
+			select {
+			case pid := <-results:
+				if pid > 0 {
+					return pid
+				}
+			case <-ctx.Done():
+				return drainResults(results)
+			case <-time.After(retryDelay):
+			}
+		}
+	}
+
+	for {
+		select {
+		case pid := <-results:
+			if pid > 0 {
+				return pid
+			}
+		case <-ctx.Done():
+			return drainResults(results)
+		}
+	}
+}
+
+func drainResults(ch chan int) int {
+	for {
+		select {
+		case pid := <-ch:
+			if pid > 0 {
+				return pid
+			}
+		default:
+			return 0
+		}
+	}
+}
+
 func findProcessByPort(port int) int {
+	conns, err := psnet.Connections("tcp")
+	if err == nil {
+		for _, conn := range conns {
+			if conn.Status == "LISTEN" && conn.Laddr.Port == uint32(port) && conn.Pid > 0 {
+				return int(conn.Pid)
+			}
+		}
+	}
+
 	procs, err := process.Processes()
 	if err != nil {
 		return 0
 	}
-
 	for _, p := range procs {
-		conns, err := p.Connections()
+		pconns, err := p.Connections()
 		if err != nil {
 			continue
 		}
-		for _, conn := range conns {
+		for _, conn := range pconns {
 			if conn.Status == "LISTEN" && conn.Laddr.Port == uint32(port) {
 				return int(p.Pid)
 			}
