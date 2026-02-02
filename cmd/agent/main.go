@@ -192,6 +192,11 @@ func collectMetrics(targetPID int) metricsSample {
 			sample.Host.MemAvailable = memInfo.Available
 		}
 
+		// Swap info
+		if swapInfo, err := mem.SwapMemory(); err == nil && swapInfo != nil {
+			sample.Host.SwapUsed = swapInfo.Used
+		}
+
 		// Load average (Unix systems)
 		if loadAvg, err := load.Avg(); err == nil && loadAvg != nil {
 			sample.Host.LoadAvg1 = loadAvg.Load1

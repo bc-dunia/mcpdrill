@@ -33,6 +33,9 @@ type HostMetrics struct {
 
 	// NetworkBytesOut is the total bytes sent since boot.
 	NetworkBytesOut uint64 `json:"network_bytes_out,omitempty"`
+
+	// SwapUsed is the used swap memory in bytes.
+	SwapUsed uint64 `json:"swap_used,omitempty"`
 }
 
 // ProcessMetrics contains metrics for the monitored MCP server process.
