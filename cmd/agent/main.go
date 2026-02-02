@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -107,7 +108,7 @@ func main() {
 		}
 	}
 
-	go collectAndSend(ctx, *controlPlaneURL, *agentToken, agentID, *pairKey, targetPID, *collectInterval)
+	go collectAndSend(ctx, *controlPlaneURL, *agentToken, agentID, *pairKey, targetPID, *listenPort, *collectInterval)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -156,16 +157,33 @@ func register(ctx context.Context, baseURL, token, pairKey, hostname string) (st
 	return result.AgentID, nil
 }
 
-func collectAndSend(ctx context.Context, baseURL, token, agentID, pairKey string, targetPID int, interval time.Duration) {
+func collectAndSend(ctx context.Context, baseURL, token, agentID, pairKey string, targetPID int, listenPort int, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
+	pidValid := targetPID > 0
+	currentPID := targetPID
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			sample := collectMetrics(targetPID)
+			if !pidValid && listenPort > 0 {
+				newPID := findProcessByPort(listenPort)
+				if newPID > 0 {
+					currentPID = newPID
+					pidValid = true
+					log.Printf("Re-discovered process on port %d: PID %d", listenPort, newPID)
+				}
+			}
+
+			sample := collectMetrics(currentPID)
+
+			if currentPID > 0 && sample.Process == nil && pidValid {
+				pidValid = false
+			}
+
 			if err := sendMetrics(ctx, baseURL, token, agentID, pairKey, sample); err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to send metrics: %v\n", err)
 			}
@@ -208,7 +226,9 @@ func collectMetrics(targetPID int) metricsSample {
 	// Collect process metrics if monitoring a specific process
 	if targetPID > 0 {
 		proc, err := process.NewProcess(int32(targetPID))
-		if err == nil {
+		if err != nil {
+			log.Printf("Warning: process %d no longer exists, continuing with host metrics only", targetPID)
+		} else {
 			cpuPct, _ := proc.CPUPercent()
 			numThreads, _ := proc.NumThreads()
 
