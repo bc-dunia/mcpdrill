@@ -14,7 +14,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bc-dunia/mcpdrill/internal/agent"
 	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/load"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/process"
 )
@@ -39,23 +41,9 @@ type metricsRequest struct {
 }
 
 type metricsSample struct {
-	Timestamp int64        `json:"timestamp"`
-	Host      *hostMetrics `json:"host,omitempty"`
-	Process   *procMetrics `json:"process,omitempty"`
-}
-
-type hostMetrics struct {
-	CPUPercent   float64 `json:"cpu_percent"`
-	MemTotal     uint64  `json:"mem_total"`
-	MemUsed      uint64  `json:"mem_used"`
-	MemAvailable uint64  `json:"mem_available"`
-}
-
-type procMetrics struct {
-	PID        int     `json:"pid"`
-	CPUPercent float64 `json:"cpu_percent"`
-	MemRSS     uint64  `json:"mem_rss"`
-	NumThreads int     `json:"num_threads"`
+	Timestamp int64                 `json:"timestamp"`
+	Host      *agent.HostMetrics    `json:"host,omitempty"`
+	Process   *agent.ProcessMetrics `json:"process,omitempty"`
 }
 
 func main() {
@@ -168,33 +156,55 @@ func collectMetrics(targetPID int) metricsSample {
 		Timestamp: time.Now().UnixMilli(),
 	}
 
+	// Collect host metrics
 	cpuPercent, err := cpu.Percent(0, false)
 	if err == nil && len(cpuPercent) > 0 {
-		memInfo, _ := mem.VirtualMemory()
-		sample.Host = &hostMetrics{
+		sample.Host = &agent.HostMetrics{
 			CPUPercent: cpuPercent[0],
 		}
-		if memInfo != nil {
+
+		// Memory info
+		if memInfo, err := mem.VirtualMemory(); err == nil && memInfo != nil {
 			sample.Host.MemTotal = memInfo.Total
 			sample.Host.MemUsed = memInfo.Used
 			sample.Host.MemAvailable = memInfo.Available
 		}
+
+		// Load average (Unix systems)
+		if loadAvg, err := load.Avg(); err == nil && loadAvg != nil {
+			sample.Host.LoadAvg1 = loadAvg.Load1
+			sample.Host.LoadAvg5 = loadAvg.Load5
+			sample.Host.LoadAvg15 = loadAvg.Load15
+		}
 	}
 
+	// Collect process metrics if monitoring a specific process
 	if targetPID > 0 {
 		proc, err := process.NewProcess(int32(targetPID))
 		if err == nil {
 			cpuPct, _ := proc.CPUPercent()
-			memInfo, _ := proc.MemoryInfo()
 			numThreads, _ := proc.NumThreads()
 
-			sample.Process = &procMetrics{
+			sample.Process = &agent.ProcessMetrics{
 				PID:        targetPID,
 				CPUPercent: cpuPct,
 				NumThreads: int(numThreads),
 			}
-			if memInfo != nil {
+
+			// Memory info
+			if memInfo, err := proc.MemoryInfo(); err == nil && memInfo != nil {
 				sample.Process.MemRSS = memInfo.RSS
+				sample.Process.MemVMS = memInfo.VMS
+			}
+
+			// File descriptors (Unix only, ignore error on Windows)
+			if numFDs, err := proc.NumFDs(); err == nil {
+				sample.Process.NumFDs = int(numFDs)
+			}
+
+			// Open connections
+			if conns, err := proc.Connections(); err == nil {
+				sample.Process.OpenConnections = len(conns)
 			}
 		}
 	}

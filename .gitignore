@@ -114,3 +114,4 @@ config.local.*
 test-*.json
 stress-test.json
 screenshots/
+.dev-logs/
