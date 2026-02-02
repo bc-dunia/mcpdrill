@@ -62,20 +62,22 @@ go build -o mcpdrill-agent ./cmd/agent
 
 | Flag | Description |
 |------|-------------|
-| `--pid <pid>` | Monitor by explicit PID |
-| `--listen-port <port>` | Find process listening on port |
-| `--process-regex "<regex>"` | Match by command line |
+| `--pid <pid>` | Monitor by explicit PID (mutually exclusive with `--listen-port`) |
+| `--listen-port <port>` | Find process listening on port (mutually exclusive with `--pid`) |
 
 ### Optional Tuning
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--sample-interval-ms` | 1000 | Collection frequency |
-| `--push-interval-ms` | 5000 | Push batch frequency |
-| `--buffer-seconds` | 60 | Local buffer size |
-| `--tags` | - | Custom metadata |
 | `--tls-ca-file` | - | Custom CA certificate |
 | `--tls-insecure-skip-verify` | false | Skip TLS verification |
+
+**Note:** The following flags are deprecated and will be removed in a future version:
+- `--sample-interval-ms` (collection frequency is now fixed)
+- `--push-interval-ms` (push frequency is now fixed)
+- `--buffer-seconds` (buffer size is now fixed)
+- `--tags` (custom metadata not currently supported)
+- `--process-regex` (use `--pid` or `--listen-port` instead)
 
 ## Linking with Runs
 
@@ -99,20 +101,29 @@ go build -o mcpdrill-agent ./cmd/agent
 
 | Metric | Description |
 |--------|-------------|
-| `cpu_percent` | Total CPU usage % |
-| `load_avg_1/5/15` | Load averages |
-| `mem_total/used/free` | Memory usage (bytes) |
-| `swap_used` | Swap usage (bytes) |
+| `cpu_percent` | Total CPU usage % (0-100) |
+| `load_avg_1` | 1-minute load average |
+| `load_avg_5` | 5-minute load average |
+| `load_avg_15` | 15-minute load average |
+| `mem_total` | Total system memory (bytes) |
+| `mem_used` | Used system memory (bytes) |
+| `mem_available` | Available system memory (bytes) |
+| `disk_used_percent` | Disk usage % for primary partition (0-100) |
+| `network_bytes_in` | Total bytes received since boot |
+| `network_bytes_out` | Total bytes sent since boot |
+| `swap_used` | Swap usage (bytes) - *coming soon* |
 
 ### Process Metrics
 
 | Metric | Description |
 |--------|-------------|
-| `cpu_percent` | Process CPU % |
-| `rss_bytes` | Resident memory |
-| `virtual_bytes` | Virtual memory |
-| `thread_count` | Thread count |
-| `fd_count` | Open file descriptors |
+| `pid` | Process ID |
+| `cpu_percent` | Process CPU usage % |
+| `mem_rss` | Resident set size (physical memory, bytes) |
+| `mem_vms` | Virtual memory size (bytes) |
+| `num_threads` | Number of threads in the process |
+| `num_fds` | Number of open file descriptors (Unix only) |
+| `open_connections` | Number of open network connections |
 
 ## API Endpoints
 
@@ -123,6 +134,34 @@ go build -o mcpdrill-agent ./cmd/agent
 | `GET` | `/agents` | List connected agents |
 | `GET` | `/agents/{id}` | Get agent details |
 | `GET` | `/runs/{id}/server-metrics` | Query server metrics for run |
+
+### Example Metrics Response
+
+```json
+{
+  "host_metrics": {
+    "cpu_percent": 45.2,
+    "mem_total": 17179869184,
+    "mem_used": 12884901888,
+    "mem_available": 4294967296,
+    "load_avg_1": 2.5,
+    "load_avg_5": 2.1,
+    "load_avg_15": 1.8,
+    "disk_used_percent": 68.5,
+    "network_bytes_in": 1234567890,
+    "network_bytes_out": 987654321
+  },
+  "process_metrics": {
+    "pid": 12345,
+    "cpu_percent": 23.4,
+    "mem_rss": 536870912,
+    "mem_vms": 1073741824,
+    "num_threads": 8,
+    "num_fds": 42,
+    "open_connections": 15
+  }
+}
+```
 
 ## Troubleshooting
 
