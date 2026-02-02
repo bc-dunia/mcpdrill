@@ -52,8 +52,8 @@ function convertSamplesToDataPoints(samples: ServerMetricsResponse['samples']): 
     });
 }
 
-async function fetchServerMetrics(runId: string): Promise<ServerMetricsResponse> {
-  const response = await fetch(`${API_BASE}/runs/${runId}/server-metrics`);
+async function fetchServerMetrics(runId: string, signal?: AbortSignal): Promise<ServerMetricsResponse> {
+  const response = await fetch(`${API_BASE}/runs/${runId}/server-metrics`, { signal });
   if (!response.ok) {
     throw new Error(`Failed to fetch server metrics: ${response.statusText}`);
   }
@@ -74,8 +74,8 @@ function ServerResourcesSectionComponent({ runId, isRunActive }: ServerResources
      if (isLoadingRef.current) return;
      isLoadingRef.current = true;
 
-     try {
-       const response = await fetchServerMetrics(runId);
+      try {
+        const response = await fetchServerMetrics(runId, signal);
        
        if (!signal?.aborted) {
          if (response.samples && response.samples.length > 0) {
@@ -85,13 +85,13 @@ function ServerResourcesSectionComponent({ runId, isRunActive }: ServerResources
            setHasAgent(true);
          } else {
            setHasAgent(false);
-         }
-       }
-     } catch {
-       if (!signal?.aborted) {
-         setHasAgent(false);
-       }
-     } finally {
+          }
+        }
+      } catch (err) {
+        if (!signal?.aborted) {
+          console.warn('Failed to load server metrics:', err);
+        }
+      } finally {
        if (!signal?.aborted) {
          setLoading(false);
        }
@@ -123,7 +123,7 @@ function ServerResourcesSectionComponent({ runId, isRunActive }: ServerResources
        intervalRef.current = null;
      }
 
-     if (isRunActive && hasAgent) {
+      if (isRunActive && hasAgent !== false) {
        intervalRef.current = window.setInterval(() => {
          if (!abortControllerRef.current?.signal.aborted) {
            loadMetrics(abortControllerRef.current?.signal);
@@ -162,7 +162,7 @@ function ServerResourcesSectionComponent({ runId, isRunActive }: ServerResources
     return null;
   }
 
-  if (hasAgent === false || dataPoints.length === 0) {
+  if (dataPoints.length === 0) {
     return null;
   }
 

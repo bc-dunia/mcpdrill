@@ -411,6 +411,10 @@ export function useMetricsData({ runId, run }: UseMetricsDataOptions): UseMetric
   }, [runId, loadStability]);
 
   useEffect(() => {
+    loadRunState();
+  }, [runId, loadRunState]);
+
+  useEffect(() => {
     if (isAutoRefresh && isRunActive) {
       const stabilityInterval = window.setInterval(() => loadStability(), CONFIG.REFRESH_INTERVALS.METRICS);
       return () => clearInterval(stabilityInterval);
