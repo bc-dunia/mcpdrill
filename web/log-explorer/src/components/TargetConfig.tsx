@@ -255,7 +255,7 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
               value={config.url}
               onChange={e => handleChange('url', e.target.value)}
               onBlur={handleUrlBlur}
-              placeholder="http://localhost:3000/mcp"
+              placeholder="http://127.0.0.1:3000/mcp"
               className={`input ${urlError ? 'input-error' : ''}`}
               aria-invalid={urlError ? 'true' : undefined}
               aria-describedby={urlError ? 'target-url-error' : 'target-url-hint'}

@@ -390,15 +390,28 @@ function ToolSelectorComponent({
           )}
 
           {selectedTool && (
-            <div className={`tool-validation ${isValidSelection ? 'valid' : 'invalid'}`}>
+            <div className={`tool-selection-banner ${isValidSelection ? 'valid' : 'invalid'}`}>
               {isValidSelection ? (
                 <>
-                  <Icon name="check-circle" size="sm" aria-hidden={true} />
-                  <span>Selected: <strong>{selectedTool}</strong></span>
+                  <div className="tool-selection-content">
+                    <Icon name="check-circle" size="md" aria-hidden={true} />
+                    <div className="tool-selection-info">
+                      <span className="tool-selection-label">Selected Tool</span>
+                      <span className="tool-selection-name">{selectedTool}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => onSelect('', undefined)}
+                    aria-label="Clear selection"
+                  >
+                    <Icon name="x" size="sm" aria-hidden={true} />
+                  </button>
                 </>
               ) : (
                 <>
-                  <Icon name="alert-triangle" size="sm" aria-hidden={true} />
+                  <Icon name="alert-triangle" size="md" aria-hidden={true} />
                   <span>Tool "{selectedTool}" not found on server</span>
                 </>
               )}

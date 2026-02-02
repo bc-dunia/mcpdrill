@@ -431,9 +431,7 @@ export interface ServerHostMetrics {
   load_avg_15?: number;
   mem_total: number;
   mem_used: number;
-  mem_free?: number;
   mem_available?: number;
-  swap_used?: number;
 }
 
 export interface ServerProcessMetrics {

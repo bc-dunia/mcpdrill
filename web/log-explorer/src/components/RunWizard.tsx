@@ -39,7 +39,7 @@ function createDefaultConfig(): RunConfig {
     scenario_id: `load-test-${Date.now()}`,
     target: {
       kind: 'server',
-      url: 'http://localhost:3000/mcp',
+      url: 'http://127.0.0.1:3000/mcp',
       transport: 'streamable_http',
     },
     stages: [
@@ -69,10 +69,16 @@ function createDefaultConfig(): RunConfig {
       op_mix: [
         { operation: 'tools/list', weight: 1 },
         { operation: 'tools/call', weight: 3, tool_name: 'fast_echo', arguments: { message: 'hello' } },
+        { operation: 'tools/call', weight: 2, tool_name: 'calculate', arguments: { expression: '2 + 2' } },
+        { operation: 'tools/call', weight: 1, tool_name: 'weather_api', arguments: { location: 'San Francisco' } },
       ],
     },
     session_policy: {
       mode: 'reuse',
+    },
+    server_telemetry: {
+      enabled: false,
+      pair_key: 'dev',
     },
     schema_version: 'run-config/v1',
   };

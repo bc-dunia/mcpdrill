@@ -8,6 +8,7 @@ import { PassFailBadge, determinePassFailStatus } from './PassFailBadge';
 import { ThresholdStatus } from './ThresholdStatus';
 import { StopRunDialog } from './StopRunDialog';
 import { useToast } from './Toast';
+import { ServerResourcesSection } from './ServerResourcesSection';
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -288,6 +289,10 @@ export function RunOverview() {
         <h3 className="section-title">Stage Timeline</h3>
         <StageTimeline stages={stages} currentStage={currentStage} />
       </section>
+
+      {runId && (
+        <ServerResourcesSection runId={runId} isRunActive={isRunActive} />
+      )}
 
       <section className="run-overview-actions">
         <button 
