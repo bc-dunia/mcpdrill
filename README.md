@@ -20,75 +20,53 @@ A high-performance stress testing platform for MCP servers and gateways.
 
 ## Quick Start
 
-### 1. Install
+### 1. Install & Run (One Command)
 
 ```bash
 git clone https://github.com/bc-dunia/mcpdrill.git
 cd mcpdrill
 
-# Build all binaries
-make build
-
-# Or build individually
-make server
-make worker
-make mockserver
-make agent
+# Build and start all services with one command
+make dev
 ```
 
-### 2. Start Services
+This starts (loopback only, no authentication required):
+- **Mock Server**: http://localhost:3000/mcp
+- **Control Plane**: http://localhost:8080
+- **Worker**: Auto-connected
+
+To stop: `make dev-stop`
+
+### 2. Start Web UI (Optional)
 
 ```bash
-# Terminal 1: Start mock MCP server (for testing)
-./mcpdrill-mockserver --addr :3000
-
-# Terminal 2: Start control plane
-./mcpdrill-server --addr :8080
-
-# Terminal 3: Start worker
-./mcpdrill-worker --control-plane http://localhost:8080
+cd web/log-explorer
+npm install
+npm run dev
+# Open http://localhost:5173
 ```
 
 ### 3. Run Your First Test
 
-Create `test.json`:
-
-```json
-{
-  "scenario_id": "quick-test",
-  "target": {
-    "url": "http://localhost:3000/mcp",
-    "transport": "streamable_http"
-  },
-  "stages": [
-    {
-      "stage_id": "stg_0000000000000001",
-      "stage": "ramp",
-      "duration_ms": 30000,
-      "load": { "target_vus": 10 }
-    }
-  ],
-  "workload": {
-    "op_mix": [
-      { "operation": "tools/list", "weight": 1 },
-      { "operation": "tools/call", "weight": 5, "tool_name": "fast_echo", "arguments": {"message": "test"} }
-    ]
-  }
-}
-```
-
-Run the test:
+Use the included quick-start configuration:
 
 ```bash
-# Create a run
-curl -X POST http://localhost:8080/runs -H "Content-Type: application/json" -d @test.json
+# Create a run using the quick-start config
+curl -X POST http://localhost:8080/runs \
+  -H "Content-Type: application/json" \
+  -d "{\"config\": $(cat examples/quick-start.json)}"
 
-# Start the run (replace with your run_id)
-curl -X POST http://localhost:8080/runs/run_0000000000000001/start
+# Start the run (replace with your run_id from the response)
+curl -X POST http://localhost:8080/runs/{run_id}/start
 
-# Stream events
-curl -N http://localhost:8080/runs/run_0000000000000001/events
+# Stream events (shows state transitions, VU assignments, etc.)
+curl -N http://localhost:8080/runs/{run_id}/events
+
+# View operation logs
+curl http://localhost:8080/runs/{run_id}/logs?limit=10
 ```
+
+> **Note**: The quick-start config targets `http://127.0.0.1:3000/mcp` (IPv4 localhost). Using `localhost` may fail due to IPv6 resolution on some systems.
 
 ### 4. View Results
 

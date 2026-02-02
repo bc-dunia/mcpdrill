@@ -146,9 +146,11 @@ curl -X POST http://localhost:8080/discover-tools \
 
 | Mode | Use Case |
 |------|----------|
-| `none` | Development/testing (default) |
-| `api_key` | Simple deployments |
+| `api_key` | Simple deployments (default) |
 | `jwt` | Production with RBAC |
+| `none` | Development/testing (requires `--insecure` flag) |
+
+> **Note**: For local development, use `make dev` which automatically configures authentication for you.
 
 ### API Key Authentication
 
