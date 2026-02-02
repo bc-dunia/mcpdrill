@@ -51,12 +51,30 @@ func main() {
 	agentToken := flag.String("agent-token", "", "Agent authentication token")
 	pairKey := flag.String("pair-key", "", "Pair key to link with test runs")
 	listenPort := flag.Int("listen-port", 0, "Port of the MCP server process to monitor (0 = host metrics only)")
+	pid := flag.Int("pid", 0, "PID of the process to monitor (mutually exclusive with --listen-port)")
 	collectInterval := flag.Duration("collect-interval", 5*time.Second, "Metrics collection interval")
 	flag.Parse()
 
 	if *pairKey == "" {
 		fmt.Fprintln(os.Stderr, "Error: --pair-key is required")
 		os.Exit(1)
+	}
+
+	// Validate mutual exclusion: --pid and --listen-port cannot both be provided
+	if *pid > 0 && *listenPort > 0 {
+		fmt.Fprintln(os.Stderr, "Error: --pid and --listen-port are mutually exclusive (cannot use both)")
+		os.Exit(1)
+	}
+
+	// Validate PID exists if provided
+	var targetPID int
+	if *pid > 0 {
+		_, err := process.NewProcess(int32(*pid))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: PID %d does not exist or is not accessible: %v\n", *pid, err)
+			os.Exit(1)
+		}
+		targetPID = *pid
 	}
 
 	hostname, _ := os.Hostname()
@@ -76,11 +94,15 @@ func main() {
 	if *listenPort > 0 {
 		fmt.Printf("Monitoring port: %d\n", *listenPort)
 	}
+	if *pid > 0 {
+		fmt.Printf("Monitoring PID: %d\n", *pid)
+	}
 
-	var targetPID int
+	// Resolve targetPID from --listen-port if not already set from --pid
 	if *listenPort > 0 {
-		targetPID = findProcessByPort(*listenPort)
-		if targetPID > 0 {
+		foundPID := findProcessByPort(*listenPort)
+		if foundPID > 0 {
+			targetPID = foundPID
 			fmt.Printf("Found process PID: %d\n", targetPID)
 		}
 	}
