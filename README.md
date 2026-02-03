@@ -300,7 +300,8 @@ curl -X POST http://localhost:8080/runs/{run_id}/emergency-stop
 Pre-built configurations in `examples/`:
 
 - `examples/tool-testing/` - Tool validation scenarios
-- `examples/multi-node/` - Docker Compose setup
+- `examples/scenarios/` - SSE and streaming test scenarios
+- `examples/multi-node/` - Docker Compose and Kubernetes setup
 
 ## License
 

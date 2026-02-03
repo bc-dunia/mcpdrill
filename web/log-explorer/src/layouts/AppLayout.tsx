@@ -105,7 +105,10 @@ export function AppLayout() {
           </ErrorBoundary>
         </main>
         <footer className="promo-banner promo-banner-bottom">
-          <span>MCP Drill was originally created to validate the production stability of</span>
+          <a href="https://github.com/bc-dunia/mcpdrill" target="_blank" rel="noopener noreferrer">
+            MCP Drill
+          </a>
+          <span> was originally created to validate the production stability of</span>
           {' '}
           <a href="https://github.com/dunialabs/peta-core" target="_blank" rel="noopener noreferrer">
             Peta

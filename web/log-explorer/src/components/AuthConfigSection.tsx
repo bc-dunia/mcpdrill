@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { AuthConfig, AuthType } from '../types';
 import { Icon } from './Icon';
 import { parseTokenFile } from '../utils/tokenFileParser';
@@ -37,18 +37,58 @@ export function AuthConfigSection({ authConfig, onChange, onTestConnection, conn
   const [activeTokenIndex, setActiveTokenIndex] = useState<number>(
     authConfig?.activeTokenIndex ?? 0
   );
+  const tokenIdMapRef = useRef<Map<string, string>>(new Map());
+  const prevTokensRef = useRef<string[] | undefined>(authConfig?.tokens);
 
   const [tokenEntries, setTokenEntries] = useState<TokenEntry[]>(() => {
     if (!authConfig?.tokens) return [];
-    return authConfig.tokens.map((token) => ({
-      value: token,
-      id: generateTokenId(),
-    }));
+    return authConfig.tokens.map((token) => {
+      const id = generateTokenId();
+      tokenIdMapRef.current.set(token, id);
+      return { value: token, id };
+    });
   });
-  
-  const [quickTokenValue, setQuickTokenValue] = useState(() => {
-    return authConfig?.tokens?.[0] || '';
-  });
+
+  const quickTokenValue = useMemo(() => tokenEntries[0]?.value || '', [tokenEntries]);
+
+  useEffect(() => {
+    const prevTokens = prevTokensRef.current;
+    const newTokens = authConfig?.tokens;
+    
+    if (prevTokens === newTokens) return;
+    if (prevTokens && newTokens && 
+        prevTokens.length === newTokens.length && 
+        prevTokens.every((t, i) => t === newTokens[i])) {
+      prevTokensRef.current = newTokens;
+      return;
+    }
+    
+    prevTokensRef.current = newTokens;
+    
+    if (!newTokens || newTokens.length === 0) {
+      setTokenEntries([]);
+      tokenIdMapRef.current.clear();
+      return;
+    }
+    
+    const newTokenSet = new Set(newTokens);
+    const newEntries = newTokens.map((token) => {
+      let id = tokenIdMapRef.current.get(token);
+      if (!id) {
+        id = generateTokenId();
+        tokenIdMapRef.current.set(token, id);
+      }
+      return { value: token, id };
+    });
+    
+    for (const key of tokenIdMapRef.current.keys()) {
+      if (!newTokenSet.has(key)) {
+        tokenIdMapRef.current.delete(key);
+      }
+    }
+    
+    setTokenEntries(newEntries);
+  }, [authConfig?.tokens]);
 
   const authType: AuthType = authConfig?.type || 'none';
 
@@ -84,16 +124,20 @@ export function AuthConfigSection({ authConfig, onChange, onTestConnection, conn
   );
 
   const handleAddToken = useCallback(() => {
-    const newEntry: TokenEntry = { value: '', id: generateTokenId() };
+    const id = generateTokenId();
+    const newEntry: TokenEntry = { value: '', id };
     const updated = [...tokenEntries, newEntry];
     setTokenEntries(updated);
-    setEditingTokenId(newEntry.id);
+    setEditingTokenId(id);
     setEditingValue('');
   }, [tokenEntries]);
 
   const handleRemoveToken = useCallback(
     (id: string) => {
-      const updated = tokenEntries.filter((entry) => entry.id !== id);
+      const entry = tokenEntries.find((e) => e.id === id);
+      if (entry?.value) tokenIdMapRef.current.delete(entry.value);
+      
+      const updated = tokenEntries.filter((e) => e.id !== id);
       setTokenEntries(updated);
       syncTokensToConfig(updated, authType);
       if (editingTokenId === id) {
@@ -120,14 +164,20 @@ export function AuthConfigSection({ authConfig, onChange, onTestConnection, conn
 
     const trimmedValue = editingValue.trim();
     if (!trimmedValue) {
-      // Remove empty tokens
       handleRemoveToken(editingTokenId);
       return;
     }
 
-    const updated = tokenEntries.map((entry) =>
-      entry.id === editingTokenId ? { ...entry, value: trimmedValue } : entry
-    );
+    const updated = tokenEntries.map((entry) => {
+      if (entry.id === editingTokenId) {
+        if (entry.value && entry.value !== trimmedValue) {
+          tokenIdMapRef.current.delete(entry.value);
+        }
+        tokenIdMapRef.current.set(trimmedValue, entry.id);
+        return { ...entry, value: trimmedValue };
+      }
+      return entry;
+    });
     setTokenEntries(updated);
     syncTokensToConfig(updated, authType);
     setEditingTokenId(null);
@@ -162,10 +212,11 @@ export function AuthConfigSection({ authConfig, onChange, onTestConnection, conn
 
       try {
         const tokens = await parseTokenFile(file);
-        const newEntries = tokens.map((token) => ({
-          value: token,
-          id: generateTokenId(),
-        }));
+        const newEntries = tokens.map((token) => {
+          const id = generateTokenId();
+          tokenIdMapRef.current.set(token, id);
+          return { value: token, id };
+        });
         const updated = [...tokenEntries, ...newEntries];
         setTokenEntries(updated);
         syncTokensToConfig(updated, authType);
@@ -175,7 +226,6 @@ export function AuthConfigSection({ authConfig, onChange, onTestConnection, conn
         );
       }
 
-      // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -206,15 +256,19 @@ export function AuthConfigSection({ authConfig, onChange, onTestConnection, conn
   );
 
   const handleQuickTokenChange = useCallback((value: string) => {
-    setQuickTokenValue(value);
-    const trimmedValue = value.trim();
-    
-    if (tokenEntries.length === 0 && trimmedValue) {
-      const newEntry: TokenEntry = { value: trimmedValue, id: generateTokenId() };
+    if (tokenEntries.length === 0 && value) {
+      const id = generateTokenId();
+      const newEntry: TokenEntry = { value, id };
+      tokenIdMapRef.current.set(value, id);
       setTokenEntries([newEntry]);
       syncTokensToConfig([newEntry], authType);
     } else if (tokenEntries.length > 0) {
-      const updated = tokenEntries.map((e, i) => i === 0 ? { ...e, value: trimmedValue } : e);
+      const oldValue = tokenEntries[0].value;
+      if (oldValue && oldValue !== value) {
+        tokenIdMapRef.current.delete(oldValue);
+      }
+      if (value) tokenIdMapRef.current.set(value, tokenEntries[0].id);
+      const updated = tokenEntries.map((e, i) => i === 0 ? { ...e, value } : e);
       setTokenEntries(updated);
       syncTokensToConfig(updated, authType);
     }
@@ -275,7 +329,7 @@ export function AuthConfigSection({ authConfig, onChange, onTestConnection, conn
             <input
               id="quick-token-input"
               type="password"
-              value={quickTokenValue || (tokenEntries[0]?.value || '')}
+              value={quickTokenValue}
               onChange={(e) => handleQuickTokenChange(e.target.value)}
               placeholder="Enter your bearer token"
               className="input"

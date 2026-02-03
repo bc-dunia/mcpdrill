@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import type { OperationLog, PaginationState, LogFilters } from '../types'
 import { SkeletonTable } from './Skeleton'
 import { Icon } from './Icon';
@@ -45,6 +45,10 @@ function LogTableComponent({ logs, loading, pagination, onPageChange, onLimitCha
   const canGoPrev = offset > 0;
   const canGoNext = offset + limit < total;
   const [jumpPage, setJumpPage] = useState(String(currentPage));
+
+  useEffect(() => {
+    setJumpPage(String(currentPage));
+  }, [currentPage]);
   
   const hasTokenData = logs.some(log => log.token_index !== undefined && log.token_index !== null);
 

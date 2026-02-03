@@ -135,7 +135,14 @@ export function RunWizard({ onRunStarted }: Props) {
       return {
         ...defaults,
         ...saved.config,
-        server_telemetry: saved.config.server_telemetry ?? defaults.server_telemetry,
+        target: { ...defaults.target, ...(saved.config.target ?? {}) },
+        workload: { ...defaults.workload, ...(saved.config.workload ?? {}) },
+        session_policy: saved.config.session_policy 
+          ? { ...defaults.session_policy, ...saved.config.session_policy }
+          : defaults.session_policy,
+        server_telemetry: saved.config.server_telemetry
+          ? { ...defaults.server_telemetry, ...saved.config.server_telemetry }
+          : defaults.server_telemetry,
       };
     }
     return createDefaultConfig();

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { TargetConfig as TargetConfigType, ServerTelemetryConfig, AgentInfo, AuthConfig } from '../types';
 import { Icon } from './Icon';
 import { AgentDetailModal } from './AgentDetailModal';
@@ -46,15 +46,58 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
   const [agentsLoading, setAgentsLoading] = useState(false);
   const [agentsError, setAgentsError] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const headerIdMapRef = useRef<Map<string, string>>(new Map());
+  const prevHeadersRef = useRef<Record<string, string> | undefined>(config.headers);
   
   const [headerEntries, setHeaderEntries] = useState<HeaderEntry[]>(() => {
     if (!config.headers) return [];
-    return Object.entries(config.headers).map(([key, value]) => ({
-      key,
-      value,
-      id: generateHeaderId(),
-    }));
+    return Object.entries(config.headers).map(([key, value]) => {
+      const id = generateHeaderId();
+      headerIdMapRef.current.set(key, id);
+      return { key, value, id };
+    });
   });
+
+  useEffect(() => {
+    const prevHeaders = prevHeadersRef.current;
+    const newHeaders = config.headers;
+    
+    if (prevHeaders === newHeaders) return;
+    
+    const prevKeys = prevHeaders ? Object.keys(prevHeaders) : [];
+    const newKeys = newHeaders ? Object.keys(newHeaders) : [];
+    if (prevKeys.length === newKeys.length && 
+        prevKeys.every(k => newHeaders?.[k] === prevHeaders?.[k])) {
+      prevHeadersRef.current = newHeaders;
+      return;
+    }
+    
+    prevHeadersRef.current = newHeaders;
+    
+    if (!newHeaders || Object.keys(newHeaders).length === 0) {
+      setHeaderEntries([]);
+      headerIdMapRef.current.clear();
+      return;
+    }
+    
+    const newKeySet = new Set(Object.keys(newHeaders));
+    const newEntries = Object.entries(newHeaders).map(([key, value]) => {
+      let id = headerIdMapRef.current.get(key);
+      if (!id) {
+        id = generateHeaderId();
+        headerIdMapRef.current.set(key, id);
+      }
+      return { key, value, id };
+    });
+    
+    for (const key of headerIdMapRef.current.keys()) {
+      if (!newKeySet.has(key)) {
+        headerIdMapRef.current.delete(key);
+      }
+    }
+    
+    setHeaderEntries(newEntries);
+  }, [config.headers]);
 
   useEffect(() => {
     setConnectionStatus('idle');
@@ -144,8 +187,12 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
   }, []);
 
   const handleHeaderKeyChange = (id: string, newKey: string) => {
-    const updated = headerEntries.map(entry =>
-      entry.id === id ? { ...entry, key: newKey } : entry
+    const entry = headerEntries.find(e => e.id === id);
+    if (entry?.key) headerIdMapRef.current.delete(entry.key);
+    if (newKey) headerIdMapRef.current.set(newKey, id);
+    
+    const updated = headerEntries.map(e =>
+      e.id === id ? { ...e, key: newKey } : e
     );
     setHeaderEntries(updated);
     syncHeadersToConfig(updated);
@@ -160,7 +207,10 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
   };
 
   const handleRemoveHeader = (id: string) => {
-    const updated = headerEntries.filter(entry => entry.id !== id);
+    const entry = headerEntries.find(e => e.id === id);
+    if (entry?.key) headerIdMapRef.current.delete(entry.key);
+    
+    const updated = headerEntries.filter(e => e.id !== id);
     setHeaderEntries(updated);
     syncHeadersToConfig(updated);
   };

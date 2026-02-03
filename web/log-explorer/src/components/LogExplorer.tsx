@@ -271,20 +271,20 @@ export function LogExplorer() {
           <>
             <div className="view-tabs" role="group" aria-label="View options">
               <button
-                className={`view-tab ${activeTab === 'logs' ? 'active' : ''}`}
-                onClick={() => handleTabChange('logs')}
-                aria-pressed={activeTab === 'logs'}
-              >
-                <span className="tab-icon" aria-hidden="true"><Icon name="clipboard" size="sm" /></span>
-                Logs
-              </button>
-              <button
                 className={`view-tab ${activeTab === 'metrics' ? 'active' : ''}`}
                 onClick={() => handleTabChange('metrics')}
                 aria-pressed={activeTab === 'metrics'}
               >
                 <span className="tab-icon" aria-hidden="true"><Icon name="chart-bar" size="sm" /></span>
                 Metrics
+              </button>
+              <button
+                className={`view-tab ${activeTab === 'logs' ? 'active' : ''}`}
+                onClick={() => handleTabChange('logs')}
+                aria-pressed={activeTab === 'logs'}
+              >
+                <span className="tab-icon" aria-hidden="true"><Icon name="clipboard" size="sm" /></span>
+                Logs
               </button>
             </div>
 
