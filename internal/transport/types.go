@@ -238,6 +238,14 @@ type RedirectPolicyConfig struct {
 	Allowlist []string
 }
 
+// ValidationConfig holds validation configuration for transport operations.
+type ValidationConfig struct {
+	// MaxArgumentSizeBytes is the maximum size of tool arguments in bytes
+	MaxArgumentSizeBytes int
+	// MaxResultSizeBytes is the maximum size of tool results in bytes
+	MaxResultSizeBytes int
+}
+
 // TransportConfig holds configuration for a transport adapter.
 type TransportConfig struct {
 	// Endpoint is the target URL
@@ -261,6 +269,9 @@ type TransportConfig struct {
 
 	// RedirectPolicy configuration
 	RedirectPolicy *RedirectPolicyConfig
+
+	// ValidationConfig for argument and result validation
+	ValidationConfig *ValidationConfig
 
 	// LastEventID for SSE resumption
 	LastEventID string
