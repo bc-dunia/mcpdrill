@@ -279,8 +279,19 @@ export function RunWizard({ onRunStarted }: Props) {
     if (!isStepValid('workload')) {
       return 'Please define at least one operation';
     }
+    for (const op of config.workload.op_mix) {
+      if (op.operation === 'tools/call' && !op.tool_name?.trim()) {
+        return 'Tool name is required for tools/call operations';
+      }
+      if (op.operation === 'resources/read' && !op.uri?.trim()) {
+        return 'Resource URI is required for resources/read operations';
+      }
+      if (op.operation === 'prompts/get' && !op.prompt_name?.trim()) {
+        return 'Prompt name is required for prompts/get operations';
+      }
+    }
     return null;
-  }, [isStepValid, config.server_telemetry]);
+  }, [isStepValid, config.server_telemetry, config.workload.op_mix]);
 
   const handleStart = async () => {
     const validationError = validateAllSteps();

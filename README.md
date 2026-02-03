@@ -89,6 +89,20 @@ curl http://localhost:8080/runs/{run_id}/logs?limit=10
 | **Telemetry Agent** | *(Optional)* Server-side CPU/memory monitoring |
 | **OpenTelemetry** | *(Optional)* Distributed tracing with OTLP export |
 
+## Screenshots
+
+### Live Metrics Dashboard
+
+Real-time performance monitoring with throughput, latency percentiles, error rates, and server resource utilization:
+
+![Live Metrics Overview](docs/screenshot1.png)
+
+### Tool-Level Analytics
+
+Detailed per-tool breakdown with success rates, latency distribution, and error analysis:
+
+![Tool Metrics](docs/screenshot2.png)
+
 ## Architecture
 
 ```

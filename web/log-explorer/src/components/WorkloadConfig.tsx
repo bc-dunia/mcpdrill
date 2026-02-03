@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useState, useEffect } from 'react';
 import type { WorkloadConfig as WorkloadConfigType, OpMixEntry, FetchedTool, JSONSchema } from '../types';
 import { HelpTooltip } from './HelpTooltip';
 import { Icon, type IconName } from './Icon';
@@ -79,6 +79,12 @@ const OPERATIONS: OperationInfo[] = [
 export function WorkloadConfig({ config, onChange, targetUrl, headers, fetchedTools, onToolsFetched }: Props) {
   const [expandedToolConfig, setExpandedToolConfig] = useState<number | null>(null);
   const [localTools, setLocalTools] = useState<FetchedTool[]>(fetchedTools || []);
+
+  useEffect(() => {
+    if (fetchedTools !== undefined) {
+      setLocalTools(fetchedTools);
+    }
+  }, [fetchedTools]);
   
   const totalWeight = useMemo(
     () => config.op_mix.reduce((sum, op) => sum + op.weight, 0),
