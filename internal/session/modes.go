@@ -421,6 +421,7 @@ func (pm *PoolMode) Acquire(ctx context.Context, vuID string) (*SessionInfo, err
 	if needsCreate {
 		session, err = pm.createSession(ctx)
 		if err != nil {
+			pm.pool.CancelReservation()
 			return nil, err
 		}
 		pm.pool.Add(session)
