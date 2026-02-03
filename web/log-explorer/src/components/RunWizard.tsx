@@ -78,7 +78,7 @@ function createDefaultConfig(): RunConfig {
     },
     server_telemetry: {
       enabled: false,
-      pair_key: 'dev',
+      pair_key: 'dev-test',
     },
     schema_version: 'run-config/v1',
   };
