@@ -91,8 +91,19 @@ func main() {
 	allocator := scheduler.NewAllocator(registry, leaseManager)
 	rm.SetScheduler(registry, allocator, leaseManager)
 
+	heartbeatMonitor := scheduler.NewHeartbeatMonitor(registry, leaseManager, 0, 0)
+	heartbeatMonitor.SetOnWorkerLost(func(workerID scheduler.WorkerID, affectedRunIDs []string) {
+		for _, runID := range affectedRunIDs {
+			if err := rm.HandleWorkerCapacityLost(runID, string(workerID)); err != nil {
+				slog.Error("failed to handle worker capacity loss", "worker_id", workerID, "run_id", runID, "error", err)
+			}
+		}
+	})
+	heartbeatMonitor.Start()
+
 	server := api.NewServer(*addr, rm)
 	server.SetRegistry(registry)
+	server.SetLeaseManager(leaseManager)
 	telemetryStore := api.NewTelemetryStoreWithConfig(&api.TelemetryStoreConfig{
 		MaxOperationsPerRun: *maxOpsPerRun,
 		MaxLogsPerRun:       *maxLogsPerRun,
@@ -163,6 +174,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error during shutdown: %v\n", err)
 	}
 
+	heartbeatMonitor.Stop()
 	registry.Close()
 	fmt.Println("Server stopped")
 }
