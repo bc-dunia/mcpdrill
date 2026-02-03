@@ -130,7 +130,15 @@ export function RunWizard({ onRunStarted }: Props) {
   });
   const [config, setConfig] = useState<RunConfig>(() => {
     const saved = loadWizardProgress();
-    return saved?.config ?? createDefaultConfig();
+    if (saved?.config) {
+      const defaults = createDefaultConfig();
+      return {
+        ...defaults,
+        ...saved.config,
+        server_telemetry: saved.config.server_telemetry ?? defaults.server_telemetry,
+      };
+    }
+    return createDefaultConfig();
   });
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
