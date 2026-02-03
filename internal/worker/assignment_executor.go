@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bc-dunia/mcpdrill/internal/mcp"
@@ -28,12 +29,13 @@ type AssignmentExecutor struct {
 
 // runningAssignment tracks a currently executing assignment.
 type runningAssignment struct {
-	assignment  types.WorkerAssignment
-	engine      *vu.Engine
-	sessionMgr  *session.Manager
-	cancel      context.CancelFunc
-	startedAt   time.Time
-	telemetryCh chan *vu.OperationResult
+	assignment    types.WorkerAssignment
+	engine        *vu.Engine
+	sessionMgr    *session.Manager
+	cancel        context.CancelFunc
+	startedAt     time.Time
+	telemetryCh   chan *vu.OperationResult
+	immediateStop atomic.Bool
 }
 
 // NewAssignmentExecutor creates a new assignment executor.
@@ -130,14 +132,12 @@ func (e *AssignmentExecutor) executeAssignment(ctx context.Context, running *run
 	}
 	running.engine = engine
 
-	// 7. Start telemetry collection (reader -> shipper)
-	go e.collectResults(ctx, running)
-
-	// 8. Start the engine
 	if err := engine.Start(ctx); err != nil {
 		sessionMgr.Close(ctx)
 		return fmt.Errorf("start VU engine: %w", err)
 	}
+
+	go e.collectResults(ctx, running)
 
 	// 9. Wait for duration or cancellation
 	durationTimer := time.NewTimer(time.Duration(a.DurationMs) * time.Millisecond)
@@ -150,8 +150,11 @@ func (e *AssignmentExecutor) executeAssignment(ctx context.Context, running *run
 		log.Printf("[Worker] Assignment %s stopped (context cancelled)", a.LeaseID)
 	}
 
-	// 10. Graceful shutdown
-	stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	stopTimeout := 10 * time.Second
+	if running.immediateStop.Load() {
+		stopTimeout = 1 * time.Second
+	}
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), stopTimeout)
 	defer stopCancel()
 
 	if err := engine.Stop(stopCtx); err != nil {
@@ -194,16 +197,18 @@ func (e *AssignmentExecutor) collectResults(ctx context.Context, running *runnin
 	}
 }
 
-// buildTransportConfig creates transport configuration from assignment.
 func (e *AssignmentExecutor) buildTransportConfig(a types.WorkerAssignment) *transport.TransportConfig {
 	cfg := &transport.TransportConfig{
 		Endpoint:             a.Target.URL,
 		Headers:              a.Target.GetHeadersWithAuth(),
 		AllowPrivateNetworks: e.allowPrivateNets,
 		Timeouts:             transport.DefaultTimeoutConfig(),
+		ValidationConfig: &transport.ValidationConfig{
+			MaxArgumentSizeBytes: 10 * 1024 * 1024,
+			MaxResultSizeBytes:   100 * 1024 * 1024,
+		},
 	}
 
-	// Map redirect policy if present
 	if a.Target.RedirectPolicy != nil {
 		cfg.RedirectPolicy = &transport.RedirectPolicyConfig{
 			Mode:         a.Target.RedirectPolicy.Mode,
@@ -293,15 +298,11 @@ func (e *AssignmentExecutor) StopRun(runID string, immediate bool) {
 	}
 	e.mu.RUnlock()
 
-	// Stop each assignment
 	for _, running := range toStop {
 		if immediate {
-			// Immediate: cancel context first
-			running.cancel()
-		} else {
-			// Drain: just cancel context, executeAssignment will handle graceful shutdown
-			running.cancel()
+			running.immediateStop.Store(true)
 		}
+		running.cancel()
 	}
 
 	if len(toStop) > 0 {
@@ -314,6 +315,19 @@ func (e *AssignmentExecutor) ActiveAssignments() int {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return len(e.active)
+}
+
+// ActiveVUs returns the total number of VUs across all active assignments.
+func (e *AssignmentExecutor) ActiveVUs() int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	total := 0
+	for _, running := range e.active {
+		if running.engine != nil {
+			total += int(running.engine.Metrics().ActiveVUs.Load())
+		}
+	}
+	return total
 }
 
 // mapSessionMode converts string session mode to session.SessionMode.

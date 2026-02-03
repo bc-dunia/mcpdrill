@@ -149,6 +149,24 @@ func (lm *LeaseManager) RevokeWorkerLeases(workerID WorkerID) error {
 	return nil
 }
 
+func (lm *LeaseManager) RenewWorkerLeases(workerID WorkerID) error {
+	if lm.closed.Load() {
+		return ErrLeaseManagerClosed
+	}
+
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+
+	nowMs := NowMs()
+	for _, lease := range lm.leases {
+		if lease.WorkerID == workerID && lease.State == LeaseStateActive {
+			lease.ExpiresAt = nowMs + lm.ttlMs
+		}
+	}
+
+	return nil
+}
+
 func (lm *LeaseManager) GetLease(leaseID LeaseID) (*Lease, error) {
 	if lm.closed.Load() {
 		return nil, ErrLeaseManagerClosed

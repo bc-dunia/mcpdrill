@@ -13,11 +13,12 @@ type SessionPool struct {
 	ttlMs     int64
 	maxIdleMs int64
 
-	mu       sync.Mutex
-	sessions *list.List
-	inUse    map[string]*SessionInfo
-	cond     *sync.Cond
-	closed   atomic.Bool
+	mu             sync.Mutex
+	sessions       *list.List
+	inUse          map[string]*SessionInfo
+	pendingCreates int
+	cond           *sync.Cond
+	closed         atomic.Bool
 
 	totalCreated atomic.Int64
 	poolWaits    atomic.Int64
@@ -111,7 +112,8 @@ func (p *SessionPool) Acquire(ctx context.Context) (*SessionInfo, bool, error) {
 			return session, false, nil
 		}
 
-		if p.sessions.Len()+len(p.inUse) < p.maxSize {
+		if p.sessions.Len()+len(p.inUse)+p.pendingCreates < p.maxSize {
+			p.pendingCreates++
 			return nil, true, nil
 		}
 
@@ -158,7 +160,8 @@ func (p *SessionPool) Acquire(ctx context.Context) (*SessionInfo, bool, error) {
 				return session, false, nil
 			}
 
-			if p.sessions.Len()+len(p.inUse) < p.maxSize {
+			if p.sessions.Len()+len(p.inUse)+p.pendingCreates < p.maxSize {
+				p.pendingCreates++
 				return nil, true, nil
 			}
 		}
@@ -176,9 +179,22 @@ func (p *SessionPool) Add(session *SessionInfo) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if p.pendingCreates > 0 {
+		p.pendingCreates--
+	}
 	p.inUse[session.ID] = session
 	p.totalCreated.Add(1)
 	p.evictor.Track(session)
+}
+
+func (p *SessionPool) CancelReservation() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.pendingCreates > 0 {
+		p.pendingCreates--
+	}
+	p.cond.Signal()
 }
 
 func (p *SessionPool) Release(session *SessionInfo) {

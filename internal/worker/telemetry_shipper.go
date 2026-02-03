@@ -33,8 +33,9 @@ type TelemetryShipper struct {
 	closeOnce sync.Once
 	closed    atomic.Bool
 
-	droppedCount atomic.Int64
-	shippedCount atomic.Int64
+	droppedCount      atomic.Int64
+	shippedCount      atomic.Int64
+	lastDropWarningAt atomic.Int64
 }
 
 type telemetryItem struct {
@@ -82,7 +83,12 @@ func (s *TelemetryShipper) Ship(runID string, outcome types.OperationOutcome) {
 	select {
 	case s.buffer <- telemetryItem{runID: runID, outcome: outcome}:
 	default:
-		s.droppedCount.Add(1)
+		dropped := s.droppedCount.Add(1)
+		now := time.Now().Unix()
+		lastWarning := s.lastDropWarningAt.Load()
+		if now-lastWarning >= 5 && s.lastDropWarningAt.CompareAndSwap(lastWarning, now) {
+			log.Printf("[TelemetryShipper] WARNING: buffer full, dropped %d telemetry items (consider increasing buffer or reducing load)", dropped)
+		}
 	}
 }
 

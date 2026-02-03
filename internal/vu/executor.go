@@ -3,6 +3,7 @@ package vu
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"sync"
 	"time"
@@ -26,6 +27,7 @@ type VUExecutor struct {
 	resultChan       chan<- *OperationResult
 	tracer           *otel.Tracer
 	userJourney      *UserJourneyExecutor
+	sessionMode      session.SessionMode
 	wg               sync.WaitGroup
 }
 
@@ -37,6 +39,10 @@ func NewVUExecutor(
 	metrics *VUMetrics,
 	resultChan chan<- *OperationResult,
 ) *VUExecutor {
+	mode := session.ModeReuse
+	if config != nil && config.SessionManager != nil {
+		mode = config.SessionManager.Mode()
+	}
 	return &VUExecutor{
 		vu:               vu,
 		config:           config,
@@ -48,6 +54,7 @@ func NewVUExecutor(
 		resultChan:       resultChan,
 		tracer:           otel.GetGlobalTracer(),
 		userJourney:      NewUserJourneyExecutor(config.UserJourney, vu.RNGSeed+2),
+		sessionMode:      mode,
 	}
 }
 
@@ -55,17 +62,36 @@ func (e *VUExecutor) Run(ctx context.Context) {
 	e.vu.SetState(StateInitializing)
 	e.vu.StartedAt = time.Now()
 
-	sess, err := e.acquireSessionWithRetry(ctx)
-	if err != nil {
-		log.Printf("VU %s: session acquire failed: %v", e.vu.ID, err)
-		e.vu.SetState(StateStopped)
-		e.vu.StoppedAt = time.Now()
-		return
+	var reuseSess *session.SessionInfo
+	if e.sessionMode == session.ModeReuse {
+		var err error
+		reuseSess, err = e.acquireSessionWithRetry(ctx)
+		if err != nil {
+			log.Printf("VU %s: session acquire failed: %v", e.vu.ID, err)
+			e.vu.SetState(StateStopped)
+			e.vu.StoppedAt = time.Now()
+			return
+		}
+		e.vu.SetSession(reuseSess)
 	}
-	e.vu.SetSession(sess)
 
-	if outcome, err := e.userJourney.RunStartupSequence(ctx, sess); err != nil || (outcome != nil && !outcome.OK) {
+	startupSess := reuseSess
+	if e.sessionMode != session.ModeReuse {
+		var err error
+		startupSess, err = e.acquireSessionWithRetry(ctx)
+		if err != nil {
+			log.Printf("VU %s: session acquire failed: %v", e.vu.ID, err)
+			e.vu.SetState(StateStopped)
+			e.vu.StoppedAt = time.Now()
+			return
+		}
+	}
+
+	if outcome, err := e.userJourney.RunStartupSequence(ctx, startupSess); err != nil || (outcome != nil && !outcome.OK) {
 		log.Printf("VU %s: startup sequence failed: %v", e.vu.ID, err)
+	}
+	if e.sessionMode != session.ModeReuse {
+		e.releaseSession(ctx, startupSess)
 	}
 
 	e.vu.SetState(StateRunning)
@@ -81,20 +107,38 @@ func (e *VUExecutor) Run(ctx context.Context) {
 		case <-ctx.Done():
 			e.vu.SetState(StateDraining)
 			e.wg.Wait()
-			e.releaseSession(ctx, sess)
+			if e.sessionMode == session.ModeReuse {
+				e.releaseSession(ctx, reuseSess)
+			}
 			return
 		default:
 		}
 
 		if e.vu.State() == StateDraining {
 			e.wg.Wait()
-			e.releaseSession(ctx, sess)
+			if e.sessionMode == session.ModeReuse {
+				e.releaseSession(ctx, reuseSess)
+			}
 			return
 		}
 
 		if e.userJourney.ShouldRunPeriodicToolsList() || e.userJourney.ShouldRunToolsListAfterErrors() {
-			if outcome, err := e.userJourney.RunPeriodicToolsList(ctx, sess); err == nil && outcome != nil && outcome.OK {
-				e.emitPeriodicToolsListResult(sess, outcome)
+			if e.sessionMode == session.ModeReuse {
+				if outcome, err := e.userJourney.RunPeriodicToolsList(ctx, reuseSess); err == nil && outcome != nil && outcome.OK {
+					e.emitPeriodicToolsListResult(reuseSess, outcome)
+				}
+			} else {
+				periodicSess, err := e.acquireSessionWithRetry(ctx)
+				if err != nil {
+					if e.shouldEmitSessionAcquireError(err) {
+						e.emitSessionAcquireError(OpToolsList, "", err)
+					}
+				} else {
+					if outcome, err := e.userJourney.RunPeriodicToolsList(ctx, periodicSess); err == nil && outcome != nil && outcome.OK {
+						e.emitPeriodicToolsListResult(periodicSess, outcome)
+					}
+					e.releaseSession(ctx, periodicSess)
+				}
 			}
 		}
 
@@ -116,7 +160,23 @@ func (e *VUExecutor) Run(ctx context.Context) {
 			defer e.inFlightLimiter.Release()
 
 			e.updateMaxInFlight()
-			e.executeOperation(ctx, sess, op)
+			opSess := reuseSess
+			shouldRelease := false
+			if e.sessionMode != session.ModeReuse {
+				var err error
+				opSess, err = e.acquireSessionWithRetry(ctx)
+				if err != nil {
+					if e.shouldEmitSessionAcquireError(err) {
+						e.emitSessionAcquireError(op.Operation, op.ToolName, err)
+					}
+					return
+				}
+				shouldRelease = true
+			}
+			if shouldRelease {
+				defer e.releaseSession(ctx, opSess)
+			}
+			e.executeOperation(ctx, opSess, op)
 		}(op)
 
 		thinkTime := e.thinkTimeSampler.Sample()
@@ -205,6 +265,65 @@ func (e *VUExecutor) acquireSessionWithRetry(ctx context.Context) (*session.Sess
 	}
 
 	return nil, err
+}
+
+func (e *VUExecutor) shouldEmitSessionAcquireError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	return true
+}
+
+func (e *VUExecutor) emitSessionAcquireError(op OperationType, toolName string, err error) {
+	startTime := time.Now()
+	endTime := time.Now()
+
+	e.metrics.TotalOperations.Add(1)
+	e.metrics.InFlightOperations.Add(1)
+	defer e.metrics.InFlightOperations.Add(-1)
+
+	e.metrics.FailedOperations.Add(1)
+	e.vu.OperationsFailed.Add(1)
+	e.userJourney.RecordOperationResult(false)
+
+	errorType := transport.ErrorTypeConnect
+	errorCode := transport.ErrorCode("SESSION_ACQUIRE_FAILED")
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		errorType = transport.ErrorTypeCancelled
+		errorCode = transport.CodeCancelled
+	}
+
+	acquireOutcome := &transport.OperationOutcome{
+		Operation: transport.OperationType(op),
+		ToolName:  toolName,
+		StartTime: startTime,
+		LatencyMs: endTime.Sub(startTime).Milliseconds(),
+		OK:        false,
+		Error: &transport.OperationError{
+			Type:    errorType,
+			Code:    errorCode,
+			Message: "session acquire failed: " + err.Error(),
+		},
+	}
+
+	if e.resultChan != nil {
+		result := &OperationResult{
+			Operation: op,
+			ToolName:  toolName,
+			Outcome:   acquireOutcome,
+			VUID:      e.vu.ID,
+			StartTime: startTime,
+			EndTime:   endTime,
+		}
+		select {
+		case e.resultChan <- result:
+		default:
+			e.metrics.DroppedResults.Add(1)
+		}
+	}
 }
 
 func (e *VUExecutor) emitPeriodicToolsListResult(sess *session.SessionInfo, outcome *transport.OperationOutcome) {

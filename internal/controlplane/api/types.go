@@ -294,6 +294,16 @@ type GetAssignmentsResponse struct {
 	Assignments []types.WorkerAssignment `json:"assignments"`
 }
 
+// AckAssignmentsRequest is the request body for POST /workers/{id}/assignments/ack.
+type AckAssignmentsRequest struct {
+	LeaseIDs []string `json:"lease_ids"`
+}
+
+// AckAssignmentsResponse is the response body for POST /workers/{id}/assignments/ack.
+type AckAssignmentsResponse struct {
+	Acknowledged int `json:"acknowledged"`
+}
+
 // OperationLog represents a single operation log entry with full context.
 // Used for log query API responses.
 type OperationLog struct {

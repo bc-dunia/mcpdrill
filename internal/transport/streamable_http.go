@@ -216,6 +216,16 @@ func (c *StreamableHTTPConnection) ToolsList(ctx context.Context, cursor *string
 
 func (c *StreamableHTTPConnection) ToolsCall(ctx context.Context, params *ToolsCallParams) (*OperationOutcome, error) {
 	requestID := c.nextRequestID()
+
+	if c.config.ValidationConfig != nil && c.config.ValidationConfig.MaxArgumentSizeBytes > 0 {
+		if err := ValidateArgumentSize(params.Arguments, c.config.ValidationConfig.MaxArgumentSizeBytes); err != nil {
+			slog.Warn("argument validation failed",
+				"request_id", requestID,
+				"tool_name", params.Name,
+				"error", err.Error())
+		}
+	}
+
 	req := NewToolsCallRequest(requestID, params.Name, params.Arguments)
 
 	outcome := c.doRequest(ctx, req, OpToolsCall, requestID)
@@ -481,6 +491,14 @@ func (c *StreamableHTTPConnection) handleJSONResponse(
 	if outcome.Operation == OpToolsCall {
 		var toolResult ToolsCallResult
 		if err := json.Unmarshal(jsonrpcResp.Result, &toolResult); err == nil {
+			if c.config.ValidationConfig != nil && c.config.ValidationConfig.MaxResultSizeBytes > 0 {
+				if valErr := ValidateResultWithMaxSize(&toolResult, c.config.ValidationConfig.MaxResultSizeBytes); valErr != nil && !valErr.Valid {
+					slog.Warn("result validation warning",
+						"request_id", requestID,
+						"error", valErr.Error())
+				}
+			}
+
 			if toolErr := CheckToolError(&toolResult, outcome.ToolName); toolErr != nil {
 				outcome.OK = false
 				outcome.Error = toolErr
@@ -534,6 +552,14 @@ func (c *StreamableHTTPConnection) handleSSEResponse(
 	if outcome.Operation == OpToolsCall {
 		var toolResult ToolsCallResult
 		if err := json.Unmarshal(jsonrpcResp.Result, &toolResult); err == nil {
+			if c.config.ValidationConfig != nil && c.config.ValidationConfig.MaxResultSizeBytes > 0 {
+				if valErr := ValidateResultWithMaxSize(&toolResult, c.config.ValidationConfig.MaxResultSizeBytes); valErr != nil && !valErr.Valid {
+					slog.Warn("result validation warning",
+						"request_id", requestID,
+						"error", valErr.Error())
+				}
+			}
+
 			if toolErr := CheckToolError(&toolResult, outcome.ToolName); toolErr != nil {
 				outcome.OK = false
 				outcome.Error = toolErr

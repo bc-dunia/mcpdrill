@@ -21,16 +21,16 @@ type WorkerLostCallback func(workerID WorkerID, affectedRunIDs []string)
 // It runs a background goroutine that periodically checks for workers
 // whose heartbeat has timed out.
 type HeartbeatMonitor struct {
-	registry       *Registry
-	leaseManager   *LeaseManager
-	detector       *HeartbeatDetector
-	timeout        time.Duration
-	interval       time.Duration
-	stopCh         chan struct{}
-	stoppedCh      chan struct{}
-	mu             sync.Mutex
-	running        bool
-	onWorkerLost   WorkerLostCallback
+	registry     *Registry
+	leaseManager *LeaseManager
+	detector     *HeartbeatDetector
+	timeout      time.Duration
+	interval     time.Duration
+	stopCh       chan struct{}
+	stoppedCh    chan struct{}
+	mu           sync.Mutex
+	running      bool
+	onWorkerLost WorkerLostCallback
 }
 
 // NewHeartbeatMonitor creates a new HeartbeatMonitor.
@@ -105,13 +105,7 @@ func (m *HeartbeatMonitor) run() {
 	}
 }
 
-// checkWorkers checks for workers with stale heartbeats and handles them.
-// Uses a two-phase approach to avoid holding locks while processing:
-// Phase 1: Collect dead workers (read lock only via ListWorkers)
-// Phase 2: Process dead workers (outside lock)
 func (m *HeartbeatMonitor) checkWorkers() {
-	// Phase 1: Detect dead workers using the detector
-	// This uses read lock internally via ListWorkers
 	timeoutMs := m.timeout.Milliseconds()
 	deadWorkers, err := m.detector.DetectLostWorkers(timeoutMs)
 	if err != nil {
@@ -119,9 +113,12 @@ func (m *HeartbeatMonitor) checkWorkers() {
 		return
 	}
 
-	// Phase 2: Process dead workers outside any lock
 	for _, workerID := range deadWorkers {
 		m.handleDeadWorker(workerID)
+	}
+
+	if expired := m.leaseManager.ExpireLeases(); len(expired) > 0 {
+		log.Printf("heartbeat monitor: expired %d stale leases", len(expired))
 	}
 }
 

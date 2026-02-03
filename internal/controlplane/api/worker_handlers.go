@@ -5,10 +5,10 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
-	"log"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/bc-dunia/mcpdrill/internal/controlplane/scheduler"
 	"github.com/bc-dunia/mcpdrill/internal/types"
@@ -124,6 +124,10 @@ func (s *Server) handleWorkerHeartbeat(w http.ResponseWriter, r *http.Request, w
 		}
 		s.writeError(w, http.StatusInternalServerError, NewInternalErrorResponse(err.Error()))
 		return
+	}
+
+	if s.leaseManager != nil {
+		_ = s.leaseManager.RenewWorkerLeases(scheduler.WorkerID(workerID))
 	}
 
 	stopRunIDs := s.getStoppingRunsForWorker(workerID)
@@ -372,6 +376,50 @@ func (s *Server) handleGetAssignments(w http.ResponseWriter, r *http.Request, wo
 	s.writeJSON(w, http.StatusOK, &GetAssignmentsResponse{Assignments: assignments})
 }
 
+func (s *Server) handleAckAssignments(w http.ResponseWriter, r *http.Request, workerID string) {
+	if r.Method != http.MethodPost {
+		s.writeMethodNotAllowed(w, r.Method, "POST")
+		return
+	}
+
+	if !s.verifyWorkerToken(w, r, workerID) {
+		return
+	}
+
+	if s.registry == nil {
+		s.writeError(w, http.StatusInternalServerError, NewInternalErrorResponse("registry not configured"))
+		return
+	}
+
+	_, err := s.registry.GetWorker(scheduler.WorkerID(workerID))
+	if err != nil {
+		if err == scheduler.ErrWorkerNotFound {
+			s.writeError(w, http.StatusNotFound, &ErrorResponse{
+				ErrorType:    ErrorTypeNotFound,
+				ErrorCode:    ErrorCodeWorkerNotFound,
+				ErrorMessage: "Worker not found",
+				Retryable:    false,
+				Details:      map[string]interface{}{"worker_id": workerID},
+			})
+			return
+		}
+		s.writeError(w, http.StatusInternalServerError, NewInternalErrorResponse(err.Error()))
+		return
+	}
+
+	var req AckAssignmentsRequest
+	if err := json.NewDecoder(limitedBody(w, r)).Decode(&req); err != nil && err.Error() != "EOF" {
+		s.writeError(w, http.StatusBadRequest, NewInvalidRequestErrorResponse(
+			"Invalid JSON request body",
+			map[string]interface{}{"parse_error": err.Error()},
+		))
+		return
+	}
+
+	acked := s.ackAssignmentsForWorker(workerID, req.LeaseIDs)
+	s.writeJSON(w, http.StatusOK, &AckAssignmentsResponse{Acknowledged: acked})
+}
+
 func (s *Server) getAssignmentsForWorker(workerID string) []types.WorkerAssignment {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -386,31 +434,65 @@ func (s *Server) getAssignmentsForWorker(workerID string) []types.WorkerAssignme
 	}
 
 	delete(s.pendingAssignments, workerID)
+	if s.pendingAck == nil {
+		s.pendingAck = make(map[string][]deliveredAssignment)
+	}
+
+	now := time.Now()
+	delivered := make([]deliveredAssignment, len(assignments))
+	for i, assignment := range assignments {
+		delivered[i] = deliveredAssignment{assignment: assignment, deliveredAt: now}
+	}
+	s.pendingAck[workerID] = append(s.pendingAck[workerID], delivered...)
 	return assignments
+}
+
+func (s *Server) ackAssignmentsForWorker(workerID string, leaseIDs []string) int {
+	if len(leaseIDs) == 0 {
+		return 0
+	}
+
+	leaseIDSet := make(map[string]struct{}, len(leaseIDs))
+	for _, leaseID := range leaseIDs {
+		if leaseID == "" {
+			continue
+		}
+		leaseIDSet[leaseID] = struct{}{}
+	}
+	if len(leaseIDSet) == 0 {
+		return 0
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	pending := s.pendingAck[workerID]
+	if len(pending) == 0 {
+		return 0
+	}
+
+	acked := 0
+	remaining := pending[:0]
+	for _, delivered := range pending {
+		if _, ok := leaseIDSet[delivered.assignment.LeaseID]; ok {
+			acked++
+			continue
+		}
+		remaining = append(remaining, delivered)
+	}
+	if len(remaining) == 0 {
+		delete(s.pendingAck, workerID)
+		return acked
+	}
+	s.pendingAck[workerID] = remaining
+	return acked
 }
 
 func (s *Server) AddAssignment(workerID string, assignment types.WorkerAssignment) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.pendingAssignments == nil {
-		s.pendingAssignments = make(map[string][]types.WorkerAssignment)
-	}
-
-	limit := s.maxPendingAssignmentsPerWorker
-	if limit <= 0 {
-		limit = defaultMaxPendingAssignmentsPerWorker
-	}
-
-	queue := s.pendingAssignments[workerID]
-	if len(queue) >= limit {
-		dropCount := len(queue) - limit + 1
-		queue = queue[dropCount:]
-		log.Printf("[Server] Pending assignments limit hit for worker %s: dropped %d oldest", workerID, dropCount)
-	}
-
-	queue = append(queue, assignment)
-	s.pendingAssignments[workerID] = queue
+	s.addAssignmentLocked(workerID, assignment)
 }
 
 type ServerAssignmentAdapter struct {

@@ -19,9 +19,20 @@ import (
 
 const defaultMaxPendingAssignmentsPerWorker = 100
 
+const (
+	pendingAckCleanupInterval = 30 * time.Second
+	pendingAckTimeout         = 60 * time.Second
+)
+
+type deliveredAssignment struct {
+	assignment  types.WorkerAssignment
+	deliveredAt time.Time
+}
+
 type Server struct {
 	runManager                     *runmanager.RunManager
 	registry                       *scheduler.Registry
+	leaseManager                   *scheduler.LeaseManager
 	telemetryStore                 *TelemetryStore
 	metricsCollector               *metrics.Collector
 	server                         *http.Server
@@ -30,6 +41,7 @@ type Server struct {
 	running                        bool
 	addr                           string
 	pendingAssignments             map[string][]types.WorkerAssignment
+	pendingAck                     map[string][]deliveredAssignment
 	maxPendingAssignmentsPerWorker int
 	customHandlers                 map[string]http.HandlerFunc
 	authConfig                     *auth.Config
@@ -42,6 +54,7 @@ type Server struct {
 	rateLimiterConfig              *RateLimiterConfig
 	agentStore                     *AgentStore
 	agentAuthConfig                *AgentAuthConfig
+	stopCh                         chan struct{}
 }
 
 func NewServer(addr string, rm *runmanager.RunManager) *Server {
@@ -104,6 +117,64 @@ func (s *Server) SetMaxPendingAssignmentsPerWorker(limit int) {
 	s.maxPendingAssignmentsPerWorker = limit
 }
 
+func (s *Server) addAssignmentLocked(workerID string, assignment types.WorkerAssignment) {
+	if s.pendingAssignments == nil {
+		s.pendingAssignments = make(map[string][]types.WorkerAssignment)
+	}
+
+	limit := s.maxPendingAssignmentsPerWorker
+	if limit <= 0 {
+		limit = defaultMaxPendingAssignmentsPerWorker
+	}
+
+	queue := s.pendingAssignments[workerID]
+	if len(queue) >= limit {
+		dropCount := len(queue) - limit + 1
+		queue = queue[dropCount:]
+		log.Printf("[Server] Pending assignments limit hit for worker %s: dropped %d oldest", workerID, dropCount)
+	}
+
+	queue = append(queue, assignment)
+	s.pendingAssignments[workerID] = queue
+}
+
+func (s *Server) requeueExpiredPendingAcks(now time.Time, timeout time.Duration) int {
+	if timeout <= 0 {
+		return 0
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.pendingAck) == 0 {
+		return 0
+	}
+
+	requeued := 0
+	for workerID, pending := range s.pendingAck {
+		if len(pending) == 0 {
+			delete(s.pendingAck, workerID)
+			continue
+		}
+		remaining := pending[:0]
+		for _, delivered := range pending {
+			if now.Sub(delivered.deliveredAt) > timeout {
+				s.addAssignmentLocked(workerID, delivered.assignment)
+				requeued++
+				continue
+			}
+			remaining = append(remaining, delivered)
+		}
+		if len(remaining) == 0 {
+			delete(s.pendingAck, workerID)
+			continue
+		}
+		s.pendingAck[workerID] = remaining
+	}
+
+	return requeued
+}
+
 func (s *Server) initAuthMiddlewareLocked() {
 	if s.authMiddleware != nil {
 		return
@@ -137,6 +208,12 @@ func (s *Server) SetRegistry(r *scheduler.Registry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.registry = r
+}
+
+func (s *Server) SetLeaseManager(lm *scheduler.LeaseManager) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.leaseManager = lm
 }
 
 func (s *Server) SetTelemetryStore(ts *TelemetryStore) {
@@ -246,6 +323,8 @@ func (s *Server) Start() error {
 	}
 
 	s.running = true
+	s.stopCh = make(chan struct{})
+	s.startPendingAckRequeueLoop()
 
 	go func() {
 		if err := s.server.Serve(listener); err != nil && err != http.ErrServerClosed {
@@ -254,6 +333,24 @@ func (s *Server) Start() error {
 	}()
 
 	return nil
+}
+
+func (s *Server) startPendingAckRequeueLoop() {
+	go func() {
+		ticker := time.NewTicker(pendingAckCleanupInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-s.stopCh:
+				return
+			case <-ticker.C:
+				requeued := s.requeueExpiredPendingAcks(time.Now(), pendingAckTimeout)
+				if requeued > 0 {
+					log.Printf("[Server] Requeued %d expired assignments", requeued)
+				}
+			}
+		}
+	}()
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
@@ -265,6 +362,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	s.running = false
+	if s.stopCh != nil {
+		close(s.stopCh)
+	}
 
 	if s.server != nil {
 		return s.server.Shutdown(ctx)
@@ -414,7 +514,21 @@ func (s *Server) routeWorkers(w http.ResponseWriter, r *http.Request) {
 	case "telemetry":
 		s.handleWorkerTelemetry(w, r, workerID)
 	case "assignments":
-		s.handleGetAssignments(w, r, workerID)
+		if len(parts) == 3 && parts[2] == "ack" {
+			s.handleAckAssignments(w, r, workerID)
+			return
+		}
+		if len(parts) == 2 {
+			s.handleGetAssignments(w, r, workerID)
+			return
+		}
+		s.writeError(w, http.StatusNotFound, &ErrorResponse{
+			ErrorType:    ErrorTypeNotFound,
+			ErrorCode:    "ENDPOINT_NOT_FOUND",
+			ErrorMessage: "Endpoint not found",
+			Retryable:    false,
+			Details:      map[string]interface{}{"path": r.URL.Path},
+		})
 	default:
 		s.writeError(w, http.StatusNotFound, &ErrorResponse{
 			ErrorType:    ErrorTypeNotFound,

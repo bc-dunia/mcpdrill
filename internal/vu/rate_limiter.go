@@ -30,8 +30,8 @@ func NewRateLimiter(targetRPS float64) *RateLimiter {
 	if maxTokens < 1 {
 		maxTokens = 1
 	}
-	if maxTokens > 1000 {
-		maxTokens = 1000
+	if maxTokens > 10000 {
+		maxTokens = 10000
 	}
 
 	r.tokens = maxTokens
@@ -65,8 +65,8 @@ func (r *RateLimiter) Acquire(ctx context.Context) error {
 			}
 
 			waitDuration := time.Duration(float64(time.Second) / r.refillRate)
-			if waitDuration < time.Millisecond {
-				waitDuration = time.Millisecond
+			if waitDuration < 100*time.Microsecond {
+				waitDuration = 100 * time.Microsecond
 			}
 			return waitDuration, false
 		}()
@@ -148,8 +148,8 @@ func (r *RateLimiter) UpdateTargetRPS(targetRPS float64) {
 	if maxTokens < 1 {
 		maxTokens = 1
 	}
-	if maxTokens > 1000 {
-		maxTokens = 1000
+	if maxTokens > 10000 {
+		maxTokens = 10000
 	}
 	r.maxTokens = maxTokens
 
