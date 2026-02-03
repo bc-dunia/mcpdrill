@@ -65,6 +65,9 @@ curl -X POST http://localhost:8080/runs/{run_id}/start
 
 > **Note**: The quick-start config targets `http://127.0.0.1:3000/mcp` (IPv4 localhost). Using `localhost` may fail due to IPv6 resolution on some systems.
 
+> **Optional: Server Resources (CPU/Memory)**  
+> The Web UI can display server-side CPU/memory metrics, but this requires the optional `mcpdrill-agent`. The quick-start config has `server_telemetry.enabled: false` by default. To enable it, see [Server Telemetry Agent](#server-telemetry-agent-optional) section below.
+
 ### 4. View Results
 
 Watch real-time metrics in the Web UI at **http://localhost:5173**, or query the API:

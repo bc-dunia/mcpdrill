@@ -124,5 +124,10 @@
   "telemetry": {
     "structured_logs": { "enabled": true, "sample_rate": 1.0 },
     "traces": { "enabled": false, "propagation": { "accept_incoming_traceparent": false } }
+  },
+  "server_telemetry": {
+    "_comment": "Optional: Enable to collect server-side CPU/memory metrics. Requires mcpdrill-agent running with matching pair_key.",
+    "enabled": false,
+    "pair_key": "dev-test"
   }
 }
