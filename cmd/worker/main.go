@@ -43,6 +43,10 @@ type assignmentsResponse struct {
 	Assignments []types.WorkerAssignment `json:"assignments"`
 }
 
+type ackAssignmentsRequest struct {
+	LeaseIDs []string `json:"lease_ids"`
+}
+
 func main() {
 	controlPlane := flag.String("control-plane", "http://localhost:8080", "Control plane URL")
 	maxVUs := flag.Int("max-vus", 100, "Maximum virtual users this worker can handle")
@@ -196,7 +200,7 @@ func sendHeartbeat(ctx context.Context, baseURL, workerID, workerToken string, e
 	req := heartbeatRequest{
 		Health: &types.WorkerHealth{
 			MemBytes:  int64(memStats.Alloc),
-			ActiveVUs: executor.ActiveAssignments(),
+			ActiveVUs: executor.ActiveVUs(),
 		},
 	}
 	body, _ := json.Marshal(req)
@@ -240,9 +244,17 @@ func pollAssignments(ctx context.Context, baseURL, workerID, workerToken string,
 			if err != nil {
 				continue
 			}
+			var started []types.WorkerAssignment
 			for _, a := range assignments {
 				if err := executor.Execute(ctx, a); err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to execute assignment %s: %v\n", a.LeaseID, err)
+					continue
+				}
+				started = append(started, a)
+			}
+			if len(started) > 0 {
+				if err := ackAssignments(ctx, baseURL, workerID, workerToken, started); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to ack assignments: %v\n", err)
 				}
 			}
 		}
@@ -273,4 +285,46 @@ func getAssignments(ctx context.Context, baseURL, workerID, workerToken string) 
 		return nil, err
 	}
 	return result.Assignments, nil
+}
+
+func ackAssignments(ctx context.Context, baseURL, workerID, workerToken string, assignments []types.WorkerAssignment) error {
+	if len(assignments) == 0 {
+		return nil
+	}
+
+	leaseIDs := make([]string, 0, len(assignments))
+	for _, assignment := range assignments {
+		if assignment.LeaseID == "" {
+			continue
+		}
+		leaseIDs = append(leaseIDs, assignment.LeaseID)
+	}
+	if len(leaseIDs) == 0 {
+		return nil
+	}
+
+	req := ackAssignmentsRequest{LeaseIDs: leaseIDs}
+	body, _ := json.Marshal(req)
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/workers/"+workerID+"/assignments/ack", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if workerToken != "" {
+		httpReq.Header.Set("X-Worker-Token", workerToken)
+	}
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("ack assignments failed: %s - %s", resp.Status, string(respBody))
+	}
+
+	return nil
 }
