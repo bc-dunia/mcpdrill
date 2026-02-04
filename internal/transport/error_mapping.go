@@ -166,9 +166,9 @@ func mapNetOpError(err *net.OpError) *OperationError {
 
 func mapDialError(err *net.OpError) *OperationError {
 	if err.Err != nil {
-		var syscallErr *syscall.Errno
-		if errors.As(err.Err, &syscallErr) {
-			return mapSyscallError(*syscallErr, err)
+		var errno syscall.Errno
+		if errors.As(err.Err, &errno) {
+			return mapSyscallError(errno, err)
 		}
 
 		var opErr *net.OpError
@@ -452,7 +452,7 @@ func NewSSEDisconnectError(eventsReceived int, lastEventID string) *OperationErr
 		details["last_event_id"] = lastEventID
 	}
 	return &OperationError{
-		Type:    ErrorTypeStreamStall,
+		Type:    ErrorTypeConnect,
 		Code:    CodeSSEDisconnect,
 		Message: fmt.Sprintf("SSE stream disconnected after %d events", eventsReceived),
 		Details: details,

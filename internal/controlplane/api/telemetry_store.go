@@ -282,15 +282,17 @@ func (ts *TelemetryStore) RunCount() int {
 
 func (ts *TelemetryStore) QueryLogs(runID string, filters LogFilters) ([]OperationLog, int, error) {
 	ts.mu.RLock()
-	defer ts.mu.RUnlock()
-
 	rt, ok := ts.runs[runID]
 	if !ok {
+		ts.mu.RUnlock()
 		return nil, 0, fmt.Errorf("run not found: %s", runID)
 	}
+	logs := make([]OperationLog, len(rt.logs))
+	copy(logs, rt.logs)
+	ts.mu.RUnlock()
 
-	filtered := make([]OperationLog, 0, len(rt.logs))
-	for _, log := range rt.logs {
+	filtered := make([]OperationLog, 0, len(logs))
+	for _, log := range logs {
 		if !matchesFilters(log, filters) {
 			continue
 		}
@@ -378,15 +380,17 @@ func (ts *TelemetryStore) ListRunsForRetention() []RunRetentionInfo {
 
 func (ts *TelemetryStore) GetErrorLogs(runID string) ([]analysis.ErrorLog, error) {
 	ts.mu.RLock()
-	defer ts.mu.RUnlock()
-
 	rt, ok := ts.runs[runID]
 	if !ok {
+		ts.mu.RUnlock()
 		return nil, fmt.Errorf("run not found: %s", runID)
 	}
+	logs := make([]OperationLog, len(rt.logs))
+	copy(logs, rt.logs)
+	ts.mu.RUnlock()
 
 	errorLogs := make([]analysis.ErrorLog, 0)
-	for _, log := range rt.logs {
+	for _, log := range logs {
 		if !log.OK {
 			errorLogs = append(errorLogs, analysis.ErrorLog{
 				TimestampMs: log.TimestampMs,
@@ -400,23 +404,23 @@ func (ts *TelemetryStore) GetErrorLogs(runID string) ([]analysis.ErrorLog, error
 	return errorLogs, nil
 }
 
-// GetStreamingMetrics computes streaming metrics from stored operation logs for a given run.
-// It aggregates EventsReceived, StreamStartTimeMs, LastEventTimeMs, and StreamStallCount.
 func (ts *TelemetryStore) GetStreamingMetrics(runID string) (*telemetry.StreamingMetrics, error) {
 	ts.mu.RLock()
-	defer ts.mu.RUnlock()
-
 	rt, ok := ts.runs[runID]
 	if !ok {
+		ts.mu.RUnlock()
 		return nil, fmt.Errorf("run not found: %s", runID)
 	}
+	logs := make([]OperationLog, len(rt.logs))
+	copy(logs, rt.logs)
+	ts.mu.RUnlock()
 
 	metrics := &telemetry.StreamingMetrics{}
 
 	var minTime int64 = math.MaxInt64
 	var maxTime int64 = 0
 
-	for _, log := range rt.logs {
+	for _, log := range logs {
 		if log.Stream == nil {
 			continue
 		}

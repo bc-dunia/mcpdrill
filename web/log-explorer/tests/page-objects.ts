@@ -3,6 +3,7 @@ import { Page, Locator, expect } from '@playwright/test';
 export class RunWizardPage {
   readonly page: Page;
   readonly targetUrlInput: Locator;
+  readonly testConnectionButton: Locator;
   readonly nextButton: Locator;
   readonly backButton: Locator;
   readonly stepIndicators: Locator;
@@ -11,6 +12,7 @@ export class RunWizardPage {
   constructor(page: Page) {
     this.page = page;
     this.targetUrlInput = page.locator('#target-url');
+    this.testConnectionButton = page.locator('.test-connection-btn');
     this.nextButton = page.locator('button:has-text("Next")');
     this.backButton = page.locator('button:has-text("Back")');
     this.stepIndicators = page.locator('.wizard-stepper button');
@@ -26,6 +28,11 @@ export class RunWizardPage {
 
   async setTargetUrl(url: string) {
     await this.targetUrlInput.fill(url);
+  }
+
+  async testConnection() {
+    await this.testConnectionButton.click();
+    await expect(this.page.locator('.connection-result.success')).toBeVisible({ timeout: 10000 });
   }
 
   async goToStep(stepName: 'Target' | 'Stages' | 'Workload' | 'Review') {
@@ -70,7 +77,7 @@ export class ToolSelectorPage {
 
   async fetchTools() {
     await this.fetchToolsButton.click();
-    await this.page.waitForResponse(resp => resp.url().includes('/tools/list'), { timeout: 10000 }).catch(() => {});
+    await this.page.waitForResponse(resp => resp.url().includes('/discover-tools'), { timeout: 10000 }).catch(() => {});
     await expect(this.toolList.or(this.errorMessage)).toBeVisible({ timeout: 10000 });
   }
 
@@ -353,14 +360,30 @@ export class ToolMetricsDashboardPage {
 
 export class MockServerHelper {
   static async interceptToolsList(page: Page, tools: Array<{ name: string; description: string; inputSchema?: object }>) {
-    await page.route('**/tools/list', async route => {
+    // UI uses the control plane discovery endpoint, not the MCP JSON-RPC method directly.
+    await page.route('**/discover-tools', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ tools }),
+      });
+    });
+  }
+
+  static async interceptTestConnection(
+    page: Page,
+    tools: Array<{ name: string; description: string; inputSchema?: object }> = MockServerHelper.getMockTools()
+  ) {
+    await page.route('**/test-connection', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          result: { tools },
+          success: true,
+          tool_count: tools.length,
+          connect_latency_ms: 10,
+          tools_latency_ms: 20,
+          total_latency_ms: 30,
         }),
       });
     });

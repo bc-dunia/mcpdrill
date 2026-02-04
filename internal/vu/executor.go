@@ -536,6 +536,10 @@ func (e *VUExecutor) executeOperation(ctx context.Context, sess *session.Session
 
 	endTime := time.Now()
 
+	if outcome == nil && err == nil {
+		err = errors.New("plugin returned nil outcome without error")
+	}
+
 	if err != nil || (outcome != nil && !outcome.OK) {
 		e.metrics.FailedOperations.Add(1)
 		e.vu.OperationsFailed.Add(1)

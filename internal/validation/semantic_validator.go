@@ -3,7 +3,6 @@ package validation
 import (
 	"encoding/json"
 	"net/url"
-	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1104,20 +1103,41 @@ func (v *SemanticValidator) validateForbiddenPatterns(config map[string]interfac
 	}
 }
 
-// matchesForbiddenPattern checks if value matches pattern.
-// For glob patterns (containing *?[]), uses path.Match for pure glob matching.
-// For non-glob patterns, uses exact case-insensitive match.
 func matchesForbiddenPattern(value, pattern string) bool {
 	valueLower := strings.ToLower(value)
 	patternLower := strings.ToLower(pattern)
 
-	// Check if pattern contains glob characters
-	if strings.ContainsAny(pattern, "*?[]") {
-		// Use path.Match for pure glob matching only
-		matched, err := path.Match(patternLower, valueLower)
-		return err == nil && matched
+	if !strings.ContainsAny(pattern, "*?") {
+		return valueLower == patternLower
 	}
 
-	// Non-glob pattern: exact case-insensitive match
-	return valueLower == patternLower
+	return wildcardMatch(patternLower, valueLower)
+}
+
+func wildcardMatch(pattern, value string) bool {
+	pi, vi := 0, 0
+	starIdx, matchIdx := -1, 0
+
+	for vi < len(value) {
+		if pi < len(pattern) && (pattern[pi] == '?' || pattern[pi] == value[vi]) {
+			pi++
+			vi++
+		} else if pi < len(pattern) && pattern[pi] == '*' {
+			starIdx = pi
+			matchIdx = vi
+			pi++
+		} else if starIdx != -1 {
+			pi = starIdx + 1
+			matchIdx++
+			vi = matchIdx
+		} else {
+			return false
+		}
+	}
+
+	for pi < len(pattern) && pattern[pi] == '*' {
+		pi++
+	}
+
+	return pi == len(pattern)
 }

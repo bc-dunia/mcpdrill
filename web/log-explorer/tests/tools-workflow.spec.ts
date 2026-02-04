@@ -4,6 +4,7 @@ import { RunWizardPage, ToolSelectorPage, ToolArgumentsEditorPage, MockServerHel
 test.describe('Tool Testing Workflow E2E', () => {
   test('complete tool discovery to configuration workflow', async ({ page }) => {
     await MockServerHelper.interceptToolsList(page, MockServerHelper.getMockTools());
+    await MockServerHelper.interceptTestConnection(page, MockServerHelper.getMockTools());
     await MockServerHelper.interceptRunLogs(page, MockServerHelper.getMockLogs());
     await MockServerHelper.interceptRunMetrics(page, MockServerHelper.getMockMetrics());
     
@@ -12,6 +13,7 @@ test.describe('Tool Testing Workflow E2E', () => {
     
     await wizard.goto();
     await wizard.setTargetUrl('http://localhost:3000');
+    await wizard.testConnection();
     await wizard.clickNext();
     
     await wizard.waitForStep('Stages');
@@ -40,19 +42,21 @@ test.describe('Tool Testing Workflow E2E', () => {
   });
 
   test('workflow handles server errors gracefully', async ({ page }) => {
-    await page.route('**/tools/list', async route => {
+    await page.route('**/discover-tools', async route => {
       await route.fulfill({
         status: 500,
         contentType: 'application/json',
         body: JSON.stringify({ error: 'Internal Server Error' }),
       });
     });
-    
+    await MockServerHelper.interceptTestConnection(page, MockServerHelper.getMockTools());
+
     const wizard = new RunWizardPage(page);
     const toolSelector = new ToolSelectorPage(page);
     
     await wizard.goto();
     await wizard.setTargetUrl('http://localhost:3000');
+    await wizard.testConnection();
     await wizard.clickNext();
     await wizard.waitForStep('Stages');
     await wizard.clickNext();
@@ -72,6 +76,7 @@ test.describe('Tool Testing Workflow E2E', () => {
 
   test('workflow preserves state across step navigation', async ({ page }) => {
     await MockServerHelper.interceptToolsList(page, MockServerHelper.getMockTools());
+    await MockServerHelper.interceptTestConnection(page, MockServerHelper.getMockTools());
     
     const wizard = new RunWizardPage(page);
     
@@ -79,6 +84,7 @@ test.describe('Tool Testing Workflow E2E', () => {
     
     const testUrl = 'http://localhost:3000';
     await wizard.setTargetUrl(testUrl);
+    await wizard.testConnection();
     await wizard.clickNext();
     
     await wizard.waitForStep('Stages');
@@ -100,11 +106,13 @@ test.describe('Tool Testing Workflow E2E', () => {
 
   test('visual regression: wizard workload step', async ({ page }) => {
     await MockServerHelper.interceptToolsList(page, MockServerHelper.getMockTools());
+    await MockServerHelper.interceptTestConnection(page, MockServerHelper.getMockTools());
     
     const wizard = new RunWizardPage(page);
     
     await wizard.goto();
     await wizard.setTargetUrl('http://localhost:3000');
+    await wizard.testConnection();
     await wizard.clickNext();
     await wizard.waitForStep('Stages');
     await wizard.clickNext();
@@ -116,11 +124,13 @@ test.describe('Tool Testing Workflow E2E', () => {
 
   test('selects tool and configures arguments', async ({ page }) => {
     await MockServerHelper.interceptToolsList(page, MockServerHelper.getMockTools());
+    await MockServerHelper.interceptTestConnection(page, MockServerHelper.getMockTools());
     
     const wizard = new RunWizardPage(page);
     
     await wizard.goto();
     await wizard.setTargetUrl('http://localhost:3000');
+    await wizard.testConnection();
     await wizard.clickNext();
     await wizard.waitForStep('Stages');
     await wizard.clickNext();

@@ -4,10 +4,12 @@ import { RunWizardPage, ToolSelectorPage, MockServerHelper } from './page-object
 test.describe('Tool Selector Component', () => {
   async function navigateToToolSelector(page: import('@playwright/test').Page) {
     await MockServerHelper.interceptToolsList(page, MockServerHelper.getMockTools());
+    await MockServerHelper.interceptTestConnection(page, MockServerHelper.getMockTools());
     
     const wizard = new RunWizardPage(page);
     await wizard.goto();
     await wizard.setTargetUrl('http://localhost:3000');
+    await wizard.testConnection();
     await wizard.clickNext();
     await wizard.waitForStep('Stages');
     await wizard.clickNext();
@@ -132,7 +134,7 @@ test.describe('Tool Selector Component', () => {
   });
 
   test('handles fetch tools loading state', async ({ page }) => {
-    await page.route('**/tools/list', async route => {
+    await page.route('**/discover-tools', async route => {
       await new Promise(resolve => setTimeout(resolve, 1000));
       await route.fulfill({
         status: 200,
@@ -144,6 +146,7 @@ test.describe('Tool Selector Component', () => {
     const wizard = new RunWizardPage(page);
     await wizard.goto();
     await wizard.setTargetUrl('http://localhost:3000');
+    await wizard.testConnection();
     await wizard.clickNext();
     await wizard.waitForStep('Stages');
     await wizard.clickNext();
@@ -161,13 +164,14 @@ test.describe('Tool Selector Component', () => {
   });
 
   test('handles fetch tools error', async ({ page }) => {
-    await page.route('**/tools/list', async route => {
+    await page.route('**/discover-tools', async route => {
       await route.abort('failed');
     });
     
     const wizard = new RunWizardPage(page);
     await wizard.goto();
     await wizard.setTargetUrl('http://localhost:3000');
+    await wizard.testConnection();
     await wizard.clickNext();
     await wizard.waitForStep('Stages');
     await wizard.clickNext();
@@ -185,10 +189,12 @@ test.describe('Tool Selector Component', () => {
 
   test('shows empty state when no tools loaded', async ({ page }) => {
     await MockServerHelper.interceptToolsList(page, []);
+    await MockServerHelper.interceptTestConnection(page, []);
     
     const wizard = new RunWizardPage(page);
     await wizard.goto();
     await wizard.setTargetUrl('http://localhost:3000');
+    await wizard.testConnection();
     await wizard.clickNext();
     await wizard.waitForStep('Stages');
     await wizard.clickNext();

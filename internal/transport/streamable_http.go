@@ -85,6 +85,8 @@ func (a *StreamableHTTPAdapter) Connect(ctx context.Context, config *TransportCo
 		transport:    transport,
 		config:       config,
 		sseHandler:   NewSSEResponseHandler(config.Timeouts.StreamStallTimeout),
+		sessionID:    config.SessionID,
+		lastEventID:  config.LastEventID,
 		requestCount: 0,
 	}
 
@@ -111,13 +113,20 @@ func buildCheckRedirect(config *TransportConfig) func(req *http.Request, via []*
 	// Parse original endpoint for same_origin comparison
 	originalURL, _ := url.Parse(config.Endpoint)
 	originalHostname := ""
+	originalScheme := ""
 	if originalURL != nil {
 		originalHostname = strings.ToLower(originalURL.Hostname())
+		originalScheme = strings.ToLower(originalURL.Scheme)
 	}
 
 	return func(req *http.Request, via []*http.Request) error {
 		// Check max redirects - use > to allow exactly maxRedirects redirects
 		if len(via) > maxRedirects {
+			return http.ErrUseLastResponse
+		}
+
+		// Prevent HTTPS to HTTP downgrade
+		if originalScheme == "https" && strings.ToLower(req.URL.Scheme) == "http" {
 			return http.ErrUseLastResponse
 		}
 
@@ -228,8 +237,7 @@ func (c *StreamableHTTPConnection) ToolsCall(ctx context.Context, params *ToolsC
 
 	req := NewToolsCallRequest(requestID, params.Name, params.Arguments)
 
-	outcome := c.doRequest(ctx, req, OpToolsCall, requestID)
-	outcome.ToolName = params.Name
+	outcome := c.doRequest(ctx, req, OpToolsCall, requestID, params.Name)
 	return outcome, nil
 }
 
@@ -283,12 +291,16 @@ func (c *StreamableHTTPConnection) doRequest(
 	jsonrpcReq *JSONRPCRequest,
 	opType OperationType,
 	requestID string,
+	toolName ...string,
 ) *OperationOutcome {
 	outcome := &OperationOutcome{
 		Operation: opType,
 		JSONRPCID: requestID,
 		Transport: TransportIDStreamableHTTP,
 		StartTime: time.Now(),
+	}
+	if len(toolName) > 0 {
+		outcome.ToolName = toolName[0]
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, c.config.Timeouts.RequestTimeout)
@@ -313,7 +325,10 @@ func (c *StreamableHTTPConnection) doRequest(
 		return outcome
 	}
 
-	c.setHeaders(httpReq, false)
+	c.mu.RLock()
+	hasLastEventID := c.lastEventID != ""
+	c.mu.RUnlock()
+	c.setHeaders(httpReq, hasLastEventID)
 
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
@@ -456,14 +471,24 @@ func (c *StreamableHTTPConnection) handleJSONResponse(
 	outcome *OperationOutcome,
 	requestID string,
 ) {
-	// Limit response body to prevent memory exhaustion (100MB max)
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 100*1024*1024))
+	const maxResponseSize = 100 * 1024 * 1024
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize+1))
 	if err != nil {
 		outcome.OK = false
 		outcome.Error = MapError(err)
 		return
 	}
 	outcome.BytesIn = int64(len(body))
+
+	if len(body) > maxResponseSize {
+		outcome.OK = false
+		outcome.Error = &OperationError{
+			Type:    ErrorTypeProtocol,
+			Code:    "RESPONSE_TOO_LARGE",
+			Message: fmt.Sprintf("response exceeds maximum size of %d bytes", maxResponseSize),
+		}
+		return
+	}
 
 	var jsonrpcResp JSONRPCResponse
 	if err := json.Unmarshal(body, &jsonrpcResp); err != nil {
@@ -490,19 +515,23 @@ func (c *StreamableHTTPConnection) handleJSONResponse(
 
 	if outcome.Operation == OpToolsCall {
 		var toolResult ToolsCallResult
-		if err := json.Unmarshal(jsonrpcResp.Result, &toolResult); err == nil {
-			if c.config.ValidationConfig != nil && c.config.ValidationConfig.MaxResultSizeBytes > 0 {
-				if valErr := ValidateResultWithMaxSize(&toolResult, c.config.ValidationConfig.MaxResultSizeBytes); valErr != nil && !valErr.Valid {
-					slog.Warn("result validation warning",
-						"request_id", requestID,
-						"error", valErr.Error())
-				}
-			}
+		if err := json.Unmarshal(jsonrpcResp.Result, &toolResult); err != nil {
+			outcome.OK = false
+			outcome.Error = MapProtocolError(fmt.Sprintf("invalid tools/call result: %v", err))
+			return
+		}
 
-			if toolErr := CheckToolError(&toolResult, outcome.ToolName); toolErr != nil {
-				outcome.OK = false
-				outcome.Error = toolErr
+		if c.config.ValidationConfig != nil && c.config.ValidationConfig.MaxResultSizeBytes > 0 {
+			if valErr := ValidateResultWithMaxSize(&toolResult, c.config.ValidationConfig.MaxResultSizeBytes); valErr != nil && !valErr.Valid {
+				slog.Warn("result validation warning",
+					"request_id", requestID,
+					"error", valErr.Error())
 			}
+		}
+
+		if toolErr := CheckToolError(&toolResult, outcome.ToolName); toolErr != nil {
+			outcome.OK = false
+			outcome.Error = toolErr
 		}
 	}
 }
@@ -551,19 +580,23 @@ func (c *StreamableHTTPConnection) handleSSEResponse(
 
 	if outcome.Operation == OpToolsCall {
 		var toolResult ToolsCallResult
-		if err := json.Unmarshal(jsonrpcResp.Result, &toolResult); err == nil {
-			if c.config.ValidationConfig != nil && c.config.ValidationConfig.MaxResultSizeBytes > 0 {
-				if valErr := ValidateResultWithMaxSize(&toolResult, c.config.ValidationConfig.MaxResultSizeBytes); valErr != nil && !valErr.Valid {
-					slog.Warn("result validation warning",
-						"request_id", requestID,
-						"error", valErr.Error())
-				}
-			}
+		if err := json.Unmarshal(jsonrpcResp.Result, &toolResult); err != nil {
+			outcome.OK = false
+			outcome.Error = MapProtocolError(fmt.Sprintf("invalid tools/call result: %v", err))
+			return
+		}
 
-			if toolErr := CheckToolError(&toolResult, outcome.ToolName); toolErr != nil {
-				outcome.OK = false
-				outcome.Error = toolErr
+		if c.config.ValidationConfig != nil && c.config.ValidationConfig.MaxResultSizeBytes > 0 {
+			if valErr := ValidateResultWithMaxSize(&toolResult, c.config.ValidationConfig.MaxResultSizeBytes); valErr != nil && !valErr.Valid {
+				slog.Warn("result validation warning",
+					"request_id", requestID,
+					"error", valErr.Error())
 			}
+		}
+
+		if toolErr := CheckToolError(&toolResult, outcome.ToolName); toolErr != nil {
+			outcome.OK = false
+			outcome.Error = toolErr
 		}
 	}
 }

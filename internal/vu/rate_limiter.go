@@ -182,19 +182,24 @@ func (l *InFlightLimiter) Acquire(ctx context.Context) error {
 		go func() {
 			select {
 			case <-ctx.Done():
+				l.mu.Lock()
 				l.cond.Broadcast()
+				l.mu.Unlock()
 			case <-done:
 			}
 		}()
 		defer close(done)
 
 		for l.current >= l.maxInFlight {
-			l.cond.Wait()
-
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			l.cond.Wait()
 		}
+	}
+
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
 	l.current++

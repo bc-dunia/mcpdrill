@@ -324,10 +324,12 @@ func (s *Server) Start() error {
 
 	s.running = true
 	s.stopCh = make(chan struct{})
-	s.startPendingAckRequeueLoop()
+	stopCh := s.stopCh
+	s.startPendingAckRequeueLoop(stopCh)
 
+	srv := s.server
 	go func() {
-		if err := s.server.Serve(listener); err != nil && err != http.ErrServerClosed {
+		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
 			fmt.Printf("server error: %v\n", err)
 		}
 	}()
@@ -335,13 +337,13 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) startPendingAckRequeueLoop() {
+func (s *Server) startPendingAckRequeueLoop(stopCh <-chan struct{}) {
 	go func() {
 		ticker := time.NewTicker(pendingAckCleanupInterval)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-s.stopCh:
+			case <-stopCh:
 				return
 			case <-ticker.C:
 				requeued := s.requeueExpiredPendingAcks(time.Now(), pendingAckTimeout)
@@ -355,19 +357,24 @@ func (s *Server) startPendingAckRequeueLoop() {
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if !s.running {
+		s.mu.Unlock()
 		return nil
 	}
 
 	s.running = false
-	if s.stopCh != nil {
-		close(s.stopCh)
+	srv := s.server
+	stopCh := s.stopCh
+	s.server = nil
+	s.stopCh = nil
+	s.mu.Unlock()
+
+	if stopCh != nil {
+		close(stopCh)
 	}
 
-	if s.server != nil {
-		return s.server.Shutdown(ctx)
+	if srv != nil {
+		return srv.Shutdown(ctx)
 	}
 	return nil
 }

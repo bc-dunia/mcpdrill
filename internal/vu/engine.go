@@ -131,6 +131,10 @@ func (e *Engine) UpdateLoad(target LoadTarget) {
 		e.rateLimiter.UpdateTargetRPS(target.TargetRPS)
 	}
 
+	if !e.started.Load() {
+		return
+	}
+
 	if e.config.Mode == ModeNormal {
 		currentVUs := len(e.vus)
 		targetVUs := target.TargetVUs
@@ -149,7 +153,6 @@ func (e *Engine) UpdateLoad(target LoadTarget) {
 				executor.Stop()
 				delete(e.executors, vuID)
 				delete(e.vus, vuID)
-				e.metrics.TotalVUsTerminated.Add(1)
 				removed++
 			}
 		}

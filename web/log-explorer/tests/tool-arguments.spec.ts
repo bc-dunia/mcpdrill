@@ -4,10 +4,12 @@ import { RunWizardPage, ToolSelectorPage, ToolArgumentsEditorPage, MockServerHel
 test.describe('Tool Arguments Editor Component', () => {
   async function navigateToToolConfig(page: import('@playwright/test').Page) {
     await MockServerHelper.interceptToolsList(page, MockServerHelper.getMockTools());
+    await MockServerHelper.interceptTestConnection(page, MockServerHelper.getMockTools());
     
     const wizard = new RunWizardPage(page);
     await wizard.goto();
     await wizard.setTargetUrl('http://localhost:3000');
+    await wizard.testConnection();
     await wizard.clickNext();
     await wizard.waitForStep('Stages');
     await wizard.clickNext();

@@ -73,6 +73,7 @@ func NewSSEDecoder(r io.ReadCloser, stallTimeout time.Duration) *SSEDecoder {
 // It exits when context is cancelled or EOF/error is encountered.
 func (d *SSEDecoder) readerLoop(ctx context.Context) {
 	defer d.wg.Done()
+	defer close(d.lineCh)
 	for {
 		line, err := d.reader.ReadString('\n')
 		line = strings.TrimSuffix(line, "\n")
@@ -169,6 +170,14 @@ func (d *SSEDecoder) ReadEvent() (*SSEEvent, error) {
 }
 
 func (d *SSEDecoder) readLineWithTimeout() (string, error) {
+	if d.stallTimeout <= 0 {
+		r, ok := <-d.lineCh
+		if !ok {
+			return "", ErrStreamClosed
+		}
+		return r.line, r.err
+	}
+
 	timer := time.NewTimer(d.stallTimeout)
 	defer timer.Stop()
 
@@ -327,7 +336,7 @@ func (h *SSEResponseHandler) HandleSSEStream(
 	if finalResponse == nil {
 		signals.EndedNormally = false
 		h.finalizeStreamSignals(signals, gapTracker, firstEventTime, startTime)
-		return nil, signals, fmt.Errorf("stream ended without final response for request %s", requestID)
+		return nil, signals, NewSSEDisconnectError(signals.EventsCount, decoder.LastEventID())
 	}
 
 	_ = notifications
@@ -348,14 +357,18 @@ func (h *SSEResponseHandler) finalizeStreamSignals(
 }
 
 type eventGapTracker struct {
-	gaps  []int64
-	count int
-	sum   int64
-	min   int64
-	max   int64
+	gaps    []int64
+	count   int
+	sum     int64
+	min     int64
+	max     int64
+	buckets [6]int
 }
 
-const eventGapTrackerMinUnset = -1
+const (
+	eventGapTrackerMinUnset  = -1
+	eventGapTrackerMaxSample = 1000
+)
 
 func newEventGapTracker() *eventGapTracker {
 	return &eventGapTracker{
@@ -365,7 +378,9 @@ func newEventGapTracker() *eventGapTracker {
 }
 
 func (t *eventGapTracker) recordGap(gapMs int64) {
-	t.gaps = append(t.gaps, gapMs)
+	if len(t.gaps) < eventGapTrackerMaxSample {
+		t.gaps = append(t.gaps, gapMs)
+	}
 	t.count++
 	t.sum += gapMs
 
@@ -375,6 +390,21 @@ func (t *eventGapTracker) recordGap(gapMs int64) {
 	if gapMs > t.max {
 		t.max = gapMs
 	}
+
+	switch {
+	case gapMs < 10:
+		t.buckets[0]++
+	case gapMs < 50:
+		t.buckets[1]++
+	case gapMs < 100:
+		t.buckets[2]++
+	case gapMs < 500:
+		t.buckets[3]++
+	case gapMs < 1000:
+		t.buckets[4]++
+	default:
+		t.buckets[5]++
+	}
 }
 
 func (t *eventGapTracker) buildHistogram() *EventGapHistogram {
@@ -383,26 +413,15 @@ func (t *eventGapTracker) buildHistogram() *EventGapHistogram {
 	}
 
 	hist := &EventGapHistogram{
-		MinGapMs: t.min,
-		MaxGapMs: t.max,
-		AvgGapMs: float64(t.sum) / float64(t.count),
-	}
-
-	for _, gap := range t.gaps {
-		switch {
-		case gap < 10:
-			hist.Under10ms++
-		case gap < 50:
-			hist.From10to50++
-		case gap < 100:
-			hist.From50to100++
-		case gap < 500:
-			hist.From100to500++
-		case gap < 1000:
-			hist.From500to1000++
-		default:
-			hist.Over1000ms++
-		}
+		MinGapMs:      t.min,
+		MaxGapMs:      t.max,
+		AvgGapMs:      float64(t.sum) / float64(t.count),
+		Under10ms:     t.buckets[0],
+		From10to50:    t.buckets[1],
+		From50to100:   t.buckets[2],
+		From100to500:  t.buckets[3],
+		From500to1000: t.buckets[4],
+		Over1000ms:    t.buckets[5],
 	}
 
 	if len(t.gaps) > 0 {

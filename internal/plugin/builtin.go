@@ -87,8 +87,12 @@ func (o *ToolsCallOperation) Validate(params map[string]interface{}) error {
 	if !ok {
 		return NewValidationError(OpNameToolsCall, "name", "required")
 	}
-	if _, isString := name.(string); !isString {
+	nameStr, isString := name.(string)
+	if !isString {
 		return NewValidationError(OpNameToolsCall, "name", "must be a string")
+	}
+	if nameStr == "" {
+		return NewValidationError(OpNameToolsCall, "name", "cannot be empty")
 	}
 
 	if args, ok := params["arguments"]; ok {

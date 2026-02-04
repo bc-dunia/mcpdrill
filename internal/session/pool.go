@@ -132,12 +132,12 @@ func (p *SessionPool) Acquire(ctx context.Context) (*SessionInfo, bool, error) {
 		}()
 
 		for {
-			p.cond.Wait()
-
+			// Check context BEFORE waiting to avoid missing broadcast
 			if ctx.Err() != nil {
 				p.poolTimeouts.Add(1)
 				return nil, false, &SessionError{Op: "acquire", Err: ctx.Err()}
 			}
+			p.cond.Wait()
 
 			for e := p.sessions.Front(); e != nil; {
 				session := e.Value.(*SessionInfo)

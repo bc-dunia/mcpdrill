@@ -166,8 +166,11 @@ func (e *Evaluator) Evaluate(nowMs int64) (Trigger, error) {
 	}
 
 	if e.lastSeen < len(operations) {
-		for _, op := range operations[e.lastSeen:] {
-			e.buffer = append(e.buffer, timedOperation{op: op, observedMs: nowMs})
+		// Only buffer operations if we have time-windowed conditions
+		if e.maxWindowMs > 0 {
+			for _, op := range operations[e.lastSeen:] {
+				e.buffer = append(e.buffer, timedOperation{op: op, observedMs: nowMs})
+			}
 		}
 		e.lastSeen = len(operations)
 	}

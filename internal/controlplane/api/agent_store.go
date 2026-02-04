@@ -62,8 +62,10 @@ func NewAgentStore() *AgentStore {
 	}
 }
 
-// NewAgentStoreWithConfig creates a new AgentStore with custom settings
 func NewAgentStoreWithConfig(maxSamples int, timeout time.Duration) *AgentStore {
+	if maxSamples <= 0 {
+		maxSamples = defaultMaxSamplesPerAgent
+	}
 	return &AgentStore{
 		agents:               make(map[string]*AgentInfo),
 		agentsByPairKey:      make(map[string][]string),
