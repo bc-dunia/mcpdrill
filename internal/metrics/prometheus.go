@@ -251,16 +251,25 @@ func (c *Collector) syncTelemetryData(runs []*runmanager.RunView, telemetryProvi
 		})
 	}
 
+	runDurations := make(map[string]*histogramData)
+	for _, result := range results {
+		durationMs := result.data.EndTimeMs - result.data.StartTimeMs
+		if durationMs <= 0 {
+			continue
+		}
+		durationSeconds := float64(durationMs) / 1000.0
+		data := runDurations[result.scenarioID]
+		if data == nil {
+			data = &histogramData{}
+			runDurations[result.scenarioID] = data
+		}
+		data.sum += durationSeconds
+		data.count++
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	for _, result := range results {
-		if result.data.EndTimeMs > result.data.StartTimeMs {
-			if c.runDurations[result.scenarioID] == nil {
-				c.runDurations[result.scenarioID] = &histogramData{}
-			}
-		}
-	}
+	c.runDurations = runDurations
 }
 
 // Expose returns the metrics in Prometheus text exposition format.

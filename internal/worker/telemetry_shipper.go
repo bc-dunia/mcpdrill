@@ -106,6 +106,27 @@ func (s *TelemetryShipper) run() {
 		batches = make(map[string][]types.OperationOutcome)
 	}
 
+	drainBuffer := func() {
+		for {
+			select {
+			case item, ok := <-s.buffer:
+				if !ok {
+					flush()
+					return
+				}
+
+				batches[item.runID] = append(batches[item.runID], item.outcome)
+				if len(batches[item.runID]) >= s.batchSize {
+					s.shipBatch(item.runID, batches[item.runID])
+					delete(batches, item.runID)
+				}
+			default:
+				flush()
+				return
+			}
+		}
+	}
+
 	for {
 		select {
 		case item, ok := <-s.buffer:
@@ -125,7 +146,7 @@ func (s *TelemetryShipper) run() {
 			flush()
 
 		case <-s.ctx.Done():
-			flush()
+			drainBuffer()
 			return
 		}
 	}
@@ -147,13 +168,13 @@ func (s *TelemetryShipper) shipBatch(runID string, ops []types.OperationOutcome)
 		log.Printf("[TelemetryShipper] Failed to ship batch: %v", err)
 		return
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := ReadResponseBody(resp)
 		log.Printf("[TelemetryShipper] Ship failed: status=%d body=%s", resp.StatusCode, string(body))
 		return
 	}
+	defer resp.Body.Close()
 
 	s.shippedCount.Add(int64(len(ops)))
 
@@ -170,13 +191,13 @@ func (s *TelemetryShipper) shipBatch(runID string, ops []types.OperationOutcome)
 func (s *TelemetryShipper) Close() {
 	s.closeOnce.Do(func() {
 		s.closed.Store(true)
-		s.cancel()
 		s.flushTicker.Stop()
 		s.sendMu.Lock()
 		close(s.buffer)
 		s.sendMu.Unlock()
 	})
 	s.wg.Wait()
+	s.cancel()
 }
 
 func (s *TelemetryShipper) Stats() (shipped, dropped int64) {

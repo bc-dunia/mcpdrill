@@ -3,6 +3,7 @@ package worker
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"math"
 	"time"
 
 	"github.com/bc-dunia/mcpdrill/internal/types"
@@ -11,8 +12,8 @@ import (
 
 func ConvertToOutcome(result *vu.OperationResult, a types.WorkerAssignment, workerID string) types.OperationOutcome {
 	// Calculate latency: prefer transport-measured latency, fallback to executor timing
-	// Use microseconds divided by 1000 to preserve sub-millisecond precision
-	latencyMs := int(result.EndTime.Sub(result.StartTime).Microseconds() / 1000)
+	// Round to the nearest millisecond to reduce sub-millisecond truncation
+	latencyMs := int(math.Round(float64(result.EndTime.Sub(result.StartTime).Microseconds()) / 1000.0))
 	if result.Outcome != nil && result.Outcome.LatencyMs > 0 {
 		// Transport layer measured latency is more accurate (network timing)
 		latencyMs = int(result.Outcome.LatencyMs)

@@ -192,8 +192,17 @@ func (e *AssignmentExecutor) collectResults(ctx context.Context, running *runnin
 			e.telemetryShipper.Ship(a.RunID, outcome)
 
 		case <-ctx.Done():
+			e.drainResults(results, running)
 			return
 		}
+	}
+}
+
+func (e *AssignmentExecutor) drainResults(results <-chan *vu.OperationResult, running *runningAssignment) {
+	a := running.assignment
+	for result := range results {
+		outcome := ConvertToOutcome(result, a, e.workerID)
+		e.telemetryShipper.Ship(a.RunID, outcome)
 	}
 }
 

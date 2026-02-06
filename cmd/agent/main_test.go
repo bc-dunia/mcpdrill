@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -153,7 +154,7 @@ func TestPIDReDiscovery(t *testing.T) {
 	}
 
 	// Start new server on same port (simulating process restart)
-	listener2, err := net.Listen("tcp", "127.0.0.1:"+string(rune(port)))
+	listener2, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
 	if err != nil {
 		// Port may not be released yet, try specific port bind
 		listener2, err = net.Listen("tcp", listener1.Addr().String())
