@@ -200,9 +200,25 @@ func (e *AssignmentExecutor) collectResults(ctx context.Context, running *runnin
 
 func (e *AssignmentExecutor) drainResults(results <-chan *vu.OperationResult, running *runningAssignment) {
 	a := running.assignment
-	for result := range results {
-		outcome := ConvertToOutcome(result, a, e.workerID)
-		e.telemetryShipper.Ship(a.RunID, outcome)
+	if !running.immediateStop.Load() {
+		for result := range results {
+			outcome := ConvertToOutcome(result, a, e.workerID)
+			e.telemetryShipper.Ship(a.RunID, outcome)
+		}
+		return
+	}
+
+	for {
+		select {
+		case result, ok := <-results:
+			if !ok {
+				return
+			}
+			outcome := ConvertToOutcome(result, a, e.workerID)
+			e.telemetryShipper.Ship(a.RunID, outcome)
+		default:
+			return
+		}
 	}
 }
 

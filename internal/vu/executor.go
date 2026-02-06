@@ -128,10 +128,12 @@ func (e *VUExecutor) Run(ctx context.Context) {
 					e.emitPeriodicToolsListResult(reuseSess, outcome)
 				}
 			} else {
+				periodicAcquireStart := time.Now()
 				periodicSess, err := e.acquireSessionWithRetry(ctx)
+				periodicAcquireEnd := time.Now()
 				if err != nil {
 					if e.shouldEmitSessionAcquireError(err) {
-						e.emitSessionAcquireError(OpToolsList, "", err)
+						e.emitSessionAcquireError(OpToolsList, "", err, periodicAcquireStart, periodicAcquireEnd)
 					}
 				} else {
 					if outcome, err := e.userJourney.RunPeriodicToolsList(ctx, periodicSess); err == nil && outcome != nil && outcome.OK {
@@ -164,10 +166,12 @@ func (e *VUExecutor) Run(ctx context.Context) {
 			shouldRelease := false
 			if e.sessionMode != session.ModeReuse {
 				var err error
+				acquireStart := time.Now()
 				opSess, err = e.acquireSessionWithRetry(ctx)
+				acquireEnd := time.Now()
 				if err != nil {
 					if e.shouldEmitSessionAcquireError(err) {
-						e.emitSessionAcquireError(op.Operation, op.ToolName, err)
+						e.emitSessionAcquireError(op.Operation, op.ToolName, err, acquireStart, acquireEnd)
 					}
 					return
 				}
@@ -277,9 +281,7 @@ func (e *VUExecutor) shouldEmitSessionAcquireError(err error) bool {
 	return true
 }
 
-func (e *VUExecutor) emitSessionAcquireError(op OperationType, toolName string, err error) {
-	startTime := time.Now()
-	endTime := time.Now()
+func (e *VUExecutor) emitSessionAcquireError(op OperationType, toolName string, err error, startTime, endTime time.Time) {
 
 	e.metrics.TotalOperations.Add(1)
 	e.metrics.InFlightOperations.Add(1)

@@ -192,8 +192,7 @@ func (ct *ConnectionTracker) RecordSuccess(sessionID string, latencyMs int64) {
 	if session, ok := ct.sessions[sessionID]; ok {
 		session.SuccessCount++
 		session.LastActiveAt = ct.nowFunc()
-		totalOps := session.SuccessCount + session.ErrorCount
-		session.AvgLatencyMs = (session.AvgLatencyMs*float64(totalOps-1) + float64(latencyMs)) / float64(totalOps)
+		session.AvgLatencyMs = (session.AvgLatencyMs*float64(session.SuccessCount-1) + float64(latencyMs)) / float64(session.SuccessCount)
 	}
 }
 
