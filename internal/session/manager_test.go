@@ -851,6 +851,7 @@ func TestEvictorBasic(t *testing.T) {
 
 	conn := newMockConnection()
 	session := NewSessionInfo("test_session", conn, 100, 0)
+	session.SetState(StateIdle)
 	evictor.Track(session)
 
 	select {
@@ -917,6 +918,7 @@ func TestSessionTimerTTL(t *testing.T) {
 
 	conn := newMockConnection()
 	session := NewSessionInfo("test_session", conn, 100, 0)
+	session.SetState(StateIdle)
 	timer := NewSessionTimer(session, 100, 0, callback)
 	defer timer.Stop()
 
@@ -980,6 +982,34 @@ func TestSessionTimerTouch(t *testing.T) {
 		}
 	case <-time.After(200 * time.Millisecond):
 		t.Error("Session should have been evicted after idle timeout")
+	}
+}
+
+func TestSessionTimerIdleDoesNotDisableTTL(t *testing.T) {
+	evicted := make(chan EvictionReason, 1)
+	callback := func(session *SessionInfo, reason EvictionReason) {
+		evicted <- reason
+	}
+
+	conn := newMockConnection()
+	session := NewSessionInfo("test_session", conn, 200, 50)
+	// Session stays active (reuse mode behavior) — idle timer fires but must not disable TTL.
+	timer := NewSessionTimer(session, 200, 50, callback)
+	defer timer.Stop()
+
+	// Wait for idle timer to fire (50ms) while session is active — it should be a no-op.
+	time.Sleep(100 * time.Millisecond)
+
+	// Now set idle so TTL can proceed.
+	session.SetState(StateIdle)
+
+	select {
+	case reason := <-evicted:
+		if reason != EvictionTTL {
+			t.Errorf("Expected TTL eviction, got %s", reason)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Error("TTL eviction should still fire after idle timer was skipped on active session")
 	}
 }
 

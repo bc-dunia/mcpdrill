@@ -122,6 +122,20 @@ func (e *VUExecutor) Run(ctx context.Context) {
 			return
 		}
 
+		if e.sessionMode == session.ModeReuse && reuseSess != nil {
+			if reuseSess.IsExpired() || reuseSess.GetState() == session.StateClosed || reuseSess.GetState() == session.StateExpired {
+				e.wg.Wait()
+				e.invalidateReuseSession(ctx, reuseSess)
+				newSess, err := e.acquireSessionWithRetry(ctx)
+				if err != nil {
+					log.Printf("VU %s: session reacquire failed: %v", e.vu.ID, err)
+					return
+				}
+				reuseSess = newSess
+				e.vu.SetSession(reuseSess)
+			}
+		}
+
 		if e.userJourney.ShouldRunPeriodicToolsList() || e.userJourney.ShouldRunToolsListAfterErrors() {
 			if e.sessionMode == session.ModeReuse {
 				if outcome, err := e.userJourney.RunPeriodicToolsList(ctx, reuseSess); err == nil && outcome != nil && outcome.OK {
@@ -156,13 +170,14 @@ func (e *VUExecutor) Run(ctx context.Context) {
 
 		op := e.sampler.Sample()
 
+		currentSess := reuseSess
 		e.wg.Add(1)
-		go func(op *OperationWeight) {
+		go func(op *OperationWeight, sess *session.SessionInfo) {
 			defer e.wg.Done()
 			defer e.inFlightLimiter.Release()
 
 			e.updateMaxInFlight()
-			opSess := reuseSess
+			opSess := sess
 			shouldRelease := false
 			if e.sessionMode != session.ModeReuse {
 				var err error
@@ -181,7 +196,7 @@ func (e *VUExecutor) Run(ctx context.Context) {
 				defer e.releaseSession(ctx, opSess)
 			}
 			e.executeOperation(ctx, opSess, op)
-		}(op)
+		}(op, currentSess)
 
 		thinkTime := e.thinkTimeSampler.Sample()
 		if thinkTime > 0 {
@@ -347,6 +362,22 @@ func (e *VUExecutor) emitPeriodicToolsListResult(sess *session.SessionInfo, outc
 	default:
 		e.metrics.DroppedResults.Add(1)
 	}
+}
+
+func (e *VUExecutor) invalidateReuseSession(ctx context.Context, sess *session.SessionInfo) {
+	if sess == nil {
+		return
+	}
+
+	e.metrics.SessionReleases.Add(1)
+	e.metrics.SessionsDestroyed.Add(1)
+	e.metrics.ActiveSessions.Add(-1)
+
+	if m := otel.GetGlobalMetrics(); m != nil {
+		m.DecrementSessions(ctx)
+	}
+
+	e.config.SessionManager.Invalidate(ctx, sess)
 }
 
 func (e *VUExecutor) releaseSession(ctx context.Context, sess *session.SessionInfo) {

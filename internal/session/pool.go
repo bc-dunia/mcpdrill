@@ -210,7 +210,7 @@ func (p *SessionPool) Release(session *SessionInfo) {
 
 	delete(p.inUse, session.ID)
 
-	if session.IsExpired() || session.GetState() == StateClosed {
+	if session.IsExpired() || session.GetState() == StateClosed || session.GetState() == StateExpired {
 		p.evictor.Untrack(session.ID)
 		if session.Connection != nil {
 			closeWithLog(session.Connection, "session connection")
@@ -250,7 +250,11 @@ func (p *SessionPool) removeSession(session *SessionInfo) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	delete(p.inUse, session.ID)
+	// If the session is currently in use by a VU, don't close it now.
+	// It will be cleaned up when the VU calls Release and finds it expired.
+	if _, active := p.inUse[session.ID]; active {
+		return
+	}
 
 	for e := p.sessions.Front(); e != nil; e = e.Next() {
 		if e.Value.(*SessionInfo).ID == session.ID {

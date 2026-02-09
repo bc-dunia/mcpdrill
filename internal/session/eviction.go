@@ -145,7 +145,32 @@ func (e *Evictor) checkEvictions() {
 }
 
 func (e *Evictor) evictSession(session *SessionInfo, reason EvictionReason) {
-	session.SetState(StateExpired)
+	now := time.Now()
+
+	// Re-check state and timestamps under lock to close the TOCTOU window
+	// between checkEvictions snapshot and actual eviction.
+	session.mu.Lock()
+	state := session.State
+	if state == StateExpired || state == StateClosed {
+		session.mu.Unlock()
+		e.sessions.Delete(session.ID)
+		return
+	}
+	switch reason {
+	case EvictionIdle:
+		if state != StateIdle || session.IdleExpiresAt.IsZero() || !now.After(session.IdleExpiresAt) {
+			session.mu.Unlock()
+			return
+		}
+	case EvictionTTL:
+		if state == StateActive || session.ExpiresAt.IsZero() || !now.After(session.ExpiresAt) {
+			session.mu.Unlock()
+			return
+		}
+	}
+	session.State = StateExpired
+	session.mu.Unlock()
+
 	e.sessions.Delete(session.ID)
 
 	switch reason {
@@ -231,14 +256,25 @@ func (st *SessionTimer) onTTLExpired() {
 		st.mu.Unlock()
 		return
 	}
+
 	st.stopped = true
 	if st.idleTimer != nil {
 		st.idleTimer.Stop()
 	}
 	st.mu.Unlock()
 
-	st.session.SetState(StateExpired)
-	if st.callback != nil {
+	// Atomically transition to expired under session lock.
+	// If already expired/closed (evictor won the race), skip callback.
+	st.session.mu.Lock()
+	prevState := st.session.State
+	if prevState == StateExpired || prevState == StateClosed {
+		st.session.mu.Unlock()
+		return
+	}
+	st.session.State = StateExpired
+	st.session.mu.Unlock()
+
+	if prevState != StateActive && st.callback != nil {
 		st.callback(st.session, EvictionTTL)
 	}
 }
@@ -249,20 +285,23 @@ func (st *SessionTimer) onIdleExpired() {
 		st.mu.Unlock()
 		return
 	}
+	st.mu.Unlock()
 
-	state := st.session.GetState()
-	if state != StateIdle {
-		st.mu.Unlock()
+	st.session.mu.Lock()
+	if st.session.State != StateIdle {
+		st.session.mu.Unlock()
 		return
 	}
+	st.session.State = StateExpired
+	st.session.mu.Unlock()
 
+	st.mu.Lock()
 	st.stopped = true
 	if st.ttlTimer != nil {
 		st.ttlTimer.Stop()
 	}
 	st.mu.Unlock()
 
-	st.session.SetState(StateExpired)
 	if st.callback != nil {
 		st.callback(st.session, EvictionIdle)
 	}
