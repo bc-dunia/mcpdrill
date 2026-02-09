@@ -1,0 +1,18 @@
+# mcpdrill/worker — distributed load worker
+# Build: docker build -f docker/Dockerfile.worker -t mcpdrill/worker:latest .
+
+FROM golang:1.24-alpine AS builder
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -ldflags="-s -w" -o /build/bin/mcpdrill-worker ./cmd/worker
+
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -g 1000 mcpdrill && \
+    adduser -D -u 1000 -G mcpdrill mcpdrill
+COPY --from=builder /build/bin/mcpdrill-worker /usr/local/bin/mcpdrill-worker
+USER mcpdrill
+ENTRYPOINT ["mcpdrill-worker"]
+CMD ["--control-plane", "http://control-plane:8080"]

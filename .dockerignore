@@ -1,45 +1,32 @@
-# Git
 .git
-.gitignore
+.github
+.dev-logs
+.sisyphus
+.omc
+.claude
+.mcpdrill
+.qa-reports
+ref/
 
-# Build artifacts
-dist/
 *.exe
 *.dll
 *.so
 *.dylib
-
-# Test files
-*_test.go
-test/
-coverage.out
-
-# IDE
-.vscode/
-.idea/
+*.log
+*.tmp
 *.swp
 *.swo
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Node modules
-node_modules/
+.vscode/
+.idea/
+
 web/log-explorer/node_modules/
+web/log-explorer/test-results/
+web/log-explorer/playwright-report/
 
-# Temporary files
-*.log
-*.tmp
-tmp/
-
-# Documentation (not needed in image)
-docs/
-*.md
-!README.md
-
-# Examples
-examples/
-
-# Sisyphus
-.sisyphus/
+mcpdrill-server
+mcpdrill-worker
+mcpdrill-agent
+mcpdrill-mockserver

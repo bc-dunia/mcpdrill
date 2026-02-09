@@ -1,7 +1,10 @@
-.PHONY: all build clean server worker mockserver agent help dev dev-stop dev-logs
+.PHONY: all build clean server worker mockserver agent help dev dev-stop dev-logs \
+	frontend docker-build docker-push docker-server docker-worker docker-mockserver docker-agent
 
 BINARY_DIR := .
 GO_BUILD := go build
+VERSION ?= latest
+DOCKER_REGISTRY ?= mcpdrill
 
 all: build
 
@@ -60,12 +63,50 @@ clean:
 test:
 	go test ./...
 
+frontend:
+	cd web/log-explorer && npm ci --no-audit --no-fund && npm run build
+	rm -rf internal/web/dist/assets
+	cp -r web/log-explorer/dist/* internal/web/dist/
+
+docker-server:
+	docker build -f docker/Dockerfile.server -t $(DOCKER_REGISTRY)/server:$(VERSION) .
+
+docker-worker:
+	docker build -f docker/Dockerfile.worker -t $(DOCKER_REGISTRY)/worker:$(VERSION) .
+
+docker-mockserver:
+	docker build -f docker/Dockerfile.mockserver -t $(DOCKER_REGISTRY)/mockserver:$(VERSION) .
+
+docker-agent:
+	docker build -f docker/Dockerfile.agent -t $(DOCKER_REGISTRY)/agent:$(VERSION) .
+
+docker-build: docker-server docker-worker docker-mockserver docker-agent
+
+docker-push:
+	docker push $(DOCKER_REGISTRY)/server:$(VERSION)
+	docker push $(DOCKER_REGISTRY)/worker:$(VERSION)
+	docker push $(DOCKER_REGISTRY)/mockserver:$(VERSION)
+	docker push $(DOCKER_REGISTRY)/agent:$(VERSION)
+
 help:
 	@echo "Usage:"
-	@echo "  make build      - Build all binaries"
-	@echo "  make server     - Build mcpdrill-server"
-	@echo "  make worker     - Build mcpdrill-worker"
-	@echo "  make mockserver - Build mcpdrill-mockserver"
-	@echo "  make agent      - Build mcpdrill-agent"
-	@echo "  make clean      - Remove all binaries"
-	@echo "  make test       - Run tests"
+	@echo "  make build            - Build all binaries"
+	@echo "  make server           - Build mcpdrill-server"
+	@echo "  make worker           - Build mcpdrill-worker"
+	@echo "  make mockserver       - Build mcpdrill-mockserver"
+	@echo "  make agent            - Build mcpdrill-agent"
+	@echo "  make frontend         - Build frontend and copy to embed dir"
+	@echo "  make clean            - Remove all binaries"
+	@echo "  make test             - Run tests"
+	@echo ""
+	@echo "Docker:"
+	@echo "  make docker-build     - Build all Docker images"
+	@echo "  make docker-server    - Build server image"
+	@echo "  make docker-worker    - Build worker image"
+	@echo "  make docker-mockserver - Build mockserver image"
+	@echo "  make docker-agent     - Build agent image"
+	@echo "  make docker-push      - Push all images"
+	@echo ""
+	@echo "Variables:"
+	@echo "  VERSION=v0.1.0        - Image tag (default: latest)"
+	@echo "  DOCKER_REGISTRY=ghcr.io/bc-dunia/mcpdrill - Registry prefix"

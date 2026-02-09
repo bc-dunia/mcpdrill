@@ -1,0 +1,78 @@
+services:
+  control-plane:
+    image: mcpdrill/server:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    ports:
+      - "127.0.0.1:8080:8080"
+    command:
+      - --addr=:8080
+      - --insecure
+      - --insecure-worker-auth
+      - --enable-agent-ingest
+      - --agent-tokens=${AGENT_TOKEN:-dev-token}
+      - --allow-private-networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+    networks:
+      - mcpdrill
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  worker:
+    image: mcpdrill/worker:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    command:
+      - --control-plane=http://control-plane:8080
+      - --allow-private-networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    networks:
+      - mcpdrill
+    restart: unless-stopped
+
+  mockserver:
+    image: mcpdrill/mockserver:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mockserver
+    command: ["--addr", ":3000"]
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - mcpdrill
+    profiles:
+      - mock
+      - full
+    restart: unless-stopped
+
+  agent:
+    image: mcpdrill/agent:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent
+    command:
+      - --control-plane-url=http://control-plane:8080
+      - --agent-token=${AGENT_TOKEN:-dev-token}
+      - --pair-key=${PAIR_KEY:-docker-test}
+      - --listen-port=3000
+    pid: host
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    networks:
+      - mcpdrill
+    profiles:
+      - full
+    restart: unless-stopped
+
+networks:
+  mcpdrill:
+    driver: bridge

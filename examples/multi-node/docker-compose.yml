@@ -1,36 +1,28 @@
-version: '3.8'
-
 services:
-  # Control Plane - manages runs, schedules work, aggregates results
   control-plane:
     image: mcpdrill/server:latest
     build:
       context: ../..
-      dockerfile: Dockerfile.server
-    command: ["--addr", ":8080"]
+      dockerfile: docker/Dockerfile.server
+    command: ["--addr", ":8080", "--insecure", "--insecure-worker-auth", "--allow-private-networks", "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"]
     ports:
       - "8080:8080"
     networks:
       - mcpdrill
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 5s
     restart: unless-stopped
 
-  # Worker - executes VUs, sends telemetry
   worker:
     image: mcpdrill/worker:latest
     build:
       context: ../..
-      dockerfile: Dockerfile.worker
-    command:
-      - --control-plane=http://control-plane:8080
-      - --heartbeat-interval=10s
-      - --assignment-poll-interval=5s
-      - --telemetry-interval=10s
+      dockerfile: docker/Dockerfile.worker
+    command: ["--control-plane", "http://control-plane:8080", "--allow-private-networks", "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"]
     depends_on:
       control-plane:
         condition: service_healthy

@@ -15,6 +15,7 @@ import (
 	"github.com/bc-dunia/mcpdrill/internal/controlplane/scheduler"
 	"github.com/bc-dunia/mcpdrill/internal/metrics"
 	"github.com/bc-dunia/mcpdrill/internal/types"
+	"github.com/bc-dunia/mcpdrill/internal/web"
 )
 
 const defaultMaxPendingAssignmentsPerWorker = 100
@@ -300,12 +301,15 @@ func (s *Server) Start() error {
 		mux.HandleFunc(pattern, s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(handler))).ServeHTTP)
 	}
 
+	if web.HasAssets() {
+		mux.Handle(web.Prefix(), web.Handler())
+	}
+
 	if s.authConfig == nil {
 		s.authConfig = auth.DefaultConfig()
 	}
-	// Security: never allow unauthenticated control plane on non-loopback binds.
-	if s.authConfig.Mode == auth.AuthModeNone && !isLoopbackBindAddr(s.addr) {
-		return fmt.Errorf("refusing to bind to non-loopback address without authentication")
+	if s.authConfig.Mode == auth.AuthModeNone && !s.authConfig.InsecureMode && !isLoopbackBindAddr(s.addr) {
+		return fmt.Errorf("refusing to bind to non-loopback address without authentication (use --insecure to override)")
 	}
 
 	listener, err := net.Listen("tcp", s.addr)

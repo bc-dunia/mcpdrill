@@ -1,0 +1,19 @@
+# mcpdrill/mockserver — built-in MCP mock server (27 tools)
+# Build: docker build -f docker/Dockerfile.mockserver -t mcpdrill/mockserver:latest .
+
+FROM golang:1.24-alpine AS builder
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -ldflags="-s -w" -o /build/bin/mcpdrill-mockserver ./cmd/mockserver
+
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -g 1000 mcpdrill && \
+    adduser -D -u 1000 -G mcpdrill mcpdrill
+COPY --from=builder /build/bin/mcpdrill-mockserver /usr/local/bin/mcpdrill-mockserver
+USER mcpdrill
+EXPOSE 3000
+ENTRYPOINT ["mcpdrill-mockserver"]
+CMD ["--addr", ":3000"]
