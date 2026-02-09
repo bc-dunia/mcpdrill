@@ -105,6 +105,9 @@ type RunManager struct {
 	eventLogs map[string]*EventLog
 	validator *validation.UnifiedValidator
 
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	registry         *scheduler.Registry
 	allocator        *scheduler.Allocator
 	leaseManager     *scheduler.LeaseManager
@@ -119,11 +122,19 @@ type RunManager struct {
 
 // NewRunManager creates a new RunManager with the given validator.
 func NewRunManager(validator *validation.UnifiedValidator) *RunManager {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &RunManager{
 		runs:      make(map[string]*RunRecord),
 		eventLogs: make(map[string]*EventLog),
 		validator: validator,
+		ctx:       ctx,
+		cancel:    cancel,
 	}
+}
+
+// Shutdown cancels all background goroutines (stage progression, ramp, analysis).
+func (rm *RunManager) Shutdown() {
+	rm.cancel()
 }
 
 // SetScheduler configures the scheduler components for assignment creation.

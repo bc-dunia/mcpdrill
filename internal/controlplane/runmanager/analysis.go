@@ -11,7 +11,7 @@ import (
 )
 
 func (rm *RunManager) analyzeRunWithTimeout(runID string, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(rm.ctx, timeout)
 	defer cancel()
 
 	done := make(chan error, 1)
@@ -23,8 +23,11 @@ func (rm *RunManager) analyzeRunWithTimeout(runID string, timeout time.Duration)
 	case err := <-done:
 		return err
 	case <-ctx.Done():
-		rm.failAnalysis(runID, "analysis_timeout", fmt.Sprintf("analysis exceeded %v timeout", timeout))
-		return fmt.Errorf("analysis timeout after %v", timeout)
+		if ctx.Err() == context.DeadlineExceeded {
+			rm.failAnalysis(runID, "analysis_timeout", fmt.Sprintf("analysis exceeded %v timeout", timeout))
+			return fmt.Errorf("analysis timeout after %v", timeout)
+		}
+		return ctx.Err()
 	}
 }
 
@@ -152,7 +155,7 @@ func (rm *RunManager) analyzeRunWithContext(ctx context.Context, runID string) e
 // On failure, transitions to FAILED state.
 // Deprecated: Use analyzeRunWithContext for cancellation support.
 func (rm *RunManager) AnalyzeRun(runID string) error {
-	return rm.analyzeRunWithContext(context.Background(), runID)
+	return rm.analyzeRunWithContext(rm.ctx, runID)
 }
 
 func (rm *RunManager) emitReportGeneratedEvent(runID, executionID string, eventLog *EventLog, jsonInfo, htmlInfo *artifacts.ArtifactInfo) {

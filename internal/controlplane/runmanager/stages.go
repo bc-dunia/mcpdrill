@@ -69,7 +69,7 @@ func (rm *RunManager) startStageProgression(runID string, config []byte, actor s
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(rm.ctx)
 
 	rm.mu.Lock()
 	record, ok := rm.runs[runID]
@@ -229,7 +229,7 @@ func (rm *RunManager) handleStageTimeout(runID string, stage *parsedStage, actor
 		Payload:  payload,
 		Evidence: []Evidence{{Kind: "timeout", Ref: fmt.Sprintf("max_duration_ms=%d", effectiveTimeoutMs)}},
 	}
-appendEventWithLog(eventLog, event, "handleStageTimeout")
+	appendEventWithLog(eventLog, event, "handleStageTimeout")
 
 	log.Printf("[RunManager] Stage %s timeout for run %s (max_duration_ms=%d)", stage.Stage, runID, effectiveTimeoutMs)
 	_ = rm.requestStopWithReason(runID, StopModeImmediate, actor, "stage_timeout", event.Evidence)
@@ -301,7 +301,7 @@ func (rm *RunManager) startStopConditionEvaluator(runID string, stage *parsedSta
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(rm.ctx)
 
 	rm.mu.Lock()
 	record, ok = rm.runs[runID]
@@ -405,7 +405,7 @@ func (rm *RunManager) handleStopConditionTrigger(runID string, stage *parsedStag
 			{Kind: "metric", Ref: trigger.Condition.Metric, Note: stringPtr(evidenceNote)},
 		},
 	}
-appendEventWithLog(eventLog, triggerEvent, "handleStopConditionTriggered")
+	appendEventWithLog(eventLog, triggerEvent, "handleStopConditionTriggered")
 
 	reason := fmt.Sprintf("stop_condition_triggered: %s %s %.4f (observed %.4f)",
 		trigger.Condition.Metric,
@@ -474,7 +474,7 @@ func (rm *RunManager) TransitionToBaseline(runID, actor string) error {
 			Payload:     transitionPayload,
 			Evidence:    []Evidence{},
 		}
-appendEventWithLog(eventLog, transitionEvent, "TransitionToBaseline")
+		appendEventWithLog(eventLog, transitionEvent, "TransitionToBaseline")
 
 		if !CanTransition(record.State, RunStateBaselineRunning) {
 			err = NewInvalidTransitionError(runID, record.State, RunStateBaselineRunning)
@@ -530,7 +530,7 @@ appendEventWithLog(eventLog, transitionEvent, "TransitionToBaseline")
 		Payload:     transitionPayload,
 		Evidence:    []Evidence{},
 	}
-appendEventWithLog(eventLog, transitionEvent, "TransitionToRamp")
+	appendEventWithLog(eventLog, transitionEvent, "TransitionToRamp")
 
 	schedulerReady := false
 	func() {
@@ -628,7 +628,7 @@ func (rm *RunManager) TransitionToRamp(runID, actor string) error {
 		Payload:     transitionPayload,
 		Evidence:    []Evidence{},
 	}
-appendEventWithLog(eventLog, transitionEvent, "TransitionToSoak")
+	appendEventWithLog(eventLog, transitionEvent, "TransitionToSoak")
 
 	schedulerReady := false
 	func() {
@@ -688,7 +688,7 @@ func (rm *RunManager) startAutoRamp(runID, executionID string, config []byte, ev
 	log.Printf("[RunManager] Starting auto-ramp for run %s: %d -> %d VUs in %d steps, %dms per step",
 		runID, startVUs, targetVUs, rampSteps, stepHoldMs)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(rm.ctx)
 	rm.mu.Lock()
 	if record, ok := rm.runs[runID]; ok {
 		record.rampCancel = cancel
@@ -813,7 +813,7 @@ func (rm *RunManager) TransitionToSoak(runID, actor string) error {
 		Payload:     transitionPayload,
 		Evidence:    []Evidence{},
 	}
-appendEventWithLog(eventLog, transitionEvent, "TransitionToSpike")
+	appendEventWithLog(eventLog, transitionEvent, "TransitionToSpike")
 
 	rm.mu.RLock()
 	registry := rm.registry
@@ -871,7 +871,7 @@ func (rm *RunManager) TransitionToAnalyzing(runID, actor string) error {
 		Payload:     transitionPayload,
 		Evidence:    []Evidence{},
 	}
-appendEventWithLog(eventLog, transitionEvent, "finalizeRun")
+	appendEventWithLog(eventLog, transitionEvent, "finalizeRun")
 
 	analysisPayload, _ := json.Marshal(map[string]interface{}{
 		"run_id": runID,
@@ -884,7 +884,7 @@ appendEventWithLog(eventLog, transitionEvent, "finalizeRun")
 		Payload:     analysisPayload,
 		Evidence:    []Evidence{},
 	}
-appendEventWithLog(eventLog, analysisEvent, "finalizeRun")
+	appendEventWithLog(eventLog, analysisEvent, "finalizeRun")
 
 	configCopy := make([]byte, len(record.Config))
 	copy(configCopy, record.Config)

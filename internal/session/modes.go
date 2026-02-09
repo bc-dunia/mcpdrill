@@ -67,6 +67,47 @@ func closeWithLog(closer io.Closer, name string) {
 	}
 }
 
+func connectAndInitialize(ctx context.Context, config *SessionConfig) (transport.Connection, string, error) {
+	conn, err := config.Adapter.Connect(ctx, config.TransportConfig)
+	if err != nil {
+		return nil, "", &SessionError{Op: "connect", Err: err}
+	}
+
+	params := buildInitializeParams(config)
+
+	outcome, err := conn.Initialize(ctx, params)
+	if err != nil {
+		closeWithLog(conn, "connection")
+		return nil, "", &SessionError{Op: "initialize", Err: err}
+	}
+
+	if !outcome.OK {
+		closeWithLog(conn, "connection")
+		if outcome.Error != nil {
+			return nil, "", &SessionError{Op: "initialize", Err: outcome.Error}
+		}
+		return nil, "", &SessionError{Op: "initialize", Err: errSessionClosed}
+	}
+
+	if err := validateProtocolVersion(config, outcome); err != nil {
+		closeWithLog(conn, "connection")
+		return nil, "", &SessionError{Op: "version_negotiation", Err: err}
+	}
+
+	_, err = conn.SendInitialized(ctx)
+	if err != nil {
+		closeWithLog(conn, "connection")
+		return nil, "", &SessionError{Op: "send_initialized", Err: err}
+	}
+
+	sessionID := conn.SessionID()
+	if sessionID == "" {
+		sessionID = generateSessionID()
+	}
+
+	return conn, sessionID, nil
+}
+
 type ReuseMode struct {
 	config  *SessionConfig
 	evictor *Evictor
@@ -232,46 +273,12 @@ func (rm *ReuseMode) Metrics() *SessionMetrics {
 }
 
 func (rm *ReuseMode) createSession(ctx context.Context, vuID string) (*SessionInfo, error) {
-	conn, err := rm.config.Adapter.Connect(ctx, rm.config.TransportConfig)
+	conn, sessionID, err := connectAndInitialize(ctx, rm.config)
 	if err != nil {
-		return nil, &SessionError{Op: "connect", Err: err}
+		return nil, err
 	}
-
-	params := buildInitializeParams(rm.config)
-
-	outcome, err := conn.Initialize(ctx, params)
-	if err != nil {
-		closeWithLog(conn, "connection")
-		return nil, &SessionError{Op: "initialize", Err: err}
-	}
-
-	if !outcome.OK {
-		closeWithLog(conn, "connection")
-		if outcome.Error != nil {
-			return nil, &SessionError{Op: "initialize", Err: outcome.Error}
-		}
-		return nil, &SessionError{Op: "initialize", Err: errSessionClosed}
-	}
-
-	if err := validateProtocolVersion(rm.config, outcome); err != nil {
-		closeWithLog(conn, "connection")
-		return nil, &SessionError{Op: "version_negotiation", Err: err}
-	}
-
-	_, err = conn.SendInitialized(ctx)
-	if err != nil {
-		closeWithLog(conn, "connection")
-		return nil, &SessionError{Op: "send_initialized", Err: err}
-	}
-
-	sessionID := conn.SessionID()
-	if sessionID == "" {
-		sessionID = generateSessionID()
-	}
-
 	session := NewSessionInfo(sessionID, conn, rm.config.TTLMs, rm.config.MaxIdleMs)
 	session.VUID = vuID
-
 	return session, nil
 }
 
@@ -347,46 +354,12 @@ func (pm *PerRequestMode) Metrics() *SessionMetrics {
 }
 
 func (pm *PerRequestMode) createSession(ctx context.Context, vuID string) (*SessionInfo, error) {
-	conn, err := pm.config.Adapter.Connect(ctx, pm.config.TransportConfig)
+	conn, sessionID, err := connectAndInitialize(ctx, pm.config)
 	if err != nil {
-		return nil, &SessionError{Op: "connect", Err: err}
+		return nil, err
 	}
-
-	params := buildInitializeParams(pm.config)
-
-	outcome, err := conn.Initialize(ctx, params)
-	if err != nil {
-		closeWithLog(conn, "connection")
-		return nil, &SessionError{Op: "initialize", Err: err}
-	}
-
-	if !outcome.OK {
-		closeWithLog(conn, "connection")
-		if outcome.Error != nil {
-			return nil, &SessionError{Op: "initialize", Err: outcome.Error}
-		}
-		return nil, &SessionError{Op: "initialize", Err: errSessionClosed}
-	}
-
-	if err := validateProtocolVersion(pm.config, outcome); err != nil {
-		closeWithLog(conn, "connection")
-		return nil, &SessionError{Op: "version_negotiation", Err: err}
-	}
-
-	_, err = conn.SendInitialized(ctx)
-	if err != nil {
-		closeWithLog(conn, "connection")
-		return nil, &SessionError{Op: "send_initialized", Err: err}
-	}
-
-	sessionID := conn.SessionID()
-	if sessionID == "" {
-		sessionID = generateSessionID()
-	}
-
 	session := NewSessionInfo(sessionID, conn, 0, 0)
 	session.VUID = vuID
-
 	return session, nil
 }
 
@@ -469,45 +442,11 @@ func (pm *PoolMode) Metrics() *SessionMetrics {
 }
 
 func (pm *PoolMode) createSession(ctx context.Context) (*SessionInfo, error) {
-	conn, err := pm.config.Adapter.Connect(ctx, pm.config.TransportConfig)
+	conn, sessionID, err := connectAndInitialize(ctx, pm.config)
 	if err != nil {
-		return nil, &SessionError{Op: "connect", Err: err}
+		return nil, err
 	}
-
-	params := buildInitializeParams(pm.config)
-
-	outcome, err := conn.Initialize(ctx, params)
-	if err != nil {
-		closeWithLog(conn, "connection")
-		return nil, &SessionError{Op: "initialize", Err: err}
-	}
-
-	if !outcome.OK {
-		closeWithLog(conn, "connection")
-		if outcome.Error != nil {
-			return nil, &SessionError{Op: "initialize", Err: outcome.Error}
-		}
-		return nil, &SessionError{Op: "initialize", Err: errSessionClosed}
-	}
-
-	if err := validateProtocolVersion(pm.config, outcome); err != nil {
-		closeWithLog(conn, "connection")
-		return nil, &SessionError{Op: "version_negotiation", Err: err}
-	}
-
-	_, err = conn.SendInitialized(ctx)
-	if err != nil {
-		closeWithLog(conn, "connection")
-		return nil, &SessionError{Op: "send_initialized", Err: err}
-	}
-
-	sessionID := conn.SessionID()
-	if sessionID == "" {
-		sessionID = generateSessionID()
-	}
-
-	session := NewSessionInfo(sessionID, conn, pm.config.TTLMs, pm.config.MaxIdleMs)
-	return session, nil
+	return NewSessionInfo(sessionID, conn, pm.config.TTLMs, pm.config.MaxIdleMs), nil
 }
 
 type ChurnMode struct {
@@ -691,46 +630,12 @@ func (cm *ChurnMode) ChurnIntervalOps() int64 {
 }
 
 func (cm *ChurnMode) createSession(ctx context.Context, vuID string) (*SessionInfo, error) {
-	conn, err := cm.config.Adapter.Connect(ctx, cm.config.TransportConfig)
+	conn, sessionID, err := connectAndInitialize(ctx, cm.config)
 	if err != nil {
-		return nil, &SessionError{Op: "connect", Err: err}
+		return nil, err
 	}
-
-	params := buildInitializeParams(cm.config)
-
-	outcome, err := conn.Initialize(ctx, params)
-	if err != nil {
-		closeWithLog(conn, "connection")
-		return nil, &SessionError{Op: "initialize", Err: err}
-	}
-
-	if !outcome.OK {
-		closeWithLog(conn, "connection")
-		if outcome.Error != nil {
-			return nil, &SessionError{Op: "initialize", Err: outcome.Error}
-		}
-		return nil, &SessionError{Op: "initialize", Err: errSessionClosed}
-	}
-
-	if err := validateProtocolVersion(cm.config, outcome); err != nil {
-		closeWithLog(conn, "connection")
-		return nil, &SessionError{Op: "version_negotiation", Err: err}
-	}
-
-	_, err = conn.SendInitialized(ctx)
-	if err != nil {
-		closeWithLog(conn, "connection")
-		return nil, &SessionError{Op: "send_initialized", Err: err}
-	}
-
-	sessionID := conn.SessionID()
-	if sessionID == "" {
-		sessionID = generateSessionID()
-	}
-
 	session := NewSessionInfo(sessionID, conn, cm.config.TTLMs, cm.config.MaxIdleMs)
 	session.VUID = vuID
-
 	return session, nil
 }
 
