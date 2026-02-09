@@ -50,6 +50,7 @@ type runTelemetry struct {
 	stopReason  string
 	operations  []analysis.OperationResult
 	logs        []OperationLog
+	logsSorted  bool
 	// truncated flags indicate if data was dropped due to limits
 	operationsTruncated bool
 	logsTruncated       bool
@@ -136,7 +137,16 @@ func (ts *TelemetryStore) AddTelemetryBatch(runID string, batch TelemetryBatchRe
 				TokenIndex:  op.TokenIndex,
 			}
 			rt.logs = append(rt.logs, log)
+			rt.logsSorted = rt.logsSorted && (len(rt.logs) < 2 ||
+				rt.logs[len(rt.logs)-2].TimestampMs <= log.TimestampMs)
 		}
+	}
+
+	if !rt.logsSorted {
+		sort.Slice(rt.logs, func(i, j int) bool {
+			return rt.logs[i].TimestampMs < rt.logs[j].TimestampMs
+		})
+		rt.logsSorted = true
 	}
 }
 
@@ -172,6 +182,7 @@ func (ts *TelemetryStore) getOrCreateRunTelemetry(runID string) *runTelemetry {
 		endTimeMs:   0,
 		operations:  make([]analysis.OperationResult, 0),
 		logs:        make([]OperationLog, 0),
+		logsSorted:  true,
 	}
 	ts.runs[runID] = rt
 	ts.runOrder = append(ts.runOrder, runID)
@@ -287,40 +298,63 @@ func (ts *TelemetryStore) QueryLogs(runID string, filters LogFilters) ([]Operati
 		ts.mu.RUnlock()
 		return nil, 0, fmt.Errorf("run not found: %s", runID)
 	}
-	logs := make([]OperationLog, len(rt.logs))
-	copy(logs, rt.logs)
-	ts.mu.RUnlock()
 
-	filtered := make([]OperationLog, 0, len(logs))
-	for _, log := range logs {
-		if !matchesFilters(log, filters) {
-			continue
+	// Logs are appended chronologically, so rt.logs is already in ascending
+	// TimestampMs order. We iterate to count matching entries and extract only
+	// the requested page — no full copy or sort needed.
+	logs := rt.logs
+	total := 0
+	for i := range logs {
+		if matchesFilters(logs[i], filters) {
+			total++
 		}
-		filtered = append(filtered, log)
 	}
 
-	total := len(filtered)
-
-	if filters.Order == "asc" {
-		sort.Slice(filtered, func(i, j int) bool {
-			return filtered[i].TimestampMs < filtered[j].TimestampMs
-		})
-	} else {
-		sort.Slice(filtered, func(i, j int) bool {
-			return filtered[i].TimestampMs > filtered[j].TimestampMs
-		})
-	}
-
-	if filters.Offset >= len(filtered) {
+	if filters.Offset >= total {
+		ts.mu.RUnlock()
 		return []OperationLog{}, total, nil
 	}
 
 	end := filters.Offset + filters.Limit
-	if end > len(filtered) {
-		end = len(filtered)
+	if end > total {
+		end = total
+	}
+	pageSize := end - filters.Offset
+
+	result := make([]OperationLog, 0, pageSize)
+
+	if filters.Order == "asc" {
+		matched := 0
+		for i := range logs {
+			if !matchesFilters(logs[i], filters) {
+				continue
+			}
+			if matched >= filters.Offset && len(result) < pageSize {
+				result = append(result, logs[i])
+			}
+			matched++
+			if len(result) >= pageSize {
+				break
+			}
+		}
+	} else {
+		matched := 0
+		for i := len(logs) - 1; i >= 0; i-- {
+			if !matchesFilters(logs[i], filters) {
+				continue
+			}
+			if matched >= filters.Offset && len(result) < pageSize {
+				result = append(result, logs[i])
+			}
+			matched++
+			if len(result) >= pageSize {
+				break
+			}
+		}
 	}
 
-	return filtered[filters.Offset:end], total, nil
+	ts.mu.RUnlock()
+	return result, total, nil
 }
 
 func matchesFilters(log OperationLog, filters LogFilters) bool {

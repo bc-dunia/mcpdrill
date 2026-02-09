@@ -9,12 +9,20 @@ import (
 
 type SSRFValidator struct {
 	allowPrivateNetworks []string
+	allowedPrivateRanges []*net.IPNet
 }
 
 func NewSSRFValidator(allowPrivateNetworks []string) *SSRFValidator {
-	return &SSRFValidator{
+	v := &SSRFValidator{
 		allowPrivateNetworks: allowPrivateNetworks,
 	}
+	for _, cidrStr := range allowPrivateNetworks {
+		_, ipnet, err := net.ParseCIDR(cidrStr)
+		if err == nil {
+			v.allowedPrivateRanges = append(v.allowedPrivateRanges, ipnet)
+		}
+	}
+	return v
 }
 
 func (v *SSRFValidator) Validate(data []byte) *ValidationReport {
@@ -228,16 +236,8 @@ func (v *SSRFValidator) validateHostname(host string, report *ValidationReport) 
 }
 
 func (v *SSRFValidator) isPrivateNetworkAllowed(ip net.IP) bool {
-	if len(v.allowPrivateNetworks) == 0 {
-		return false
-	}
-
-	for _, cidrStr := range v.allowPrivateNetworks {
-		_, cidr, err := net.ParseCIDR(cidrStr)
-		if err != nil {
-			continue
-		}
-		if cidr.Contains(ip) {
+	for _, allowed := range v.allowedPrivateRanges {
+		if allowed.Contains(ip) {
 			return true
 		}
 	}

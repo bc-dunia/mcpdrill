@@ -602,13 +602,21 @@ func (c *StreamableHTTPConnection) handleSSEResponse(
 }
 
 func isSSEContentType(contentType string) bool {
-	return contentType == ContentTypeSSE ||
-		len(contentType) > len(ContentTypeSSE) && contentType[:len(ContentTypeSSE)] == ContentTypeSSE
+	if contentType == ContentTypeSSE {
+		return true
+	}
+	// Match "text/event-stream; charset=utf-8" etc., but not "text/event-stream-evil"
+	if len(contentType) > len(ContentTypeSSE) {
+		prefix := contentType[:len(ContentTypeSSE)]
+		next := contentType[len(ContentTypeSSE)]
+		return prefix == ContentTypeSSE && (next == ';' || next == ' ')
+	}
+	return false
 }
 
 type safeDialer struct {
 	dialer               *net.Dialer
-	allowPrivateNetworks []string
+	allowedPrivateRanges []*net.IPNet
 	blockedIPv4Ranges    []*net.IPNet
 	blockedIPv6Ranges    []*net.IPNet
 }
@@ -618,7 +626,13 @@ func newSafeDialer(timeout time.Duration, allowPrivateNetworks []string) *safeDi
 		dialer: &net.Dialer{
 			Timeout: timeout,
 		},
-		allowPrivateNetworks: allowPrivateNetworks,
+	}
+
+	for _, cidrStr := range allowPrivateNetworks {
+		_, ipnet, err := net.ParseCIDR(cidrStr)
+		if err == nil {
+			d.allowedPrivateRanges = append(d.allowedPrivateRanges, ipnet)
+		}
 	}
 
 	ipv4Blocked := []string{
@@ -628,6 +642,9 @@ func newSafeDialer(timeout time.Duration, allowPrivateNetworks []string) *safeDi
 		"100.100.100.200/32",
 		"192.0.0.0/24",
 		"0.0.0.0/8",
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
 	}
 	for _, cidr := range ipv4Blocked {
 		_, ipnet, err := net.ParseCIDR(cidr)
@@ -677,7 +694,6 @@ func (d *safeDialer) DialContext(ctx context.Context, network, address string) (
 }
 
 func (d *safeDialer) isIPBlocked(ip net.IP) bool {
-	// First check if IP is explicitly allowed
 	if d.isPrivateNetworkAllowed(ip) {
 		return false
 	}
@@ -685,14 +701,6 @@ func (d *safeDialer) isIPBlocked(ip net.IP) bool {
 	if ip4 := ip.To4(); ip4 != nil {
 		for _, blocked := range d.blockedIPv4Ranges {
 			if blocked.Contains(ip4) {
-				return true
-			}
-		}
-
-		rfc1918 := []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
-		for _, cidr := range rfc1918 {
-			_, ipnet, _ := net.ParseCIDR(cidr)
-			if ipnet.Contains(ip4) {
 				return true
 			}
 		}
@@ -708,12 +716,8 @@ func (d *safeDialer) isIPBlocked(ip net.IP) bool {
 }
 
 func (d *safeDialer) isPrivateNetworkAllowed(ip net.IP) bool {
-	for _, cidrStr := range d.allowPrivateNetworks {
-		_, cidr, err := net.ParseCIDR(cidrStr)
-		if err != nil {
-			continue
-		}
-		if cidr.Contains(ip) {
+	for _, allowed := range d.allowedPrivateRanges {
+		if allowed.Contains(ip) {
 			return true
 		}
 	}

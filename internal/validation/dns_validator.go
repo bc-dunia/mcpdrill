@@ -40,6 +40,7 @@ type DNSRebindingValidator struct {
 	ssrfValidator     *SSRFValidator
 	blockedIPv4Ranges []*net.IPNet
 	blockedIPv6Ranges []*net.IPNet
+	rfc1918Ranges     []*net.IPNet
 }
 
 func NewDNSRebindingValidator(allowPrivateNetworks []string) *DNSRebindingValidator {
@@ -56,11 +57,18 @@ func NewDNSRebindingValidator(allowPrivateNetworks []string) *DNSRebindingValida
 		"192.0.0.0/24",
 		"0.0.0.0/8",
 	}
-
 	for _, cidr := range ipv4Blocked {
 		_, ipnet, err := net.ParseCIDR(cidr)
 		if err == nil {
 			v.blockedIPv4Ranges = append(v.blockedIPv4Ranges, ipnet)
+		}
+	}
+
+	rfc1918 := []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
+	for _, cidr := range rfc1918 {
+		_, ipnet, err := net.ParseCIDR(cidr)
+		if err == nil {
+			v.rfc1918Ranges = append(v.rfc1918Ranges, ipnet)
 		}
 	}
 
@@ -123,14 +131,9 @@ func (v *DNSRebindingValidator) isIPBlocked(ip net.IP) bool {
 				return true
 			}
 		}
-
-		rfc1918 := []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
-		for _, cidr := range rfc1918 {
-			_, ipnet, _ := net.ParseCIDR(cidr)
-			if ipnet.Contains(ip4) {
-				if !v.ssrfValidator.isPrivateNetworkAllowed(ip4) {
-					return true
-				}
+		for _, rfc := range v.rfc1918Ranges {
+			if rfc.Contains(ip4) {
+				return !v.ssrfValidator.isPrivateNetworkAllowed(ip4)
 			}
 		}
 	} else {

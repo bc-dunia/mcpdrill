@@ -1169,9 +1169,11 @@ func (rm *RunManager) finalizeRun(runID string, drainTimeout time.Duration, acto
 		}
 		rm.mu.Unlock()
 
+		drainTimer := time.NewTimer(drainTimeout)
 		select {
-		case <-time.After(drainTimeout):
+		case <-drainTimer.C:
 		case <-drainCancel:
+			drainTimer.Stop()
 			log.Printf("[RunManager] Drain cancelled early for run %s (emergency stop or worker loss)", runID)
 			// Only delay for emergency stop (immediateStop), not for worker loss
 			rm.mu.RLock()
