@@ -309,11 +309,15 @@ func (a *Aggregator) computeSessionMetrics() *SessionReportMetrics {
 		totalSessions := len(uniqueSessions)
 		totalOps := len(a.operations)
 		opsPerSession := float64(totalOps) / float64(totalSessions)
+		var reuseRate float64
+		if totalOps > 0 {
+			reuseRate = float64(totalOps-totalSessions) / float64(totalOps)
+		}
 		return &SessionReportMetrics{
 			SessionMode:      "unknown",
 			TotalSessions:    totalSessions,
 			OpsPerSession:    opsPerSession,
-			SessionReuseRate: opsPerSession,
+			SessionReuseRate: reuseRate,
 		}
 	}
 
@@ -332,11 +336,15 @@ func (a *Aggregator) computeSessionMetrics() *SessionReportMetrics {
 		opsPerSession = float64(totalOps) / float64(totalSessions)
 	}
 
+	var reuseRate float64
+	if totalOps > 0 && totalSessions > 0 {
+		reuseRate = float64(totalOps-totalSessions) / float64(totalOps)
+	}
 	sessionMetrics := &SessionReportMetrics{
 		SessionMode:      a.sessionMode,
 		TotalSessions:    totalSessions,
 		OpsPerSession:    opsPerSession,
-		SessionReuseRate: opsPerSession,
+		SessionReuseRate: reuseRate,
 	}
 
 	if a.sessionMetrics != nil {

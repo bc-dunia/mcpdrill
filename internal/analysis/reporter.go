@@ -88,7 +88,7 @@ func (r *Reporter) GenerateHTML(report *Report) ([]byte, error) {
 		data.SessionMode = report.Metrics.SessionMetrics.SessionMode
 		data.TotalSessions = report.Metrics.SessionMetrics.TotalSessions
 		data.OpsPerSession = fmt.Sprintf("%.2f", report.Metrics.SessionMetrics.OpsPerSession)
-		data.SessionReuseRate = fmt.Sprintf("%.2f", report.Metrics.SessionMetrics.SessionReuseRate)
+		data.SessionReuseRate = fmt.Sprintf("%.1f%%", 100*report.Metrics.SessionMetrics.SessionReuseRate)
 		data.SessionCreated = report.Metrics.SessionMetrics.TotalCreated
 		data.SessionEvicted = report.Metrics.SessionMetrics.TotalEvicted
 		data.SessionReconnects = report.Metrics.SessionMetrics.Reconnects

@@ -104,11 +104,7 @@ func (ts *TelemetryStore) AddTelemetryBatch(runID string, batch TelemetryBatchRe
 			rt.operations = append(rt.operations, result)
 		}
 
-		// Use explicit stage from operation (Issue #19: no more guessing)
 		stage := op.Stage
-		if stage == "" {
-			stage = extractStageName(op.StageID) // Fallback for backward compatibility
-		}
 
 		// Check logs limit
 		if ts.config.MaxLogsPerRun > 0 && len(rt.logs) >= ts.config.MaxLogsPerRun {
@@ -187,13 +183,6 @@ func (ts *TelemetryStore) getOrCreateRunTelemetry(runID string) *runTelemetry {
 	ts.runs[runID] = rt
 	ts.runOrder = append(ts.runOrder, runID)
 	return rt
-}
-
-// extractStageName is deprecated - stage should be explicitly provided in telemetry.
-// This function is kept for backward compatibility but returns empty string
-// to encourage explicit stage reporting.
-func extractStageName(stageID string) string {
-	return ""
 }
 
 func (ts *TelemetryStore) AddTelemetryBatchWithContext(runID string, batch TelemetryBatchRequest, workerID, stage, stageID string, vuID string) {
