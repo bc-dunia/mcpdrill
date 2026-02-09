@@ -67,7 +67,7 @@ export function useRunEvents(
         break;
       case 'STATE_TRANSITION':
         // Handle run completion via state transition
-        if (event.data.to_state === 'completed' || event.data.to_state === 'failed' || event.data.to_state === 'stopped') {
+        if (event.data.to_state === 'completed' || event.data.to_state === 'failed' || event.data.to_state === 'aborted') {
           onRunCompleted?.(event.data.to_state as string);
           setConnected(false);
         }
