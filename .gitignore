@@ -95,6 +95,7 @@ __snapshots__/
 web/log-explorer/test-results/
 web/log-explorer/playwright-report/
 web/log-explorer/.vitest/
+web/log-explorer/UI-TEST-REPORT.md
 
 # ===================
 # Go Specific

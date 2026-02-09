@@ -2,7 +2,7 @@
 
 A high-performance stress testing platform for MCP servers and gateways.
 
-[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Simulate thousands of concurrent MCP clients, identify performance bottlenecks, and validate your infrastructure before production.**
@@ -61,9 +61,29 @@ Per-tool breakdown with success rates, latency distribution, and error analysis:
 
 ## Quick Start
 
-**Prerequisites**: Go 1.22+, Node.js 18+ (for Web UI)
+### Option A: Docker (Recommended)
 
-### 1. Start Backend
+```bash
+git clone https://github.com/bc-dunia/mcpdrill.git
+cd mcpdrill
+
+# Core (server + worker)
+docker compose up -d
+
+# With mock server for testing
+docker compose --profile mock up -d
+
+# Full stack (mock + agent)
+docker compose --profile full up -d
+```
+
+Open **http://localhost:8080/ui/logs/** — the Web UI is embedded in the server.
+
+Scale workers: `docker compose up -d --scale worker=5`
+
+### Option B: From Source
+
+**Prerequisites**: Go 1.24+, Node.js 18+ (for Web UI)
 
 ```bash
 git clone https://github.com/bc-dunia/mcpdrill.git
@@ -81,7 +101,7 @@ This starts all services on loopback (no auth required):
 
 Stop with `make dev-stop`. View logs with `make dev-logs`.
 
-### 2. Start Web UI
+For the Web UI in development mode (with hot reload):
 
 ```bash
 cd web/log-explorer
@@ -89,9 +109,9 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:5173**.
+Open **http://localhost:5173**. Or build and embed into the server: `make frontend` then restart the server to access at `/ui/logs/`.
 
-### 3. Run a Test
+### Run a Test
 
 Click **"New Run"** in the Web UI to create and start a test using the built-in wizard.
 
@@ -222,6 +242,36 @@ curl -X POST http://localhost:8080/runs/{run_id}/emergency-stop
 curl http://localhost:8080/runs/{run_id}
 curl -N http://localhost:8080/runs/{run_id}/events
 ```
+
+## Docker
+
+### Images
+
+| Image | Description |
+|-------|-------------|
+| `mcpdrill/server` | Control plane + embedded Web UI (`go:embed`) |
+| `mcpdrill/worker` | Distributed load worker |
+| `mcpdrill/mockserver` | Built-in MCP mock server (27 tools) |
+| `mcpdrill/agent` | Server-side telemetry agent (optional) |
+
+### Compose Profiles
+
+```bash
+docker compose up -d                       # server + worker
+docker compose --profile mock up -d        # + mock server
+docker compose --profile full up -d        # + mock server + agent
+docker compose up -d --scale worker=5      # scale workers
+```
+
+### Build Images
+
+```bash
+make docker-build                          # all images
+make docker-build VERSION=v0.1.0           # with version tag
+make docker-server                         # server only
+```
+
+Images are automatically published to GHCR on tag push via GitHub Actions.
 
 ## Documentation
 
