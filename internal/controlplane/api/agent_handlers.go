@@ -268,7 +268,8 @@ func (s *Server) handleGetServerMetrics(w http.ResponseWriter, r *http.Request, 
 	}
 
 	// Validate run exists
-	if _, err := s.runManager.GetRun(runID); err != nil {
+	runView, err := s.runManager.GetRun(runID)
+	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			s.writeError(w, http.StatusNotFound, NewNotFoundErrorResponse(runID))
 			return
@@ -292,11 +293,67 @@ func (s *Server) handleGetServerMetrics(w http.ResponseWriter, r *http.Request, 
 	aggregate := query.Get("aggregate") // max, avg, sum
 
 	var from, to int64
-	if fromStr := query.Get("from"); fromStr != "" {
-		from, _ = strconv.ParseInt(fromStr, 10, 64)
+	fromExplicit := query.Get("from") != ""
+	toExplicit := query.Get("to") != ""
+	if fromExplicit {
+		var err error
+		from, err = strconv.ParseInt(query.Get("from"), 10, 64)
+		if err != nil {
+			s.writeError(w, http.StatusBadRequest, NewInvalidRequestErrorResponse(
+				"Invalid 'from' parameter: must be Unix milliseconds",
+				map[string]interface{}{"field": "from", "value": query.Get("from")},
+			))
+			return
+		}
 	}
-	if toStr := query.Get("to"); toStr != "" {
-		to, _ = strconv.ParseInt(toStr, 10, 64)
+	if toExplicit {
+		var err error
+		to, err = strconv.ParseInt(query.Get("to"), 10, 64)
+		if err != nil {
+			s.writeError(w, http.StatusBadRequest, NewInvalidRequestErrorResponse(
+				"Invalid 'to' parameter: must be Unix milliseconds",
+				map[string]interface{}{"field": "to", "value": query.Get("to")},
+			))
+			return
+		}
+	}
+
+	// Auto-scope agent metrics to the run's time window so pre-run data doesn't pollute charts.
+	if !fromExplicit || !toExplicit {
+		var runStartMs, runEndMs int64
+
+		if s.telemetryStore != nil {
+			if telData, err := s.telemetryStore.GetTelemetryData(runID); err == nil {
+				runStartMs = telData.StartTimeMs
+				runEndMs = telData.EndTimeMs
+			}
+		}
+
+		if runStartMs == 0 {
+			runStartMs = runView.CreatedAtMs
+		}
+		if runEndMs == 0 {
+			runEndMs = runView.UpdatedAtMs
+		}
+
+		const timeMarginMs = 10_000
+
+		if !fromExplicit && runStartMs > 0 {
+			from = runStartMs - timeMarginMs
+			if from < 0 {
+				from = 0
+			}
+		}
+
+		if !toExplicit {
+			isTerminal := runView.State == "completed" || runView.State == "failed" ||
+				runView.State == "aborted" || runView.State == "stopped"
+			if isTerminal && runEndMs > 0 {
+				to = runEndMs + timeMarginMs
+			} else {
+				to = time.Now().UnixMilli() + timeMarginMs
+			}
+		}
 	}
 
 	// Get samples

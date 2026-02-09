@@ -96,7 +96,7 @@ func TestPIDDisappearsMidRun(t *testing.T) {
 	}
 
 	// Collect metrics with non-existent PID
-	sample := collectMetrics(nonExistentPID)
+	sample := collectMetrics(nonExistentPID, 0)
 
 	// Host metrics should still be collected
 	if sample.Host == nil {
@@ -295,7 +295,7 @@ func TestCollectMetricsWithValidPID(t *testing.T) {
 	// Use our own PID (always valid)
 	pid := os.Getpid()
 
-	sample := collectMetrics(pid)
+	sample := collectMetrics(pid, 0)
 
 	// Host metrics should be collected
 	if sample.Host == nil {
@@ -322,7 +322,7 @@ func TestCollectMetricsWithValidPID(t *testing.T) {
 // TestCollectMetricsHostOnly verifies that host-only metrics collection works
 // when targetPID is 0.
 func TestCollectMetricsHostOnly(t *testing.T) {
-	sample := collectMetrics(0)
+	sample := collectMetrics(0, 0)
 
 	// Host metrics should be collected
 	if sample.Host == nil {

@@ -84,15 +84,19 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	agentID, err := register(ctx, *controlPlaneURL, *agentToken, *pairKey, hostname)
+	reg, err := register(ctx, *controlPlaneURL, *agentToken, *pairKey, hostname)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register with control plane: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Agent registered: %s\n", agentID)
+	fmt.Printf("Agent registered: %s\n", reg.agentID)
 	fmt.Printf("Control plane: %s\n", *controlPlaneURL)
 	fmt.Printf("Pair key: %s\n", *pairKey)
+	fmt.Printf("Registration RTT: %dms\n", reg.rttMs)
+	if reg.clockOffsetMs != 0 {
+		fmt.Printf("Clock offset: %+dms (server - local)\n", reg.clockOffsetMs)
+	}
 	if *listenPort > 0 {
 		fmt.Printf("Monitoring port: %d\n", *listenPort)
 	}
@@ -114,7 +118,7 @@ func main() {
 		}
 	}
 
-	go collectAndSend(ctx, *controlPlaneURL, *agentToken, agentID, *pairKey, targetPID, *listenPort, *collectInterval)
+	go collectAndSend(ctx, *controlPlaneURL, *agentToken, reg.agentID, *pairKey, targetPID, *listenPort, *collectInterval, reg.clockOffsetMs)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -126,7 +130,13 @@ func main() {
 	fmt.Println("Agent stopped")
 }
 
-func register(ctx context.Context, baseURL, token, pairKey, hostname string) (string, error) {
+type registerResult struct {
+	agentID       string
+	clockOffsetMs int64
+	rttMs         int64
+}
+
+func register(ctx context.Context, baseURL, token, pairKey, hostname string) (*registerResult, error) {
 	req := registerRequest{
 		PairKey:  pairKey,
 		Hostname: hostname,
@@ -136,9 +146,10 @@ func register(ctx context.Context, baseURL, token, pairKey, hostname string) (st
 	}
 	body, _ := json.Marshal(req)
 
+	beforeMs := time.Now().UnixMilli()
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/agents/v1/register", bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if token != "" {
@@ -147,23 +158,36 @@ func register(ctx context.Context, baseURL, token, pairKey, hostname string) (st
 
 	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
+	afterMs := time.Now().UnixMilli()
 
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("registration failed: %s - %s", resp.Status, string(respBody))
+		return nil, fmt.Errorf("registration failed: %s - %s", resp.Status, string(respBody))
 	}
 
 	var result registerResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		return nil, err
 	}
-	return result.AgentID, nil
+
+	rttMs := afterMs - beforeMs
+	var clockOffsetMs int64
+	if result.ServerTime > 0 {
+		localMidpointMs := (beforeMs + afterMs) / 2
+		clockOffsetMs = result.ServerTime - localMidpointMs
+	}
+
+	return &registerResult{
+		agentID:       result.AgentID,
+		clockOffsetMs: clockOffsetMs,
+		rttMs:         rttMs,
+	}, nil
 }
 
-func collectAndSend(ctx context.Context, baseURL, token, agentID, pairKey string, targetPID int, listenPort int, interval time.Duration) {
+func collectAndSend(ctx context.Context, baseURL, token, agentID, pairKey string, targetPID int, listenPort int, interval time.Duration, clockOffsetMs int64) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -184,7 +208,7 @@ func collectAndSend(ctx context.Context, baseURL, token, agentID, pairKey string
 				}
 			}
 
-			sample := collectMetrics(currentPID)
+			sample := collectMetrics(currentPID, clockOffsetMs)
 
 			if currentPID > 0 && sample.Process == nil && pidValid {
 				pidValid = false
@@ -197,9 +221,9 @@ func collectAndSend(ctx context.Context, baseURL, token, agentID, pairKey string
 	}
 }
 
-func collectMetrics(targetPID int) metricsSample {
+func collectMetrics(targetPID int, clockOffsetMs int64) metricsSample {
 	sample := metricsSample{
-		Timestamp: time.Now().UnixMilli(),
+		Timestamp: time.Now().UnixMilli() + clockOffsetMs,
 	}
 
 	// Collect host metrics
