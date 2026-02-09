@@ -530,7 +530,7 @@ func (rm *RunManager) TransitionToBaseline(runID, actor string) error {
 		Payload:     transitionPayload,
 		Evidence:    []Evidence{},
 	}
-	appendEventWithLog(eventLog, transitionEvent, "TransitionToRamp")
+	appendEventWithLog(eventLog, transitionEvent, "TransitionToBaseline")
 
 	schedulerReady := false
 	func() {
@@ -628,7 +628,7 @@ func (rm *RunManager) TransitionToRamp(runID, actor string) error {
 		Payload:     transitionPayload,
 		Evidence:    []Evidence{},
 	}
-	appendEventWithLog(eventLog, transitionEvent, "TransitionToSoak")
+	appendEventWithLog(eventLog, transitionEvent, "TransitionToRamp")
 
 	schedulerReady := false
 	func() {
@@ -813,7 +813,7 @@ func (rm *RunManager) TransitionToSoak(runID, actor string) error {
 		Payload:     transitionPayload,
 		Evidence:    []Evidence{},
 	}
-	appendEventWithLog(eventLog, transitionEvent, "TransitionToSpike")
+	appendEventWithLog(eventLog, transitionEvent, "TransitionToSoak")
 
 	rm.mu.RLock()
 	registry := rm.registry

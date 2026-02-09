@@ -360,6 +360,9 @@ func SetGlobalMetrics(m *Metrics) {
 	}
 }
 
+var noopMetricsInstance *Metrics
+var noopMetricsOnce sync.Once
+
 // GetGlobalMetrics returns the global metrics instance.
 // Returns a no-op metrics instance if none has been set.
 func GetGlobalMetrics() *Metrics {
@@ -367,15 +370,16 @@ func GetGlobalMetrics() *Metrics {
 	defer globalMetricsMu.RUnlock()
 
 	if globalMetrics == nil {
-		// Return a no-op metrics instance
-		cfg := DefaultMetricsConfig()
-		m := &Metrics{
-			config:        cfg,
-			meterProvider: sdkmetric.NewMeterProvider(),
-			shutdown:      func(context.Context) error { return nil },
-		}
-		m.meter = m.meterProvider.Meter(cfg.ServiceName)
-		return m
+		noopMetricsOnce.Do(func() {
+			cfg := DefaultMetricsConfig()
+			noopMetricsInstance = &Metrics{
+				config:        cfg,
+				meterProvider: sdkmetric.NewMeterProvider(),
+				shutdown:      func(context.Context) error { return nil },
+			}
+			noopMetricsInstance.meter = noopMetricsInstance.meterProvider.Meter(cfg.ServiceName)
+		})
+		return noopMetricsInstance
 	}
 
 	return globalMetrics

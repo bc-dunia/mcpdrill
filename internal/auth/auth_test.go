@@ -348,18 +348,6 @@ func TestJWTAuthenticator(t *testing.T) {
 	})
 }
 
-func TestConstantTimeCompare(t *testing.T) {
-	if !constantTimeCompare("abc", "abc") {
-		t.Error("expected equal strings to match")
-	}
-	if constantTimeCompare("abc", "abd") {
-		t.Error("expected different strings to not match")
-	}
-	if constantTimeCompare("abc", "abcd") {
-		t.Error("expected different length strings to not match")
-	}
-}
-
 func createTestJWT(t *testing.T, secret []byte, sub, iss string, exp int64, roles []string) string {
 	t.Helper()
 

@@ -34,7 +34,6 @@ type runningAssignment struct {
 	sessionMgr    *session.Manager
 	cancel        context.CancelFunc
 	startedAt     time.Time
-	telemetryCh   chan *vu.OperationResult
 	immediateStop atomic.Bool
 }
 
@@ -71,10 +70,9 @@ func (e *AssignmentExecutor) Execute(ctx context.Context, a types.WorkerAssignme
 
 	// Register assignment
 	running := &runningAssignment{
-		assignment:  a,
-		cancel:      cancel,
-		startedAt:   time.Now(),
-		telemetryCh: make(chan *vu.OperationResult, 1000),
+		assignment: a,
+		cancel:     cancel,
+		startedAt:  time.Now(),
 	}
 	e.active[a.LeaseID] = running
 
@@ -164,9 +162,6 @@ func (e *AssignmentExecutor) executeAssignment(ctx context.Context, running *run
 	if err := sessionMgr.Close(stopCtx); err != nil {
 		log.Printf("[Worker] Session manager close error: %v", err)
 	}
-
-	// Close telemetry channel to signal reader to exit
-	close(running.telemetryCh)
 
 	return nil
 }

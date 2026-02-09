@@ -2,7 +2,6 @@ package auth
 
 import (
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"net/http"
 	"strings"
@@ -10,9 +9,8 @@ import (
 
 // APIKeyAuthenticator validates API keys from request headers.
 type APIKeyAuthenticator struct {
-	keyHashes   map[string]bool
-	keyToRoles  map[string][]Role
-	hashToKey   map[string]string
+	keyHashes  map[string]bool
+	keyToRoles map[string][]Role
 }
 
 // NewAPIKeyAuthenticator creates a new API key authenticator.
@@ -20,13 +18,11 @@ func NewAPIKeyAuthenticator(config *Config) *APIKeyAuthenticator {
 	a := &APIKeyAuthenticator{
 		keyHashes:  make(map[string]bool),
 		keyToRoles: make(map[string][]Role),
-		hashToKey:  make(map[string]string),
 	}
 
 	for _, key := range config.APIKeys {
 		hash := hashKey(key)
 		a.keyHashes[hash] = true
-		a.hashToKey[hash] = key
 
 		if roles, ok := config.APIKeyRoles[key]; ok {
 			a.keyToRoles[key] = roles
@@ -79,24 +75,10 @@ func (a *APIKeyAuthenticator) extractAPIKey(r *http.Request) string {
 }
 
 func (a *APIKeyAuthenticator) validateKey(key string) bool {
-	keyHash := hashKey(key)
-
-	for storedHash := range a.keyHashes {
-		if constantTimeCompare(keyHash, storedHash) {
-			return true
-		}
-	}
-	return false
+	return a.keyHashes[hashKey(key)]
 }
 
 func hashKey(key string) string {
 	h := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(h[:])
-}
-
-func constantTimeCompare(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }

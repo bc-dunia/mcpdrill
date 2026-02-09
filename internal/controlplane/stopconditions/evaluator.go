@@ -2,6 +2,7 @@ package stopconditions
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -323,8 +324,7 @@ func percentile(values []int, p float64) int {
 	sorted := make([]int, len(values))
 	copy(sorted, values)
 	sort.Ints(sorted)
-	rank := (p / 100.0) * float64(len(sorted))
-	index := int(rank)
+	index := int(math.Ceil((p/100.0)*float64(len(sorted)))) - 1
 	if index >= len(sorted) {
 		index = len(sorted) - 1
 	}
