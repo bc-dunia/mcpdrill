@@ -110,6 +110,9 @@ Results appear in real time in the Web UI dashboard.
 
 > **Note**: The quick-start config targets `http://127.0.0.1:3000/mcp` (IPv4). Using `localhost` may fail due to IPv6 resolution on some systems.
 
+> **Optional: Server Resources (CPU/Memory)**  
+> The Web UI can display server-side CPU/memory metrics, but this requires the optional `mcpdrill-agent`. The quick-start config has `server_telemetry.enabled: false` by default. To enable it, see [Server Telemetry Agent](#server-telemetry-agent-optional) section below.
+
 ## Key Features
 
 | Feature | Description |
@@ -120,6 +123,89 @@ Results appear in real time in the Web UI dashboard.
 | **Mock Server** | 27 built-in tools for isolated testing |
 | **Web UI** | Real-time dashboard, log explorer, run wizard |
 | **OpenTelemetry** | *(Optional)* Distributed tracing with OTLP export |
+
+## Mock Server
+
+MCP Drill includes a built-in mock MCP server with 27 tools for isolated testing without external dependencies.
+
+### Available Tools
+
+| Category | Tools |
+|----------|-------|
+| **Basic** | `fast_echo`, `slow_echo`, `error_tool`, `timeout_tool`, `streaming_tool` |
+| **Data Processing** | `json_transform`, `text_processor`, `list_operations`, `validate_email`, `calculate`, `hash_generator` |
+| **API Simulation** | `weather_api`, `geocode`, `currency_convert` |
+| **File Operations** | `read_file`, `write_file`, `list_directory` |
+| **Stress Testing** | `large_payload`, `random_latency`, `conditional_error`, `degrading_performance`, `flaky_connection` |
+| **Resilience** | `rate_limited`, `circuit_breaker`, `backpressure`, `stateful_counter`, `realistic_latency` |
+
+### Verify It Works
+
+```bash
+# List available tools
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+
+# Call a tool
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"fast_echo","arguments":{"message":"hello"}},"id":2}'
+```
+
+See [`examples/quick-start.json`](examples/quick-start.json) for a complete test configuration. Full tool documentation: [Tool Testing Guide](docs/tool-testing-guide.md).
+
+## Server Telemetry Agent (Optional)
+
+> **Note**: MCP Drill works perfectly without the telemetry agent. This is an optional add-on for correlating client-side load test metrics with server-side resource usage.
+
+Monitor server-side metrics (CPU, memory, threads, file descriptors) from your MCP server during load tests.
+
+```
+┌─────────────────────────────┐          ┌─────────────────────────┐
+│   Your MCP Server Host      │          │   Control Plane         │
+│                             │          │                         │
+│  MCP Server   mcpdrill-agent│─────────▶│  Correlates metrics     │
+│  (port 3000)       │        │  HTTPS   │  with test runs         │
+│       ▲            │        │          │                         │
+│       └── monitors─┘        │          │                         │
+└─────────────────────────────┘          └─────────────────────────┘
+```
+
+### Quick Setup
+
+```bash
+# Build the agent
+make agent
+
+# Enable on control plane
+./mcpdrill-server --addr :8080 --enable-agent-ingest --agent-tokens "secret-token"
+
+# Run agent on your MCP server host
+./mcpdrill-agent \
+  --control-plane-url http://localhost:8080 \
+  --agent-token "secret-token" \
+  --pair-key "my-test" \
+  --listen-port 3000
+```
+
+### Link with Test Runs
+
+```json
+{
+  "scenario_id": "capacity-test",
+  "server_telemetry": {
+    "enabled": true,
+    "pair_key": "my-test"
+  },
+  "target": { "url": "http://localhost:3000/mcp" }
+}
+```
+
+> **What is `pair_key`?**  
+> The pair key links metrics from a specific server with your test runs. Use the **same value** for `--pair-key` when starting the agent and in your run config's `server_telemetry.pair_key` to correlate server-side resource metrics (CPU, memory) with client-side load test results.
+
+See [Agent Telemetry Guide](docs/agent-telemetry.md) for full details.
 
 ## API Quick Reference
 
