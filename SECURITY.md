@@ -13,8 +13,8 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 
 ### How to Report
 
-1. **Do NOT** open a public GitHub issue for security vulnerabilities
-2. Email security concerns to: [security@example.com](mailto:security@example.com)
+1. Open an issue in this repository: [Open an issue](../../issues/new)
+2. Please **do not** include exploit code, secrets, or other sensitive details
 3. Include:
    - Description of the vulnerability
    - Steps to reproduce

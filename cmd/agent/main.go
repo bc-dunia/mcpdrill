@@ -319,63 +319,28 @@ func sendMetrics(ctx context.Context, baseURL, token, agentID, pairKey string, s
 }
 
 func findProcessByPortWithRetry(ctx context.Context, port int, maxRetries int, retryDelay time.Duration, onRetry func(attempt int)) int {
-	results := make(chan int, maxRetries+1)
-
-	for i := 0; i <= maxRetries; i++ {
-		select {
-		case pid := <-results:
-			if pid > 0 {
-				return pid
-			}
-		case <-ctx.Done():
-			return drainResults(results)
-		default:
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		pid := findProcessByPort(port)
+		if pid > 0 {
+			return pid
 		}
 
-		go func() {
-			results <- findProcessByPort(port)
-		}()
-
-		if onRetry != nil && i > 0 {
-			onRetry(i)
-		}
-
-		if i < maxRetries {
-			select {
-			case pid := <-results:
-				if pid > 0 {
-					return pid
-				}
-			case <-ctx.Done():
-				return drainResults(results)
-			case <-time.After(retryDelay):
-			}
-		}
-	}
-
-	for {
-		select {
-		case pid := <-results:
-			if pid > 0 {
-				return pid
-			}
-		case <-ctx.Done():
-			return drainResults(results)
-		}
-	}
-}
-
-func drainResults(ch chan int) int {
-	for {
-		select {
-		case pid := <-ch:
-			if pid > 0 {
-				return pid
-			}
-		default:
+		if attempt == maxRetries {
 			return 0
 		}
+
+		if onRetry != nil {
+			onRetry(attempt + 1)
+		}
+
+		select {
+		case <-ctx.Done():
+			return 0
+		case <-time.After(retryDelay):
+		}
 	}
+
+	return 0
 }
 
 func findProcessByPort(port int) int {
