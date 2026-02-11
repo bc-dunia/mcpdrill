@@ -270,28 +270,27 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
       <div className="form-section">
         <div className="form-row">
           <div className="form-field">
-            <label htmlFor="target-kind">Target Type</label>
-            <select
-              id="target-kind"
-              value={config.kind}
-              onChange={e => handleChange('kind', e.target.value)}
-              className="select-input"
-            >
-              <option value="server">Server</option>
-              <option value="gateway">Gateway</option>
-            </select>
+            <label htmlFor="target-kind-fixed">Target Type</label>
+            <input
+              id="target-kind-fixed"
+              type="text"
+              value="Server"
+              className="input"
+              readOnly
+              aria-readonly="true"
+            />
           </div>
 
           <div className="form-field">
-            <label htmlFor="target-transport">Transport</label>
-            <select
-              id="target-transport"
-              value={config.transport}
-              onChange={e => handleChange('transport', e.target.value)}
-              className="select-input"
-            >
-              <option value="streamable_http">Streamable HTTP</option>
-            </select>
+            <label htmlFor="target-transport-fixed">Transport</label>
+            <input
+              id="target-transport-fixed"
+              type="text"
+              value="Streamable HTTP"
+              className="input"
+              readOnly
+              aria-readonly="true"
+            />
           </div>
         </div>
 

@@ -84,6 +84,13 @@ function createDefaultConfig(): RunConfig {
   };
 }
 
+function normalizeTargetKind(kind: unknown): 'server' {
+  if (kind === 'server') {
+    return 'server';
+  }
+  return 'server';
+}
+
 function normalizeTargetTransport(transport: unknown): 'streamable_http' {
   if (transport === 'streamable_http') {
     return 'streamable_http';
@@ -145,6 +152,7 @@ export function RunWizard({ onRunStarted }: Props) {
         target: {
           ...defaults.target,
           ...(saved.config.target ?? {}),
+          kind: normalizeTargetKind(saved.config.target?.kind),
           transport: normalizeTargetTransport(saved.config.target?.transport),
         },
         workload: { ...defaults.workload, ...(saved.config.workload ?? {}) },
