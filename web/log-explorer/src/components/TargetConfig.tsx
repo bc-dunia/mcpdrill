@@ -291,7 +291,6 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
               className="select-input"
             >
               <option value="streamable_http">Streamable HTTP</option>
-              <option value="stdio">STDIO</option>
             </select>
           </div>
         </div>

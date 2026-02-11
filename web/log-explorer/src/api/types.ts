@@ -36,7 +36,7 @@ export interface BackendRunConfig {
   target: {
     kind: string;
     url: string;
-    transport: string;
+    transport: 'streamable_http';
     headers: Record<string, string>;
     auth: {
       type: string;

@@ -84,6 +84,13 @@ function createDefaultConfig(): RunConfig {
   };
 }
 
+function normalizeTargetTransport(transport: unknown): 'streamable_http' {
+  if (transport === 'streamable_http') {
+    return 'streamable_http';
+  }
+  return 'streamable_http';
+}
+
 function isValidUrl(urlString: string): boolean {
   const trimmed = urlString?.trim();
   if (!trimmed) return false;
@@ -135,7 +142,11 @@ export function RunWizard({ onRunStarted }: Props) {
       return {
         ...defaults,
         ...saved.config,
-        target: { ...defaults.target, ...(saved.config.target ?? {}) },
+        target: {
+          ...defaults.target,
+          ...(saved.config.target ?? {}),
+          transport: normalizeTargetTransport(saved.config.target?.transport),
+        },
         workload: { ...defaults.workload, ...(saved.config.workload ?? {}) },
         session_policy: saved.config.session_policy 
           ? { ...defaults.session_policy, ...saved.config.session_policy }

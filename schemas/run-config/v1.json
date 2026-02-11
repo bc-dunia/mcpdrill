@@ -30,7 +30,7 @@
       "properties": {
         "kind": {"type": "string", "enum": ["gateway", "server"]},
         "url": {"type": "string", "minLength": 1, "maxLength": 2048},
-        "transport": {"type": "string", "minLength": 1, "maxLength": 100},
+        "transport": {"type": "string", "enum": ["streamable_http"]},
         "headers": {
           "type": "object",
           "additionalProperties": {"type": "string", "maxLength": 4096},

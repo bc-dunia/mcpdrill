@@ -74,7 +74,7 @@ export interface AuthConfig {
 export interface TargetConfig {
   kind: 'server' | 'gateway';
   url: string;
-  transport: 'streamable_http' | 'stdio';
+  transport: 'streamable_http';
   headers?: Record<string, string>;
   auth?: AuthConfig;
 }
