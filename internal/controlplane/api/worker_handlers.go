@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -30,6 +31,25 @@ var allowedStages = map[string]bool{
 	"soak":      true,
 	"spike":     true,
 	"custom":    true,
+}
+
+func (s *Server) handleListWorkers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeMethodNotAllowed(w, r.Method, "GET")
+		return
+	}
+
+	if s.registry == nil {
+		s.writeJSON(w, http.StatusOK, &ListWorkersResponse{Workers: []*scheduler.WorkerInfo{}})
+		return
+	}
+
+	workers := s.registry.ListWorkers()
+	sort.Slice(workers, func(i, j int) bool {
+		return workers[i].WorkerID < workers[j].WorkerID
+	})
+
+	s.writeJSON(w, http.StatusOK, &ListWorkersResponse{Workers: workers})
 }
 
 func (s *Server) handleRegisterWorker(w http.ResponseWriter, r *http.Request) {

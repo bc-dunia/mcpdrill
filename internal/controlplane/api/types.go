@@ -5,6 +5,7 @@ import (
 
 	"github.com/bc-dunia/mcpdrill/internal/analysis"
 	"github.com/bc-dunia/mcpdrill/internal/controlplane/runmanager"
+	"github.com/bc-dunia/mcpdrill/internal/controlplane/scheduler"
 	"github.com/bc-dunia/mcpdrill/internal/metrics"
 	"github.com/bc-dunia/mcpdrill/internal/types"
 	"github.com/bc-dunia/mcpdrill/internal/validation"
@@ -258,6 +259,11 @@ type RegisterWorkerRequest struct {
 type RegisterWorkerResponse struct {
 	WorkerID    string `json:"worker_id"`
 	WorkerToken string `json:"worker_token,omitempty"`
+}
+
+// ListWorkersResponse is the response body for GET /workers.
+type ListWorkersResponse struct {
+	Workers []*scheduler.WorkerInfo `json:"workers"`
 }
 
 // HeartbeatRequest is the request body for POST /workers/{id}/heartbeat.

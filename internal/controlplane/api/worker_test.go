@@ -77,6 +77,37 @@ func TestRegisterWorker_Success(t *testing.T) {
 	}
 }
 
+func TestListWorkers_Success(t *testing.T) {
+	server, registry := setupWorkerTestServer(t)
+
+	_, _ = registerWorkerWithToken(t, server, registry, "worker-1")
+	_, _ = registerWorkerWithToken(t, server, registry, "worker-2")
+
+	httpReq := httptest.NewRequest(http.MethodGet, "/workers", nil)
+	w := httptest.NewRecorder()
+
+	server.handleListWorkers(w, httpReq)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var resp ListWorkersResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(resp.Workers) != 2 {
+		t.Fatalf("expected 2 workers, got %d", len(resp.Workers))
+	}
+	if resp.Workers[0] == nil || resp.Workers[1] == nil {
+		t.Fatalf("expected non-nil workers")
+	}
+	if resp.Workers[0].HostInfo.Hostname == "" || resp.Workers[1].HostInfo.Hostname == "" {
+		t.Fatalf("expected hostnames in worker info")
+	}
+}
+
 func TestRegisterWorker_InvalidJSON(t *testing.T) {
 	server, _ := setupWorkerTestServer(t)
 

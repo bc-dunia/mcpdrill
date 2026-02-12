@@ -86,7 +86,8 @@ Scale workers: `docker compose up -d --scale worker=5`
 
 > **Notes**
 > - Ports are bound to `localhost` by default (see `docker-compose.yml`). Update the port mappings if you need LAN/remote access.
-> - The default compose config runs in insecure mode for local development (`--insecure`, `--insecure-worker-auth`). Don’t expose it publicly without enabling auth.
+> - The default compose config runs in insecure mode for local development (`--insecure`, `--insecure-worker-auth`) and enables private-network discovery (`--allow-private-discovery`) for Docker testing. Don’t expose it publicly without enabling auth.
+> - API rate limiting is disabled in the default compose config (`--rate-limit=0`) to avoid `429` responses during high-volume telemetry shipping.
 > - `--profile full` enables the telemetry agent and uses extra container capabilities for PID discovery. If it’s blocked in your environment, use `--profile mock` and run `mcpdrill-agent` on the MCP host instead.
 
 ### Option B: From Source

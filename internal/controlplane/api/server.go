@@ -209,6 +209,7 @@ func (s *Server) SetRegistry(r *scheduler.Registry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.registry = r
+	s.syncMetricsProvidersLocked()
 }
 
 func (s *Server) SetLeaseManager(lm *scheduler.LeaseManager) {
@@ -221,6 +222,7 @@ func (s *Server) SetTelemetryStore(ts *TelemetryStore) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.telemetryStore = ts
+	s.syncMetricsProvidersLocked()
 }
 
 func (s *Server) GetTelemetryStore() *TelemetryStore {
@@ -233,6 +235,22 @@ func (s *Server) SetMetricsCollector(mc *metrics.Collector) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.metricsCollector = mc
+	s.syncMetricsProvidersLocked()
+}
+
+func (s *Server) syncMetricsProvidersLocked() {
+	if s.metricsCollector == nil {
+		return
+	}
+	if s.runManager != nil {
+		s.metricsCollector.SetRunProvider(s.runManager)
+	}
+	if s.registry != nil {
+		s.metricsCollector.SetWorkerProvider(s.registry)
+	}
+	if s.telemetryStore != nil {
+		s.metricsCollector.SetTelemetryProvider(s.telemetryStore)
+	}
 }
 
 func (s *Server) GetMetricsCollector() *metrics.Collector {
@@ -284,6 +302,7 @@ func (s *Server) Start() error {
 
 	mux.HandleFunc("/runs", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.handleCreateRun))).ServeHTTP)
 	mux.HandleFunc("/runs/", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.routeRuns))).ServeHTTP)
+	mux.HandleFunc("/workers", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.handleListWorkers))).ServeHTTP)
 	mux.HandleFunc("/workers/register", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.handleRegisterWorker))).ServeHTTP)
 	mux.HandleFunc("/workers/", s.rateLimitMiddleware(s.rbacMiddleware(http.HandlerFunc(s.routeWorkers))).ServeHTTP)
 	mux.HandleFunc("/agents/v1/register", s.rateLimitMiddleware(s.agentAuthMiddleware(http.HandlerFunc(s.handleAgentRegister))).ServeHTTP)

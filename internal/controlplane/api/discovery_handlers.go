@@ -602,8 +602,11 @@ func (s *Server) discoveryPrivateNetworks() []string {
 func (s *Server) requireAdminDiscoveryAccess(w http.ResponseWriter, r *http.Request) bool {
 	if s.authConfig == nil || s.authConfig.Mode == auth.AuthModeNone {
 		// Security: discovery endpoints perform outbound requests, so require auth unless
-		// explicitly running insecure on loopback for local testing.
-		if s.authConfig != nil && s.authConfig.InsecureMode && isLoopbackRequest(r) {
+		// explicitly running insecure for local testing.
+		//
+		// Note: when running inside Docker, requests from the host often appear as a private
+		// gateway IP (not 127.0.0.1) from the container's perspective.
+		if s.authConfig != nil && s.authConfig.InsecureMode && isLocalOrPrivateRequest(r) {
 			return true
 		}
 		s.writeError(w, http.StatusForbidden, &ErrorResponse{
@@ -628,17 +631,14 @@ func (s *Server) requireAdminDiscoveryAccess(w http.ResponseWriter, r *http.Requ
 	return true
 }
 
-func isLoopbackRequest(r *http.Request) bool {
+func isLocalOrPrivateRequest(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return false
-	}
-	if host == "localhost" {
-		return true
 	}
 	ip := net.ParseIP(host)
 	if ip == nil {
 		return false
 	}
-	return ip.IsLoopback()
+	return ip.IsLoopback() || ip.IsPrivate()
 }
