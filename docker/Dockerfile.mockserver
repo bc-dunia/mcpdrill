@@ -16,4 +16,4 @@ COPY --from=builder /build/bin/mcpdrill-mockserver /usr/local/bin/mcpdrill-mocks
 USER mcpdrill
 EXPOSE 3000
 ENTRYPOINT ["mcpdrill-mockserver"]
-CMD ["--addr", ":3000"]
+CMD ["--addr", "0.0.0.0:3000"]

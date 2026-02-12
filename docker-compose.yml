@@ -43,7 +43,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.mockserver
-    command: ["--addr", ":3000"]
+    # Bind to all interfaces inside the container so the host port mapping works.
+    command: ["--addr", "0.0.0.0:3000"]
     ports:
       - "127.0.0.1:3000:3000"
     networks:
@@ -63,12 +64,17 @@ services:
       - --agent-token=${AGENT_TOKEN:-dev-token}
       - --pair-key=${PAIR_KEY:-docker-test}
       - --listen-port=3000
-    pid: host
+    # Share PID namespace with the mockserver so we can map listening ports to PIDs.
+    pid: "service:mockserver"
+    # Share the mockserver network namespace so port-based PID discovery works in Docker.
+    network_mode: "service:mockserver"
+    cap_add:
+      - SYS_PTRACE
     depends_on:
       control-plane:
         condition: service_healthy
-    networks:
-      - mcpdrill
+      mockserver:
+        condition: service_started
     profiles:
       - full
     restart: unless-stopped

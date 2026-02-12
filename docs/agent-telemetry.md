@@ -65,6 +65,8 @@ go build -o mcpdrill-agent ./cmd/agent
 | `--pid <pid>` | Monitor by explicit PID (mutually exclusive with `--listen-port`) |
 | `--listen-port <port>` | Find process listening on port (mutually exclusive with `--pid`) |
 
+**Note:** `--listen-port` requires the agent to be able to map listening sockets to a PID. In restricted environments (hardened hosts, some container runtimes), PID discovery may fail and the agent will continue with host-only metrics. In that case, use `--pid` or adjust runtime permissions.
+
 ### Optional Tuning
 
 | Flag | Default | Description |

@@ -6,9 +6,11 @@ This directory contains example configurations for deploying MCP Drill in distri
 
 ### Docker Compose
 
+> **Note**: The example compose config runs with auth disabled (`--insecure`, `--insecure-worker-auth`) for quick testing. Don’t expose it beyond a trusted network without enabling auth.
+
 **Start the stack** (1 control plane + 3 workers):
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 **Check worker registration**:
@@ -18,17 +20,17 @@ curl http://localhost:8080/workers
 
 **Scale workers**:
 ```bash
-docker-compose up --scale worker=5 -d
+docker compose up --scale worker=5 -d
 ```
 
 **View logs**:
 ```bash
-docker-compose logs -f
+docker compose logs -f
 ```
 
 **Stop the stack**:
 ```bash
-docker-compose down
+docker compose down
 ```
 
 ### Kubernetes
@@ -275,7 +277,7 @@ curl -X POST http://localhost:8080/runs/run_0000000000000001/stop \
 **Check control plane logs**:
 ```bash
 # Docker Compose
-docker-compose logs control-plane
+docker compose logs control-plane
 
 # Kubernetes
 kubectl logs -l app=mcpdrill-control-plane
@@ -284,7 +286,7 @@ kubectl logs -l app=mcpdrill-control-plane
 **Check worker logs**:
 ```bash
 # Docker Compose
-docker-compose logs worker
+docker compose logs worker
 
 # Kubernetes
 kubectl logs worker-0
@@ -293,7 +295,7 @@ kubectl logs worker-0
 **Verify network connectivity**:
 ```bash
 # Docker Compose
-docker-compose exec worker ping control-plane
+docker compose exec worker ping control-plane
 
 # Kubernetes
 kubectl exec worker-0 -- wget -O- http://control-plane:8080/healthz
@@ -306,7 +308,7 @@ kubectl exec worker-0 -- wget -O- http://control-plane:8080/healthz
 **Check heartbeat logs**:
 ```bash
 # Look for "Heartbeat sent successfully" in worker logs
-docker-compose logs worker | grep Heartbeat
+docker compose logs worker | grep Heartbeat
 ```
 
 **Increase heartbeat interval** (if high latency):
@@ -330,7 +332,7 @@ curl http://localhost:8080/workers | jq '.workers | length'
 **Scale up workers**:
 ```bash
 # Docker Compose
-docker-compose up --scale worker=5 -d
+docker compose up --scale worker=5 -d
 
 # Kubernetes
 kubectl scale statefulset worker --replicas=5

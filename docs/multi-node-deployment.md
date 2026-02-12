@@ -119,9 +119,11 @@ This architecture allows you to:
 
 ### Prerequisites
 
-- Docker 20.10+ and Docker Compose 1.29+
+- Docker 20.10+ and Docker Compose v2 (`docker compose`)
 - Network connectivity between containers
 - Sufficient resources (CPU, memory) for control plane + workers
+
+> **Note**: The provided compose examples use `--insecure` and `--insecure-worker-auth` for quick testing. Enable authentication before exposing the control plane beyond a trusted network (see `docs/api.md`).
 
 ### Quick Start
 
@@ -133,7 +135,7 @@ This architecture allows you to:
 
 2. **Start the stack**:
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 
    This starts:
@@ -149,7 +151,7 @@ This architecture allows you to:
 
 4. **Scale workers**:
    ```bash
-   docker-compose up --scale worker=5 -d
+   docker compose up --scale worker=5 -d
    ```
 
    This adds 2 more workers (total 5).
@@ -157,18 +159,18 @@ This architecture allows you to:
 5. **View logs**:
    ```bash
    # Control plane logs
-   docker-compose logs -f control-plane
+   docker compose logs -f control-plane
 
    # Worker logs
-   docker-compose logs -f worker
+   docker compose logs -f worker
 
    # All logs
-   docker-compose logs -f
+   docker compose logs -f
    ```
 
 6. **Stop the stack**:
    ```bash
-   docker-compose down
+   docker compose down
    ```
 
 ### Configuration
@@ -535,7 +537,7 @@ curl http://control-plane:8080/readyz
 2. **Verify control plane URL**:
    ```bash
    # Check worker logs
-   docker-compose logs worker
+   docker compose logs worker
    # Look for: "Registering with Control Plane at http://control-plane:8080"
    ```
 
@@ -564,7 +566,7 @@ curl http://control-plane:8080/readyz
 
 1. **Check worker logs**:
    ```bash
-   docker-compose logs worker
+   docker compose logs worker
    kubectl logs worker-0
    # Look for errors or crashes
    ```
@@ -601,7 +603,7 @@ curl http://control-plane:8080/readyz
 1. **Scale up workers**:
    ```bash
    # Docker Compose
-   docker-compose up --scale worker=5 -d
+   docker compose up --scale worker=5 -d
 
    # Kubernetes
    kubectl scale statefulset worker --replicas=5
@@ -684,7 +686,7 @@ curl http://control-plane:8080/readyz
 
 1. **Check worker logs**:
    ```bash
-   docker-compose logs worker
+   docker compose logs worker
    # Look for: "Received assignment: run=..."
    ```
 
@@ -712,7 +714,7 @@ curl http://control-plane:8080/readyz
 
 1. **Check worker logs**:
    ```bash
-   docker-compose logs worker
+   docker compose logs worker
    # Look for: "Telemetry sent: X operations accepted"
    ```
 
@@ -723,7 +725,7 @@ curl http://control-plane:8080/readyz
 
 3. **Check control plane logs**:
    ```bash
-   docker-compose logs control-plane
+   docker compose logs control-plane
    # Look for telemetry ingestion errors
    ```
 

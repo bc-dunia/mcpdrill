@@ -63,6 +63,9 @@ Per-tool breakdown with success rates, latency distribution, and error analysis:
 
 ### Option A: Docker (Recommended)
 
+**Prerequisites**: Docker Engine + Docker Compose v2 (`docker compose`).  
+If you see build warnings, also ensure Buildx is installed (`docker buildx version`).
+
 ```bash
 git clone https://github.com/bc-dunia/mcpdrill.git
 cd mcpdrill
@@ -80,6 +83,11 @@ docker compose --profile full up -d
 Open **http://localhost:8080/ui/logs/** — the Web UI is embedded in the server.
 
 Scale workers: `docker compose up -d --scale worker=5`
+
+> **Notes**
+> - Ports are bound to `localhost` by default (see `docker-compose.yml`). Update the port mappings if you need LAN/remote access.
+> - The default compose config runs in insecure mode for local development (`--insecure`, `--insecure-worker-auth`). Don’t expose it publicly without enabling auth.
+> - `--profile full` enables the telemetry agent and uses extra container capabilities for PID discovery. If it’s blocked in your environment, use `--profile mock` and run `mcpdrill-agent` on the MCP host instead.
 
 ### Option B: From Source
 
@@ -160,6 +168,8 @@ MCP Drill includes a built-in mock MCP server with 27 tools for isolated testing
 | **Resilience** | `rate_limited`, `circuit_breaker`, `backpressure`, `stateful_counter`, `realistic_latency` |
 
 ### Verify It Works
+
+Make sure the mock server is running (e.g. `docker compose --profile mock up -d` or `make dev`) before calling `localhost:3000`.
 
 ```bash
 # List available tools
@@ -306,4 +316,3 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 <sub>MCP Drill was originally created to validate the production stability of [Peta](https://github.com/dunialabs/peta-core), an MCP control plane and runtime. If you're building MCP infrastructure that needs to scale, Peta handles the hard parts — routing, auth, observability — so you can focus on your agents.</sub>
-

@@ -143,13 +143,13 @@ See [Tool Testing Guide](tool-testing-guide.md) for details.
 cd examples/multi-node
 
 # Start control plane + 3 workers
-docker-compose up -d
+docker compose up -d
 
 # Verify workers
 curl http://localhost:8080/workers
 
 # Scale workers
-docker-compose up --scale worker=5 -d
+docker compose up --scale worker=5 -d
 ```
 
 See [Multi-Node Deployment](multi-node-deployment.md) for details.

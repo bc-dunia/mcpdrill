@@ -10,8 +10,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"runtime"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -344,6 +347,20 @@ func findProcessByPortWithRetry(ctx context.Context, port int, maxRetries int, r
 }
 
 func findProcessByPort(port int) int {
+	if port <= 0 {
+		return 0
+	}
+
+	// On macOS, gopsutil's connection-to-PID mapping can be slow/unreliable.
+	// Prefer the system tool that is designed for this query.
+	if runtime.GOOS == "darwin" {
+		if pid := findProcessByPortLsof(port); pid > 0 {
+			return pid
+		}
+		return 0
+	}
+
+	// "tcp" includes both IPv4 and IPv6 listeners on supported platforms.
 	conns, err := psnet.Connections("tcp")
 	if err == nil {
 		for _, conn := range conns {
@@ -366,6 +383,20 @@ func findProcessByPort(port int) int {
 			if conn.Status == "LISTEN" && conn.Laddr.Port == uint32(port) {
 				return int(p.Pid)
 			}
+		}
+	}
+	return 0
+}
+
+func findProcessByPortLsof(port int) int {
+	out, err := exec.Command("lsof", "-nP", "-iTCP:"+strconv.Itoa(port), "-sTCP:LISTEN", "-t").Output()
+	if err != nil {
+		return 0
+	}
+	for _, field := range strings.Fields(string(out)) {
+		pid, err := strconv.Atoi(field)
+		if err == nil && pid > 0 {
+			return pid
 		}
 	}
 	return 0
