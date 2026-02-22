@@ -691,6 +691,7 @@ func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, inclu
 
 		sessionsSeenBefore := make(map[string]bool)
 		sessionsActiveInBucket := make(map[int64]map[string]bool)
+		droppedSessionsInBucket := make(map[int64]map[string]bool)
 
 		for _, log := range logs {
 			if log.SessionID == "" {
@@ -710,7 +711,13 @@ func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, inclu
 			}
 
 			if !log.OK && log.ErrorType == "connection_dropped" {
-				point.DroppedSessions++
+				if droppedSessionsInBucket[bucketKey] == nil {
+					droppedSessionsInBucket[bucketKey] = make(map[string]bool)
+				}
+				if !droppedSessionsInBucket[bucketKey][log.SessionID] {
+					droppedSessionsInBucket[bucketKey][log.SessionID] = true
+					point.DroppedSessions++
+				}
 			}
 		}
 

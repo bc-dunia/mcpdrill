@@ -697,3 +697,40 @@ func TestTelemetryStore_GetStabilityMetrics_IncludeEvents(t *testing.T) {
 		t.Error("expected a dropped event")
 	}
 }
+
+func TestTelemetryStore_GetStabilityMetrics_TimeSeriesCountsDroppedSessionsUniquelyPerBucket(t *testing.T) {
+	ts := NewTelemetryStore()
+	runID := "run_0000000000000abc2"
+
+	ts.AddTelemetryBatch(runID, TelemetryBatchRequest{
+		Operations: []types.OperationOutcome{
+			{
+				TimestampMs: 1000,
+				Operation:   "tools_call",
+				SessionID:   "sess_1",
+				OK:          false,
+				ErrorType:   "connection_dropped",
+				LatencyMs:   10,
+			},
+			{
+				TimestampMs: 1050,
+				Operation:   "tools_call",
+				SessionID:   "sess_1",
+				OK:          false,
+				ErrorType:   "connection_dropped",
+				LatencyMs:   12,
+			},
+		},
+	})
+
+	stability := ts.GetStabilityMetrics(runID, false, true)
+	if stability == nil {
+		t.Fatal("expected stability metrics")
+	}
+	if len(stability.TimeSeriesData) != 1 {
+		t.Fatalf("expected 1 time-series point, got %d", len(stability.TimeSeriesData))
+	}
+	if stability.TimeSeriesData[0].DroppedSessions != 1 {
+		t.Fatalf("expected dropped_sessions 1 for repeated drops in same bucket, got %d", stability.TimeSeriesData[0].DroppedSessions)
+	}
+}
