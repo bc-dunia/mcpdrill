@@ -93,6 +93,49 @@ func TestTelemetryStore_PreservesSessionIDInTelemetryData(t *testing.T) {
 	}
 }
 
+func TestAddTelemetryBatchWithContext_DoesNotMutateInputBatch(t *testing.T) {
+	ts := NewTelemetryStore()
+
+	batch := TelemetryBatchRequest{
+		Operations: []types.OperationOutcome{
+			{
+				OpID:        "op1",
+				Operation:   "tools/call",
+				LatencyMs:   10,
+				OK:          true,
+				TimestampMs: 1000,
+			},
+		},
+	}
+
+	ts.AddTelemetryBatchWithContext("run_0000000000000e221", batch, "worker-a", "stage-a", "stg_0000000000a221", "1")
+	ts.AddTelemetryBatchWithContext("run_0000000000000e222", batch, "worker-b", "stage-b", "stg_0000000000a222", "2")
+
+	logsA, _, err := ts.QueryLogs("run_0000000000000e221", LogFilters{Limit: 10, Offset: 0, Order: "desc"})
+	if err != nil {
+		t.Fatalf("unexpected error querying run A: %v", err)
+	}
+	logsB, _, err := ts.QueryLogs("run_0000000000000e222", LogFilters{Limit: 10, Offset: 0, Order: "desc"})
+	if err != nil {
+		t.Fatalf("unexpected error querying run B: %v", err)
+	}
+
+	if len(logsA) != 1 || len(logsB) != 1 {
+		t.Fatalf("expected one log per run, got A=%d B=%d", len(logsA), len(logsB))
+	}
+
+	if logsA[0].WorkerID != "worker-a" || logsA[0].Stage != "stage-a" || logsA[0].StageID != "stg_0000000000a221" || logsA[0].VUID != "1" {
+		t.Fatalf("run A context mismatch: worker=%q stage=%q stage_id=%q vu_id=%q", logsA[0].WorkerID, logsA[0].Stage, logsA[0].StageID, logsA[0].VUID)
+	}
+	if logsB[0].WorkerID != "worker-b" || logsB[0].Stage != "stage-b" || logsB[0].StageID != "stg_0000000000a222" || logsB[0].VUID != "2" {
+		t.Fatalf("run B context mismatch: worker=%q stage=%q stage_id=%q vu_id=%q", logsB[0].WorkerID, logsB[0].Stage, logsB[0].StageID, logsB[0].VUID)
+	}
+
+	if batch.Operations[0].WorkerID != "" || batch.Operations[0].Stage != "" || batch.Operations[0].StageID != "" || batch.Operations[0].VUID != "" {
+		t.Fatalf("input batch must remain unchanged: worker=%q stage=%q stage_id=%q vu_id=%q", batch.Operations[0].WorkerID, batch.Operations[0].Stage, batch.Operations[0].StageID, batch.Operations[0].VUID)
+	}
+}
+
 func TestTelemetryStore_MultipleBatches(t *testing.T) {
 	ts := NewTelemetryStore()
 

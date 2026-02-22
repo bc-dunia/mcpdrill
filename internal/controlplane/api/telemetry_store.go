@@ -12,6 +12,7 @@ import (
 	"github.com/bc-dunia/mcpdrill/internal/controlplane/runmanager"
 	"github.com/bc-dunia/mcpdrill/internal/metrics"
 	"github.com/bc-dunia/mcpdrill/internal/telemetry"
+	"github.com/bc-dunia/mcpdrill/internal/types"
 )
 
 // TelemetryStoreConfig configures memory limits for the telemetry store.
@@ -200,6 +201,12 @@ func (ts *TelemetryStore) getOrCreateRunTelemetry(runID string) *runTelemetry {
 }
 
 func (ts *TelemetryStore) AddTelemetryBatchWithContext(runID string, batch TelemetryBatchRequest, workerID, stage, stageID string, vuID string) {
+	if len(batch.Operations) > 0 {
+		operations := make([]types.OperationOutcome, len(batch.Operations))
+		copy(operations, batch.Operations)
+		batch.Operations = operations
+	}
+
 	for i := range batch.Operations {
 		if batch.Operations[i].WorkerID == "" {
 			batch.Operations[i].WorkerID = workerID
