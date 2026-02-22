@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -149,5 +150,37 @@ func TestRateLimitMiddleware_Headers(t *testing.T) {
 	}
 	if lastResp.Header.Get("Retry-After") == "" {
 		t.Error("Expected Retry-After header")
+	}
+}
+
+func TestRateLimitMiddleware_NilServerConfig_NoPanic(t *testing.T) {
+	rm := runmanager.NewRunManager(nil)
+	server := NewServer("127.0.0.1:0", rm)
+
+	server.mu.Lock()
+	server.rateLimiterConfig = nil
+	server.rateLimiter = newRateLimiter(&RateLimiterConfig{
+		RequestsPerSecond: 0,
+		BurstSize:         1,
+		Enabled:           true,
+	})
+	server.mu.Unlock()
+
+	handler := server.rateLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/runs", nil)
+	first := httptest.NewRecorder()
+	handler.ServeHTTP(first, req)
+	if first.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected first request to pass, got %d", first.Result().StatusCode)
+	}
+
+	second := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/runs", nil)
+	handler.ServeHTTP(second, req2)
+	if second.Result().StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("expected rate limit response, got %d", second.Result().StatusCode)
 	}
 }

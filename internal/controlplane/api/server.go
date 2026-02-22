@@ -585,11 +585,14 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 			s.rateLimiter = newRateLimiter(s.rateLimiterConfig)
 		}
 		rl := s.rateLimiter
-		config := s.rateLimiterConfig
 		s.mu.Unlock()
 
 		key := s.rateLimitKey(r)
 		if !rl.allowKey(key) {
+			config := rl.config
+			if config == nil {
+				config = DefaultRateLimiterConfig()
+			}
 			log.Printf("[RateLimiter] Rate limit exceeded for %s", key)
 			// Set rate limit headers per spec
 			w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", config.BurstSize))

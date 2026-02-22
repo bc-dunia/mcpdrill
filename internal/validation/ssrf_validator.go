@@ -245,8 +245,12 @@ func (v *SSRFValidator) isPrivateNetworkAllowed(ip net.IP) bool {
 }
 
 func (v *SSRFValidator) isLoopbackAllowed() bool {
-	loopbackIP := net.ParseIP("127.0.0.1")
-	return v.isPrivateNetworkAllowed(loopbackIP)
+	loopbackIPv4 := net.ParseIP("127.0.0.1")
+	if v.isPrivateNetworkAllowed(loopbackIPv4) {
+		return true
+	}
+	loopbackIPv6 := net.ParseIP("::1")
+	return v.isPrivateNetworkAllowed(loopbackIPv6)
 }
 
 func (v *SSRFValidator) ValidateRedirectTarget(targetURL string, report *ValidationReport) {

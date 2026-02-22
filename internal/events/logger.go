@@ -121,6 +121,7 @@ func (el *EventLogger) LogSessionDestroyed(sessionID, reason string, lifetimeMs 
 var (
 	globalLogger *EventLogger
 	globalMu     sync.RWMutex
+	noopLogger   = newNoopEventLogger()
 )
 
 // SetGlobalEventLogger sets the global event logger instance.
@@ -138,12 +139,16 @@ func GetGlobalEventLogger() *EventLogger {
 	if globalLogger != nil {
 		return globalLogger
 	}
-	return NoopEventLogger()
+	return noopLogger
 }
 
 // NoopEventLogger returns an event logger that discards all events.
 // Useful for testing or when event logging is disabled.
 func NoopEventLogger() *EventLogger {
+	return noopLogger
+}
+
+func newNoopEventLogger() *EventLogger {
 	handler := slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})

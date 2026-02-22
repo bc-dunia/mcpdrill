@@ -178,19 +178,33 @@ func mapDialError(err *net.OpError) *OperationError {
 
 		errStr := err.Err.Error()
 		if strings.Contains(errStr, "connection refused") {
+			message := "connection refused"
+			details := map[string]interface{}{}
+			if err.Addr != nil {
+				addr := err.Addr.String()
+				message = fmt.Sprintf("connection refused to %s", err.Addr)
+				details["address"] = addr
+			}
 			return &OperationError{
 				Type:    ErrorTypeConnect,
 				Code:    CodeConnectionRefused,
-				Message: fmt.Sprintf("connection refused to %s", err.Addr),
-				Details: map[string]interface{}{"address": err.Addr.String()},
+				Message: message,
+				Details: details,
 			}
 		}
 		if strings.Contains(errStr, "connection reset") {
+			message := "connection reset by peer"
+			details := map[string]interface{}{}
+			if err.Addr != nil {
+				addr := err.Addr.String()
+				message = fmt.Sprintf("connection reset by %s", err.Addr)
+				details["address"] = addr
+			}
 			return &OperationError{
 				Type:    ErrorTypeConnect,
 				Code:    CodeConnectionReset,
-				Message: fmt.Sprintf("connection reset by %s", err.Addr),
-				Details: map[string]interface{}{"address": err.Addr.String()},
+				Message: message,
+				Details: details,
 			}
 		}
 		if strings.Contains(errStr, "network is unreachable") {
@@ -231,11 +245,15 @@ func mapIOError(err *net.OpError) *OperationError {
 func mapSyscallError(errno syscall.Errno, opErr *net.OpError) *OperationError {
 	switch errno {
 	case syscall.ECONNREFUSED:
+		details := map[string]interface{}{}
+		if opErr.Addr != nil {
+			details["address"] = opErr.Addr.String()
+		}
 		return &OperationError{
 			Type:    ErrorTypeConnect,
 			Code:    CodeConnectionRefused,
 			Message: "connection refused",
-			Details: map[string]interface{}{"address": opErr.Addr.String()},
+			Details: details,
 		}
 	case syscall.ECONNRESET:
 		return &OperationError{

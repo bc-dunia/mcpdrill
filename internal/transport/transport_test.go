@@ -1297,6 +1297,25 @@ func TestMapSyscallErrors(t *testing.T) {
 	}
 }
 
+func TestMapErrorWithNilAddrDoesNotPanic(t *testing.T) {
+	opErr := &net.OpError{
+		Op:  "dial",
+		Net: "tcp",
+		Err: syscall.ECONNREFUSED,
+	}
+
+	result := MapError(opErr)
+	if result == nil {
+		t.Fatal("expected mapped error")
+	}
+	if result.Type != ErrorTypeConnect {
+		t.Errorf("expected type %s, got %s", ErrorTypeConnect, result.Type)
+	}
+	if result.Code != CodeConnectionRefused {
+		t.Errorf("expected code %s, got %s", CodeConnectionRefused, result.Code)
+	}
+}
+
 func TestIsNotification(t *testing.T) {
 	tests := []struct {
 		name     string
