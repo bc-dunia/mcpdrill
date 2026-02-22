@@ -550,3 +550,61 @@ func TestTelemetryStore_DefaultConfig(t *testing.T) {
 		t.Errorf("Expected MaxTotalRuns=100, got %d", config.MaxTotalRuns)
 	}
 }
+
+func TestTelemetryStore_GetStabilityMetrics_IncludeEvents(t *testing.T) {
+	ts := NewTelemetryStore()
+	runID := "run_0000000000000abc1"
+
+	ts.AddTelemetryBatch(runID, TelemetryBatchRequest{
+		Operations: []types.OperationOutcome{
+			{
+				TimestampMs: 1000,
+				Operation:   "tools_call",
+				SessionID:   "sess_1",
+				OK:          true,
+				LatencyMs:   10,
+			},
+			{
+				TimestampMs: 1100,
+				Operation:   "tools_call",
+				SessionID:   "sess_1",
+				OK:          false,
+				ErrorType:   "connection_dropped",
+				LatencyMs:   15,
+			},
+		},
+	})
+
+	withoutEvents := ts.GetStabilityMetrics(runID, false, false)
+	if withoutEvents == nil {
+		t.Fatal("expected stability metrics")
+	}
+	if len(withoutEvents.Events) != 0 {
+		t.Fatalf("expected no events when include_events=false, got %d", len(withoutEvents.Events))
+	}
+
+	withEvents := ts.GetStabilityMetrics(runID, true, false)
+	if withEvents == nil {
+		t.Fatal("expected stability metrics")
+	}
+	if len(withEvents.Events) == 0 {
+		t.Fatal("expected events when include_events=true")
+	}
+
+	foundCreated := false
+	foundDropped := false
+	for _, event := range withEvents.Events {
+		if event.EventType == "created" {
+			foundCreated = true
+		}
+		if event.EventType == "dropped" {
+			foundDropped = true
+		}
+	}
+	if !foundCreated {
+		t.Error("expected a created event")
+	}
+	if !foundDropped {
+		t.Error("expected a dropped event")
+	}
+}

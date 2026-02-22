@@ -508,6 +508,10 @@ func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, inclu
 		totalLatency float64
 	}
 	sessionStates := make(map[string]*sessionState)
+	var events []metrics.ConnectionEvent
+	if includeEvents {
+		events = make([]metrics.ConnectionEvent, 0, len(logs))
+	}
 
 	for _, log := range logs {
 		if log.SessionID == "" {
@@ -533,6 +537,14 @@ func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, inclu
 		state.totalLatency += float64(log.LatencyMs)
 		if !log.OK && log.ErrorType == "connection_dropped" {
 			state.dropped = true
+			if includeEvents {
+				events = append(events, metrics.ConnectionEvent{
+					SessionID: log.SessionID,
+					EventType: metrics.EventTypeDropped,
+					Timestamp: time.UnixMilli(log.TimestampMs),
+					Reason:    metrics.DropReasonUnknown,
+				})
+			}
 		}
 	}
 
@@ -555,6 +567,20 @@ func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, inclu
 			sessionState = "terminated"
 		} else {
 			activeSessions++
+		}
+		if includeEvents {
+			events = append(events, metrics.ConnectionEvent{
+				SessionID: sessionID,
+				EventType: metrics.EventTypeCreated,
+				Timestamp: time.UnixMilli(state.firstSeen),
+			})
+			if sessionState == "terminated" {
+				events = append(events, metrics.ConnectionEvent{
+					SessionID: sessionID,
+					EventType: metrics.EventTypeTerminated,
+					Timestamp: time.UnixMilli(state.lastSeen),
+				})
+			}
 		}
 
 		avgLatency := float64(0)
@@ -601,6 +627,18 @@ func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, inclu
 		StabilityScore:       stabilityScore,
 		DropRate:             dropRate,
 		SessionMetrics:       sessionMetricsList,
+	}
+	if includeEvents {
+		sort.Slice(events, func(i, j int) bool {
+			if events[i].Timestamp.Equal(events[j].Timestamp) {
+				if events[i].SessionID == events[j].SessionID {
+					return events[i].EventType < events[j].EventType
+				}
+				return events[i].SessionID < events[j].SessionID
+			}
+			return events[i].Timestamp.Before(events[j].Timestamp)
+		})
+		result.Events = events
 	}
 
 	if includeTimeSeries && len(logs) > 0 {
