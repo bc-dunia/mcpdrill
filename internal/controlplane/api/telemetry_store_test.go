@@ -62,6 +62,37 @@ func TestTelemetryStore_AddAndGet(t *testing.T) {
 	}
 }
 
+func TestTelemetryStore_PreservesSessionIDInTelemetryData(t *testing.T) {
+	ts := NewTelemetryStore()
+
+	batch := TelemetryBatchRequest{
+		Operations: []types.OperationOutcome{
+			{
+				OpID:        "op1",
+				Operation:   "tools_call",
+				LatencyMs:   100,
+				OK:          true,
+				TimestampMs: 1000,
+				SessionID:   "sess_00000000000001",
+			},
+		},
+	}
+
+	ts.AddTelemetryBatch("run_0000000000000e111", batch)
+
+	data, err := ts.GetTelemetryData("run_0000000000000e111")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(data.Operations) != 1 {
+		t.Fatalf("expected 1 operation, got %d", len(data.Operations))
+	}
+	if data.Operations[0].SessionID != "sess_00000000000001" {
+		t.Fatalf("expected session_id %q, got %q", "sess_00000000000001", data.Operations[0].SessionID)
+	}
+}
+
 func TestTelemetryStore_MultipleBatches(t *testing.T) {
 	ts := NewTelemetryStore()
 

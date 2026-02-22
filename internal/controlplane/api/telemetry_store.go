@@ -100,6 +100,7 @@ func (ts *TelemetryStore) AddTelemetryBatch(runID string, batch TelemetryBatchRe
 				LatencyMs: op.LatencyMs,
 				OK:        op.OK,
 				ErrorType: op.ErrorType,
+				SessionID: op.SessionID,
 			}
 			rt.operations = append(rt.operations, result)
 		}
