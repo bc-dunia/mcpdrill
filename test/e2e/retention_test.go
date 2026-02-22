@@ -74,7 +74,7 @@ func TestRetentionLogsCleanup(t *testing.T) {
 
 	now := time.Now().UnixMilli()
 	oldEndTime := now - (8 * 24 * 60 * 60 * 1000)
-	recentEndTime := now - (1 * 60 * 60 * 1000)
+	recentEndTime := now - (30 * 60 * 1000)
 
 	oldRunID := "run_0000000000000a1b2"
 	telemetryStore.AddTelemetryBatch(oldRunID, api.TelemetryBatchRequest{

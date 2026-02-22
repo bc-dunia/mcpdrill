@@ -204,6 +204,8 @@ func NewSessionTimer(session *SessionInfo, ttlMs, maxIdleMs int64, callback Evic
 		session:  session,
 		callback: callback,
 	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
 
 	if ttlMs > 0 {
 		st.ttlTimer = time.AfterFunc(time.Duration(ttlMs)*time.Millisecond, func() {
