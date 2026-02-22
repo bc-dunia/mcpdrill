@@ -236,7 +236,12 @@ func (ct *ConnectionTracker) GetStabilityMetrics(includeEvents bool, includeTime
 
 	sessionList := make([]ConnectionMetrics, 0, len(ct.sessions))
 	for _, session := range ct.sessions {
-		sessionList = append(sessionList, *session)
+		sessionCopy := *session
+		if session.TerminatedAt != nil {
+			terminatedAtCopy := *session.TerminatedAt
+			sessionCopy.TerminatedAt = &terminatedAtCopy
+		}
+		sessionList = append(sessionList, sessionCopy)
 	}
 
 	var events []ConnectionEvent
@@ -372,8 +377,12 @@ func (ct *ConnectionTracker) GetSessionMetrics(sessionID string) *ConnectionMetr
 	defer ct.mu.RUnlock()
 
 	if session, ok := ct.sessions[sessionID]; ok {
-		copy := *session
-		return &copy
+		sessionCopy := *session
+		if session.TerminatedAt != nil {
+			terminatedAtCopy := *session.TerminatedAt
+			sessionCopy.TerminatedAt = &terminatedAtCopy
+		}
+		return &sessionCopy
 	}
 	return nil
 }

@@ -101,6 +101,10 @@ func TestConnectionTrackerGetStabilityMetricsReturnsCopies(t *testing.T) {
 
 	first.Events[0].SessionID = "mutated_event"
 	first.SessionMetrics[0].SessionID = "mutated_session"
+	if first.SessionMetrics[0].TerminatedAt != nil {
+		mutated := first.SessionMetrics[0].TerminatedAt.Add(24 * time.Hour)
+		*first.SessionMetrics[0].TerminatedAt = mutated
+	}
 	first.TimeSeriesData[0].Timestamp = 0
 
 	second := ct.GetStabilityMetrics(true, true)
@@ -116,7 +120,48 @@ func TestConnectionTrackerGetStabilityMetricsReturnsCopies(t *testing.T) {
 	if second.SessionMetrics[0].SessionID == "mutated_session" {
 		t.Fatal("session metrics should be returned as copy")
 	}
+	if second.SessionMetrics[0].TerminatedAt != nil && second.SessionMetrics[0].TerminatedAt.Equal(first.SessionMetrics[0].TerminatedAt.UTC()) {
+		t.Fatal("terminated_at should be returned as deep copy")
+	}
 	if second.TimeSeriesData[0].Timestamp == 0 {
 		t.Fatal("time series should be returned as copy")
+	}
+}
+
+func TestConnectionTrackerGetSessionMetricsReturnsDeepCopy(t *testing.T) {
+	ct := NewConnectionTracker()
+	base := time.Unix(1700000200, 0).UTC()
+	ct.RecordEvent(ConnectionEvent{
+		SessionID: "sess_1",
+		EventType: EventTypeCreated,
+		Timestamp: base,
+	})
+	ct.RecordEvent(ConnectionEvent{
+		SessionID: "sess_1",
+		EventType: EventTypeDropped,
+		Timestamp: base.Add(2 * time.Second),
+		Reason:    DropReasonTimeout,
+	})
+
+	first := ct.GetSessionMetrics("sess_1")
+	if first == nil {
+		t.Fatal("expected session metrics")
+	}
+	if first.TerminatedAt == nil {
+		t.Fatal("expected terminated_at")
+	}
+
+	mutated := first.TerminatedAt.Add(24 * time.Hour)
+	*first.TerminatedAt = mutated
+
+	second := ct.GetSessionMetrics("sess_1")
+	if second == nil {
+		t.Fatal("expected session metrics")
+	}
+	if second.TerminatedAt == nil {
+		t.Fatal("expected terminated_at")
+	}
+	if second.TerminatedAt.Equal(mutated) {
+		t.Fatal("terminated_at should be deep-copied")
 	}
 }
