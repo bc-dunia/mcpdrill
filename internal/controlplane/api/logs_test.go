@@ -435,6 +435,53 @@ func TestQueryLogs_PreservesExecutionID(t *testing.T) {
 	}
 }
 
+func TestAddTelemetryBatch_DoesNotAliasInputPointerFields(t *testing.T) {
+	ts := NewTelemetryStore()
+	tokenIndex := 5
+	stream := &types.StreamInfo{
+		IsStreaming: true,
+		EventsCount: 2,
+	}
+
+	batch := TelemetryBatchRequest{
+		RunID: "run_0000000000000d113",
+		Operations: []types.OperationOutcome{
+			{
+				OpID:        "op1",
+				Operation:   "tools/call",
+				ToolName:    "stream_tool",
+				LatencyMs:   100,
+				OK:          true,
+				TimestampMs: 1000,
+				Stream:      stream,
+				TokenIndex:  &tokenIndex,
+			},
+		},
+	}
+
+	ts.AddTelemetryBatch("run_0000000000000d113", batch)
+
+	stream.EventsCount = 999
+	tokenIndex = 777
+
+	logs, _, err := ts.QueryLogs("run_0000000000000d113", LogFilters{Limit: 10, Offset: 0, Order: "desc"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected 1 log, got %d", len(logs))
+	}
+	if logs[0].Stream == nil || logs[0].TokenIndex == nil {
+		t.Fatal("expected stream and token index to be present")
+	}
+	if logs[0].Stream.EventsCount != 2 {
+		t.Fatalf("expected events_count %d, got %d", 2, logs[0].Stream.EventsCount)
+	}
+	if *logs[0].TokenIndex != 5 {
+		t.Fatalf("expected token_index %d, got %d", 5, *logs[0].TokenIndex)
+	}
+}
+
 func TestHandleGetLogs_NotFound(t *testing.T) {
 	rm := newTestRunManagerForLogs(t)
 	server := NewServer("127.0.0.1:0", rm)

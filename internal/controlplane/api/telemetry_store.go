@@ -115,6 +115,18 @@ func (ts *TelemetryStore) AddTelemetryBatch(runID string, batch TelemetryBatchRe
 					"limit", ts.config.MaxLogsPerRun)
 			}
 		} else {
+			streamCopy := op.Stream
+			if op.Stream != nil {
+				copiedStream := *op.Stream
+				streamCopy = &copiedStream
+			}
+
+			tokenIndexCopy := op.TokenIndex
+			if op.TokenIndex != nil {
+				copiedTokenIndex := *op.TokenIndex
+				tokenIndexCopy = &copiedTokenIndex
+			}
+
 			log := OperationLog{
 				TimestampMs: op.TimestampMs,
 				RunID:       runID,
@@ -130,8 +142,8 @@ func (ts *TelemetryStore) AddTelemetryBatch(runID string, batch TelemetryBatchRe
 				OK:          op.OK,
 				ErrorType:   op.ErrorType,
 				ErrorCode:   op.ErrorCode,
-				Stream:      op.Stream,
-				TokenIndex:  op.TokenIndex,
+				Stream:      streamCopy,
+				TokenIndex:  tokenIndexCopy,
 			}
 			rt.logs = append(rt.logs, log)
 			rt.logsSorted = rt.logsSorted && (len(rt.logs) < 2 ||
