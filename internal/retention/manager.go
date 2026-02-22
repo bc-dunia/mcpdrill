@@ -56,6 +56,8 @@ func (m *Manager) Start() {
 	if m.running {
 		return
 	}
+	m.stopCh = make(chan struct{})
+	m.stoppedCh = make(chan struct{})
 	m.running = true
 	go m.run()
 }

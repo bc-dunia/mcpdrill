@@ -132,6 +132,31 @@ func TestManager_StartStop(t *testing.T) {
 	mgr.Stop()
 }
 
+func TestManager_Restart(t *testing.T) {
+	cfg := Config{
+		ArtifactsTTLHours:    1,
+		LogsTTLHours:         1,
+		CleanupIntervalHours: 1,
+	}
+
+	mgr := NewManager(cfg, nil, nil)
+
+	for i := 0; i < 2; i++ {
+		mgr.Start()
+		done := make(chan struct{})
+		go func() {
+			mgr.Stop()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("Stop() did not return in time on iteration %d", i+1)
+		}
+	}
+}
+
 func TestManager_CleanupArtifacts(t *testing.T) {
 	tmpDir := t.TempDir()
 
