@@ -487,12 +487,16 @@ func (ts *TelemetryStore) IsTruncated(runID string) (operationsTruncated, logsTr
 
 func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, includeTimeSeries bool) *metrics.StabilityMetrics {
 	ts.mu.RLock()
-	defer ts.mu.RUnlock()
-
 	rt, ok := ts.runs[runID]
 	if !ok {
+		ts.mu.RUnlock()
 		return nil
 	}
+	logs := make([]OperationLog, len(rt.logs))
+	copy(logs, rt.logs)
+	// endTimeMs is "last telemetry seen"; stopReason indicates actual completion.
+	runEnded := rt.stopReason != ""
+	ts.mu.RUnlock()
 
 	type sessionState struct {
 		firstSeen    int64
@@ -505,7 +509,7 @@ func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, inclu
 	}
 	sessionStates := make(map[string]*sessionState)
 
-	for _, log := range rt.logs {
+	for _, log := range logs {
 		if log.SessionID == "" {
 			continue
 		}
@@ -534,10 +538,6 @@ func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, inclu
 
 	var totalSessions, activeSessions, droppedSessions, terminatedSessions int64
 	var totalLifetimeMs float64
-
-	// Check if run has ended - only use stopReason, not endTimeMs
-	// endTimeMs tracks "last telemetry seen", not "run actually ended"
-	runEnded := rt.stopReason != ""
 
 	var sessionMetricsList []metrics.ConnectionMetrics
 	for sessionID, state := range sessionStates {
@@ -603,11 +603,11 @@ func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, inclu
 		SessionMetrics:       sessionMetricsList,
 	}
 
-	if includeTimeSeries && len(rt.logs) > 0 {
-		bucketSize := ts.calculateBucketSize(rt)
+	if includeTimeSeries && len(logs) > 0 {
+		bucketSize := ts.calculateBucketSize(logs)
 		timeBuckets := make(map[int64]*metrics.StabilityTimePoint)
 
-		for _, log := range rt.logs {
+		for _, log := range logs {
 			if log.SessionID == "" {
 				continue
 			}
@@ -622,7 +622,7 @@ func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, inclu
 		sessionsSeenBefore := make(map[string]bool)
 		sessionsActiveInBucket := make(map[int64]map[string]bool)
 
-		for _, log := range rt.logs {
+		for _, log := range logs {
 			if log.SessionID == "" {
 				continue
 			}
@@ -671,19 +671,21 @@ func (ts *TelemetryStore) GetStabilityMetrics(runID string, includeEvents, inclu
 
 func (ts *TelemetryStore) GetMetricsTimeSeries(runID string) []metrics.MetricsTimePoint {
 	ts.mu.RLock()
-	defer ts.mu.RUnlock()
-
 	rt, ok := ts.runs[runID]
 	if !ok || len(rt.logs) == 0 {
+		ts.mu.RUnlock()
 		return nil
 	}
+	logs := make([]OperationLog, len(rt.logs))
+	copy(logs, rt.logs)
+	ts.mu.RUnlock()
 
 	// Calculate dynamic bucket size based on run duration
 	// Target: 20-30 data points for useful charts
-	bucketSize := ts.calculateBucketSize(rt)
+	bucketSize := ts.calculateBucketSize(logs)
 	buckets := make(map[int64]*metricsTimeBucket)
 
-	for _, log := range rt.logs {
+	for _, log := range logs {
 		bucketKey := (log.TimestampMs / bucketSize) * bucketSize
 		bucket, exists := buckets[bucketKey]
 		if !exists {
@@ -749,13 +751,13 @@ type metricsTimeBucket struct {
 	failedOps  int64
 }
 
-func (ts *TelemetryStore) calculateBucketSize(rt *runTelemetry) int64 {
-	if len(rt.logs) < 2 {
+func (ts *TelemetryStore) calculateBucketSize(logs []OperationLog) int64 {
+	if len(logs) < 2 {
 		return 5000
 	}
 
-	minTs, maxTs := rt.logs[0].TimestampMs, rt.logs[0].TimestampMs
-	for _, log := range rt.logs {
+	minTs, maxTs := logs[0].TimestampMs, logs[0].TimestampMs
+	for _, log := range logs {
 		if log.TimestampMs < minTs {
 			minTs = log.TimestampMs
 		}
