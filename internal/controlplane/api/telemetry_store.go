@@ -342,6 +342,17 @@ func (ts *TelemetryStore) QueryLogs(runID string, filters LogFilters) ([]Operati
 		}
 	}
 
+	for i := range result {
+		if result[i].Stream != nil {
+			streamCopy := *result[i].Stream
+			result[i].Stream = &streamCopy
+		}
+		if result[i].TokenIndex != nil {
+			tokenIndexCopy := *result[i].TokenIndex
+			result[i].TokenIndex = &tokenIndexCopy
+		}
+	}
+
 	ts.mu.RUnlock()
 	return result, total, nil
 }

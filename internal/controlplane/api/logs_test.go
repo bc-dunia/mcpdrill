@@ -347,6 +347,63 @@ func TestHandleGetLogs_Success(t *testing.T) {
 	}
 }
 
+func TestQueryLogs_ReturnsDeepCopiedPointerFields(t *testing.T) {
+	ts := NewTelemetryStore()
+	tokenIndex := 7
+	eventsCount := 3
+
+	batch := TelemetryBatchRequest{
+		RunID: "run_0000000000000d111",
+		Operations: []types.OperationOutcome{
+			{
+				OpID:        "op1",
+				Operation:   "tools/call",
+				ToolName:    "stream_tool",
+				LatencyMs:   100,
+				OK:          true,
+				TimestampMs: 1000,
+				Stream: &types.StreamInfo{
+					IsStreaming: true,
+					EventsCount: eventsCount,
+				},
+				TokenIndex: &tokenIndex,
+			},
+		},
+	}
+	ts.AddTelemetryBatch("run_0000000000000d111", batch)
+
+	initial, _, err := ts.QueryLogs("run_0000000000000d111", LogFilters{Limit: 10, Offset: 0, Order: "desc"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(initial) != 1 {
+		t.Fatalf("expected 1 log, got %d", len(initial))
+	}
+	if initial[0].Stream == nil || initial[0].TokenIndex == nil {
+		t.Fatal("expected stream and token index to be present")
+	}
+
+	initial[0].Stream.EventsCount = 999
+	*initial[0].TokenIndex = 888
+
+	again, _, err := ts.QueryLogs("run_0000000000000d111", LogFilters{Limit: 10, Offset: 0, Order: "desc"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(again) != 1 {
+		t.Fatalf("expected 1 log, got %d", len(again))
+	}
+	if again[0].Stream == nil || again[0].TokenIndex == nil {
+		t.Fatal("expected stream and token index to be present")
+	}
+	if again[0].Stream.EventsCount != eventsCount {
+		t.Fatalf("expected events_count %d, got %d", eventsCount, again[0].Stream.EventsCount)
+	}
+	if *again[0].TokenIndex != tokenIndex {
+		t.Fatalf("expected token_index %d, got %d", tokenIndex, *again[0].TokenIndex)
+	}
+}
+
 func TestHandleGetLogs_NotFound(t *testing.T) {
 	rm := newTestRunManagerForLogs(t)
 	server := NewServer("127.0.0.1:0", rm)
