@@ -31,11 +31,11 @@ type jwtHeader struct {
 }
 
 type jwtClaims struct {
-	Sub    string   `json:"sub"`
-	Iss    string   `json:"iss"`
-	Exp    int64    `json:"exp"`
-	Iat    int64    `json:"iat"`
-	Roles  []string `json:"roles,omitempty"`
+	Sub   string   `json:"sub"`
+	Iss   string   `json:"iss"`
+	Exp   int64    `json:"exp"`
+	Iat   int64    `json:"iat"`
+	Roles []string `json:"roles,omitempty"`
 }
 
 // Authenticate extracts and validates the JWT from the request.
@@ -79,6 +79,15 @@ func (a *JWTAuthenticator) extractToken(r *http.Request) string {
 }
 
 func (a *JWTAuthenticator) validateToken(token string) (*jwtClaims, error) {
+	if len(a.secret) == 0 {
+		return nil, &AuthError{
+			StatusCode: http.StatusInternalServerError,
+			ErrorType:  "configuration_error",
+			ErrorCode:  "JWT_SECRET_REQUIRED",
+			Message:    "JWT secret is not configured",
+		}
+	}
+
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return nil, ErrInvalidCredentials

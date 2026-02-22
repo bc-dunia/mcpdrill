@@ -545,3 +545,35 @@ func TestSSE_EventIDNotFound(t *testing.T) {
 		t.Errorf("Expected 400 for non-existent event ID, got %d", resp.StatusCode)
 	}
 }
+
+func TestSSE_LastEventIDPrecedesInvalidCursorParam(t *testing.T) {
+	rm := newTestRunManager(t)
+	server, cleanup, err := StartTestServer(rm)
+	if err != nil {
+		t.Fatalf("Failed to start test server: %v", err)
+	}
+	defer cleanup()
+
+	config := loadValidConfig(t)
+	runID, _ := rm.CreateRun(config, "test")
+	_ = rm.StartRun(runID, "test")
+
+	events, err := rm.TailEvents(runID, 0, 1)
+	if err != nil || len(events) == 0 {
+		t.Fatalf("failed to get seed event: %v", err)
+	}
+	lastEventID := events[0].EventID
+
+	req, _ := http.NewRequest("GET", server.URL()+"/runs/"+runID+"/events?cursor=not-evt-format", nil)
+	req.Header.Set("Last-Event-ID", lastEventID)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200 with valid Last-Event-ID precedence, got %d", resp.StatusCode)
+	}
+}

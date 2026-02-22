@@ -978,6 +978,31 @@ func TestPoolBasic(t *testing.T) {
 	}
 }
 
+func TestSessionPoolAcquireHonorsContextCancelWhileWaiting(t *testing.T) {
+	pool := NewSessionPool(1, 60000, 30000)
+	ctx := context.Background()
+	pool.Start(ctx)
+	defer pool.Close()
+
+	conn := newMockConnection()
+	session := NewSessionInfo("held_session", conn, 60000, 30000)
+	pool.Add(session)
+
+	waitCtx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, _, err := pool.Acquire(waitCtx)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected acquire timeout error")
+	}
+	if elapsed >= 250*time.Millisecond {
+		t.Fatalf("acquire should return promptly on context cancellation, elapsed=%v", elapsed)
+	}
+}
+
 func TestSessionTimerTTL(t *testing.T) {
 	evicted := make(chan EvictionReason, 1)
 	callback := func(session *SessionInfo, reason EvictionReason) {

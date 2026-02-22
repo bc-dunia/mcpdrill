@@ -183,6 +183,8 @@ func TestComputePercentile(t *testing.T) {
 		{"ten values p95", []int{10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, 95, 100},
 		{"ten values p99", []int{10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, 99, 100},
 		{"unsorted input", []int{50, 10, 90, 30, 70}, 50, 50},
+		{"negative percentile clamps to min", []int{10, 20, 30}, -5, 10},
+		{"over-100 percentile clamps to max", []int{10, 20, 30}, 120, 30},
 	}
 
 	for _, tt := range tests {

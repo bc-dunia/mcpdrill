@@ -366,6 +366,27 @@ func TestSSRFValidator(t *testing.T) {
 			t.Error("Should not block private address when explicitly allowed")
 		}
 	})
+
+	t.Run("allows localhost when loopback range explicitly configured", func(t *testing.T) {
+		vWithLoopback := NewSSRFValidator([]string{"127.0.0.0/8"})
+		config := map[string]interface{}{
+			"target": map[string]interface{}{
+				"url": "http://localhost:8080/mcp",
+			},
+		}
+		data, _ := json.Marshal(config)
+		report := vWithLoopback.Validate(data)
+		hasLocalhostBlocked := false
+		for _, e := range report.Errors {
+			if e.Code == CodeLocalhostBlocked {
+				hasLocalhostBlocked = true
+				break
+			}
+		}
+		if hasLocalhostBlocked {
+			t.Error("localhost should be allowed when loopback range is explicitly allowed")
+		}
+	})
 }
 
 func TestRoundTrip(t *testing.T) {

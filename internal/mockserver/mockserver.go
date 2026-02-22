@@ -1328,6 +1328,9 @@ func evalRPN(tokens []string) (float64, error) {
 		case "*":
 			stack = append(stack, a*b)
 		case "/":
+			if b == 0 {
+				return 0, fmt.Errorf("division by zero")
+			}
 			stack = append(stack, a/b)
 		default:
 			return 0, fmt.Errorf("invalid operator")

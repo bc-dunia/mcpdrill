@@ -346,6 +346,26 @@ func TestJWTAuthenticator(t *testing.T) {
 			t.Errorf("expected ErrInvalidCredentials, got %v", err)
 		}
 	})
+
+	t.Run("empty secret rejected as misconfiguration", func(t *testing.T) {
+		insecureAuth := NewJWTAuthenticator(&Config{
+			Mode:      AuthModeJWT,
+			JWTSecret: nil,
+			JWTIssuer: "test-issuer",
+		})
+		token := createTestJWT(t, []byte{}, "test-user", "test-issuer", time.Now().Add(time.Hour).Unix(), nil)
+		req := httptest.NewRequest("GET", "/test", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		_, err := insecureAuth.Authenticate(req)
+		if err == nil {
+			t.Fatal("expected misconfiguration error")
+		}
+		authErr, ok := err.(*AuthError)
+		if !ok || authErr.ErrorCode != "JWT_SECRET_REQUIRED" {
+			t.Fatalf("expected JWT_SECRET_REQUIRED error, got %v", err)
+		}
+	})
 }
 
 func createTestJWT(t *testing.T, secret []byte, sub, iss string, exp int64, roles []string) string {

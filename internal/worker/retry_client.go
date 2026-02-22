@@ -77,6 +77,8 @@ func (c *RetryHTTPClient) Do(req *http.Request) (*http.Response, error) {
 			select {
 			case <-c.ctx.Done():
 				return nil, c.ctx.Err()
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
 			case <-time.After(backoff):
 				backoff *= 2
 				if backoff > c.config.MaxBackoff {
