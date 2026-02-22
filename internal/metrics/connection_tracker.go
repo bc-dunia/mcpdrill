@@ -225,10 +225,34 @@ func (ct *ConnectionTracker) RecordTimePoint(point StabilityTimePoint) {
 // GetStabilityMetrics computes and returns current stability metrics.
 func (ct *ConnectionTracker) GetStabilityMetrics(includeEvents bool, includeTimeSeries bool) *StabilityMetrics {
 	ct.mu.RLock()
-	defer ct.mu.RUnlock()
-
 	now := ct.nowFunc()
-	elapsedMinutes := now.Sub(ct.startTime).Minutes()
+	startTime := ct.startTime
+	totalCreated := ct.totalCreated
+	totalDropped := ct.totalDropped
+	totalTerminated := ct.totalTerminated
+	totalReconnects := ct.totalReconnects
+	totalProtocolErrors := ct.totalProtocolErrors
+	totalRequests := ct.totalRequests
+
+	sessionList := make([]ConnectionMetrics, 0, len(ct.sessions))
+	for _, session := range ct.sessions {
+		sessionList = append(sessionList, *session)
+	}
+
+	var events []ConnectionEvent
+	if includeEvents {
+		events = make([]ConnectionEvent, len(ct.events))
+		copy(events, ct.events)
+	}
+
+	var timeSeries []StabilityTimePoint
+	if includeTimeSeries {
+		timeSeries = make([]StabilityTimePoint, len(ct.timeSeries))
+		copy(timeSeries, ct.timeSeries)
+	}
+	ct.mu.RUnlock()
+
+	elapsedMinutes := now.Sub(startTime).Minutes()
 	if elapsedMinutes < 1 {
 		elapsedMinutes = 1
 	}
@@ -237,9 +261,8 @@ func (ct *ConnectionTracker) GetStabilityMetrics(includeEvents bool, includeTime
 	var totalLifetimeMs float64
 	var sessionLifetimeCount int
 
-	sessionList := make([]ConnectionMetrics, 0, len(ct.sessions))
-	for _, session := range ct.sessions {
-		sessionList = append(sessionList, *session)
+	for i := range sessionList {
+		session := &sessionList[i]
 		if session.State == "active" {
 			activeCount++
 			lifetime := now.Sub(session.CreatedAt).Milliseconds()
@@ -258,20 +281,20 @@ func (ct *ConnectionTracker) GetStabilityMetrics(includeEvents bool, includeTime
 	}
 
 	reconnectRate := float64(0)
-	if ct.totalCreated > 0 {
-		reconnectRate = float64(ct.totalReconnects) / float64(ct.totalCreated)
+	if totalCreated > 0 {
+		reconnectRate = float64(totalReconnects) / float64(totalCreated)
 	}
 
 	protocolErrorRate := float64(0)
-	if ct.totalRequests > 0 {
-		protocolErrorRate = float64(ct.totalProtocolErrors) / float64(ct.totalRequests)
+	if totalRequests > 0 {
+		protocolErrorRate = float64(totalProtocolErrors) / float64(totalRequests)
 	}
 
-	churnRate := float64(ct.totalCreated) / elapsedMinutes
+	churnRate := float64(totalCreated) / elapsedMinutes
 
 	dropRate := float64(0)
-	if ct.totalCreated > 0 {
-		dropRate = float64(ct.totalDropped) / float64(ct.totalCreated)
+	if totalCreated > 0 {
+		dropRate = float64(totalDropped) / float64(totalCreated)
 	}
 
 	stabilityScore := 100.0 - (dropRate*50 + reconnectRate*30 + protocolErrorRate*20)
@@ -283,10 +306,10 @@ func (ct *ConnectionTracker) GetStabilityMetrics(includeEvents bool, includeTime
 	}
 
 	metrics := &StabilityMetrics{
-		TotalSessions:        ct.totalCreated,
+		TotalSessions:        totalCreated,
 		ActiveSessions:       activeCount,
-		DroppedSessions:      ct.totalDropped,
-		TerminatedSessions:   ct.totalTerminated,
+		DroppedSessions:      totalDropped,
+		TerminatedSessions:   totalTerminated,
 		AvgSessionLifetimeMs: avgLifetimeMs,
 		ReconnectRate:        reconnectRate,
 		ProtocolErrorRate:    protocolErrorRate,
@@ -297,13 +320,11 @@ func (ct *ConnectionTracker) GetStabilityMetrics(includeEvents bool, includeTime
 	}
 
 	if includeEvents {
-		metrics.Events = make([]ConnectionEvent, len(ct.events))
-		copy(metrics.Events, ct.events)
+		metrics.Events = events
 	}
 
 	if includeTimeSeries {
-		metrics.TimeSeriesData = make([]StabilityTimePoint, len(ct.timeSeries))
-		copy(metrics.TimeSeriesData, ct.timeSeries)
+		metrics.TimeSeriesData = timeSeries
 	}
 
 	return metrics
