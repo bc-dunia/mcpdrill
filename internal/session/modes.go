@@ -168,23 +168,40 @@ func (rm *ReuseMode) Acquire(ctx context.Context, vuID string) (*SessionInfo, er
 		return session, nil
 	}
 
-	session, err := rm.createSession(ctx, vuID)
+	newSession, err := rm.createSession(ctx, vuID)
 	if err != nil {
 		return nil, err
 	}
 
 	rm.mu.Lock()
-	rm.sessions[vuID] = session
-	rm.sessionToVU[session.ID] = vuID
-	rm.timers[vuID] = NewSessionTimer(session, rm.config.TTLMs, rm.config.MaxIdleMs, func(s *SessionInfo, reason EvictionReason) {
+	if existing, ok := rm.sessions[vuID]; ok {
+		existingTimer := rm.timers[vuID]
+		rm.mu.Unlock()
+
+		newSession.SetState(StateClosed)
+		if newSession.Connection != nil {
+			closeWithLog(newSession.Connection, "session connection")
+		}
+
+		existing.SetState(StateActive)
+		existing.Touch(rm.config.MaxIdleMs)
+		if existingTimer != nil {
+			existingTimer.Touch(rm.config.MaxIdleMs)
+		}
+		return existing, nil
+	}
+
+	rm.sessions[vuID] = newSession
+	rm.sessionToVU[newSession.ID] = vuID
+	rm.timers[vuID] = NewSessionTimer(newSession, rm.config.TTLMs, rm.config.MaxIdleMs, func(s *SessionInfo, reason EvictionReason) {
 		rm.onEviction(s, reason)
 	})
 	rm.mu.Unlock()
 
-	rm.evictor.Track(session)
+	rm.evictor.Track(newSession)
 	rm.totalCreated.Add(1)
 
-	return session, nil
+	return newSession, nil
 }
 
 func (rm *ReuseMode) Release(ctx context.Context, session *SessionInfo) error {

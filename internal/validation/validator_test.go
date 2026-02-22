@@ -452,19 +452,19 @@ func TestInvalidFixtures(t *testing.T) {
 	ssrfValidator := NewSSRFValidator(nil)
 
 	expectedCodes := map[string][]string{
-		"missing_caps.json":                       {CodeCapsRequired},
-		"missing_allowlist.json":                  {CodeAllowlistRequired},
-		"missing_stop_conditions.json":            {CodeStopConditionsRequired},
-		"missing_stop_conditions_baseline.json":   {CodeStopConditionsRequired},
-		"missing_stop_conditions_ramp.json":       {CodeStopConditionsRequired},
-		"in_flight_exceeds_cap.json":              {CodeCapsInconsistent},
-		"streaming_without_stall_condition.json":  {CodeStreamingGuardrails},
-		"ssrf_ip_literal.json":                    {CodeIPLiteralBlocked},
-		"ssrf_localhost.json":                     {CodeLocalhostBlocked},
-		"preflight_not_first.json":                {CodePreflightNotFirst},
-		"duration_too_short.json":                 {CodeDurationInvalid},
-		"negative_load.json":                      {CodeLoadInvalid},
-		"tools_call_no_templates.json":            {CodeToolsCallRequiresTemplates},
+		"missing_caps.json":                      {CodeCapsRequired},
+		"missing_allowlist.json":                 {CodeAllowlistRequired},
+		"missing_stop_conditions.json":           {CodeStopConditionsRequired},
+		"missing_stop_conditions_baseline.json":  {CodeStopConditionsRequired},
+		"missing_stop_conditions_ramp.json":      {CodeStopConditionsRequired},
+		"in_flight_exceeds_cap.json":             {CodeCapsInconsistent},
+		"streaming_without_stall_condition.json": {CodeStreamingGuardrails},
+		"ssrf_ip_literal.json":                   {CodeIPLiteralBlocked},
+		"ssrf_localhost.json":                    {CodeLocalhostBlocked},
+		"preflight_not_first.json":               {CodePreflightNotFirst},
+		"duration_too_short.json":                {CodeDurationInvalid},
+		"negative_load.json":                     {CodeLoadInvalid},
+		"tools_call_no_templates.json":           {CodeToolsCallRequiresTemplates},
 	}
 
 	for _, fixture := range invalidFixtures {
@@ -861,6 +861,39 @@ func TestDNSRebindingValidator(t *testing.T) {
 		}
 		if len(cached) != 1 || !cached[0].Equal(ips[0]) {
 			t.Error("Cached IP doesn't match")
+		}
+	})
+
+	t.Run("cache is not mutated by caller slice changes", func(t *testing.T) {
+		ips := []net.IP{net.ParseIP("8.8.8.8")}
+		v.ValidateResolvedIPs("immutability-test.com", ips)
+		ips[0] = net.ParseIP("1.1.1.1")
+
+		cached, ok := v.cache.Lookup("immutability-test.com")
+		if !ok {
+			t.Fatal("Expected DNS result to be cached")
+		}
+		if !cached[0].Equal(net.ParseIP("8.8.8.8")) {
+			t.Fatalf("expected cached IP to remain 8.8.8.8, got %s", cached[0].String())
+		}
+	})
+
+	t.Run("lookup returns immutable copy", func(t *testing.T) {
+		ips := []net.IP{net.ParseIP("9.9.9.9")}
+		v.ValidateResolvedIPs("lookup-copy-test.com", ips)
+
+		cached, ok := v.cache.Lookup("lookup-copy-test.com")
+		if !ok {
+			t.Fatal("Expected DNS result to be cached")
+		}
+		cached[0] = net.ParseIP("4.4.4.4")
+
+		cachedAgain, ok := v.cache.Lookup("lookup-copy-test.com")
+		if !ok {
+			t.Fatal("Expected DNS result to still be cached")
+		}
+		if !cachedAgain[0].Equal(net.ParseIP("9.9.9.9")) {
+			t.Fatalf("expected cached IP to remain 9.9.9.9, got %s", cachedAgain[0].String())
 		}
 	})
 

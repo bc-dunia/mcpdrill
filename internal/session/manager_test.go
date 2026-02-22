@@ -14,6 +14,7 @@ import (
 type mockAdapter struct {
 	connectCount atomic.Int64
 	connectErr   error
+	connectDelay time.Duration
 }
 
 func (m *mockAdapter) ID() string {
@@ -21,6 +22,9 @@ func (m *mockAdapter) ID() string {
 }
 
 func (m *mockAdapter) Connect(ctx context.Context, config *transport.TransportConfig) (transport.Connection, error) {
+	if m.connectDelay > 0 {
+		time.Sleep(m.connectDelay)
+	}
 	m.connectCount.Add(1)
 	if m.connectErr != nil {
 		return nil, m.connectErr
@@ -722,6 +726,70 @@ func TestConcurrentAcquireRelease(t *testing.T) {
 	metrics := mgr.Metrics()
 	if metrics.TotalCreated > int64(config.PoolSize) {
 		t.Logf("Pool created %d sessions (pool size: %d)", metrics.TotalCreated, config.PoolSize)
+	}
+}
+
+func TestReuseModeConcurrentAcquireSameVU(t *testing.T) {
+	adapter := &mockAdapter{connectDelay: 50 * time.Millisecond}
+	config := &SessionConfig{
+		Mode:            ModeReuse,
+		TTLMs:           60000,
+		MaxIdleMs:       30000,
+		Adapter:         adapter,
+		TransportConfig: &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+	}
+
+	mgr, err := NewManager(config)
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	ctx := context.Background()
+	mgr.Start(ctx)
+	defer mgr.Close(ctx)
+
+	start := make(chan struct{})
+	results := make(chan *SessionInfo, 2)
+	errs := make(chan error, 2)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			session, err := mgr.Acquire(ctx, "vu_same")
+			if err != nil {
+				errs <- err
+				return
+			}
+			results <- session
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(results)
+	close(errs)
+
+	for err := range errs {
+		t.Fatalf("Acquire() error = %v", err)
+	}
+
+	var got []*SessionInfo
+	for session := range results {
+		got = append(got, session)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(got))
+	}
+
+	if got[0].ID != got[1].ID {
+		t.Fatalf("expected same session for same vuID, got %s and %s", got[0].ID, got[1].ID)
+	}
+	metrics := mgr.Metrics()
+	if metrics.TotalCreated != 1 {
+		t.Fatalf("expected one tracked session creation, got %d", metrics.TotalCreated)
 	}
 }
 

@@ -847,6 +847,35 @@ func TestDefaultConfigs(t *testing.T) {
 	}
 }
 
+func TestCollector_InvalidBatchSizeFallsBackToDefault(t *testing.T) {
+	collector := NewCollector(&CollectorConfig{
+		QueueSize:     16,
+		BatchSize:     0,
+		FlushInterval: time.Second,
+	}, nil)
+
+	record := &TelemetryRecord{
+		Type: "op_log",
+		OpLog: &OpLog{
+			Version:   OpLogVersion,
+			Timestamp: time.Now(),
+			Operation: "test",
+			OK:        true,
+		},
+		Tier: Tier1Operation,
+	}
+
+	if ok := collector.queue.Enqueue(record); !ok {
+		t.Fatal("enqueue failed")
+	}
+
+	collector.processBatch()
+
+	if depth := collector.queue.Len(); depth != 0 {
+		t.Fatalf("expected queue to be drained, got depth=%d", depth)
+	}
+}
+
 func TestOpLog_StreamInfo(t *testing.T) {
 	keys := CorrelationKeys{
 		RunID:       "run_0000000000000001",

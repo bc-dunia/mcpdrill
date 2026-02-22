@@ -104,22 +104,10 @@ func (d *SSEDecoder) ReadEvent() (*SSEEvent, error) {
 
 	for {
 		line, err := d.readLineWithTimeout()
-		if err != nil {
-			if err == io.EOF {
-				if len(dataLines) > 0 {
-					event.Data = strings.Join(dataLines, "\n")
-					// Only update lastEventID if it's a valid evt_<hex> format
-					if event.ID != "" && isValidEventID(event.ID) {
-						d.lastEventMu.Lock()
-						d.lastEventID = event.ID
-						d.lastEventMu.Unlock()
-					}
-					return event, nil
-				}
-				return nil, io.EOF
-			}
+		if err != nil && err != io.EOF {
 			return nil, err
 		}
+		eof := err == io.EOF
 
 		if line == "" {
 			if len(dataLines) > 0 || event.Event != "" || event.ID != "" {
@@ -132,10 +120,16 @@ func (d *SSEDecoder) ReadEvent() (*SSEEvent, error) {
 				}
 				return event, nil
 			}
+			if eof {
+				return nil, io.EOF
+			}
 			continue
 		}
 
 		if strings.HasPrefix(line, ":") {
+			if eof {
+				return nil, io.EOF
+			}
 			continue
 		}
 
@@ -166,6 +160,19 @@ func (d *SSEDecoder) ReadEvent() (*SSEEvent, error) {
 				event.Retry = retry
 			}
 		}
+
+		if eof {
+			if len(dataLines) > 0 || event.Event != "" || event.ID != "" {
+				event.Data = strings.Join(dataLines, "\n")
+				if event.ID != "" && isValidEventID(event.ID) {
+					d.lastEventMu.Lock()
+					d.lastEventID = event.ID
+					d.lastEventMu.Unlock()
+				}
+				return event, nil
+			}
+			return nil, io.EOF
+		}
 	}
 }
 
@@ -173,7 +180,7 @@ func (d *SSEDecoder) readLineWithTimeout() (string, error) {
 	if d.stallTimeout <= 0 {
 		r, ok := <-d.lineCh
 		if !ok {
-			return "", ErrStreamClosed
+			return "", io.EOF
 		}
 		return r.line, r.err
 	}
@@ -184,7 +191,7 @@ func (d *SSEDecoder) readLineWithTimeout() (string, error) {
 	select {
 	case r, ok := <-d.lineCh:
 		if !ok {
-			return "", ErrStreamClosed
+			return "", io.EOF
 		}
 		return r.line, r.err
 	case <-timer.C:

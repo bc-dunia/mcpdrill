@@ -281,6 +281,41 @@ func TestSSEDecoder(t *testing.T) {
 		}
 	})
 
+	t.Run("EOF handling without stall timeout", func(t *testing.T) {
+		data := "data: final\n\n"
+		decoder := NewSSEDecoder(io.NopCloser(strings.NewReader(data)), 0)
+		defer decoder.Close()
+
+		_, err := decoder.ReadEvent()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		_, err = decoder.ReadEvent()
+		if err != io.EOF {
+			t.Errorf("expected EOF, got %v", err)
+		}
+	})
+
+	t.Run("EOF handling with unterminated final event", func(t *testing.T) {
+		data := "data: final"
+		decoder := NewSSEDecoder(io.NopCloser(strings.NewReader(data)), 5*time.Second)
+		defer decoder.Close()
+
+		event, err := decoder.ReadEvent()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if event.Data != "final" {
+			t.Fatalf("expected data 'final', got %q", event.Data)
+		}
+
+		_, err = decoder.ReadEvent()
+		if err != io.EOF {
+			t.Errorf("expected EOF, got %v", err)
+		}
+	})
+
 	t.Run("id with null byte ignored", func(t *testing.T) {
 		data := "id: bad\x00id\ndata: test\n\n"
 		decoder := NewSSEDecoder(io.NopCloser(strings.NewReader(data)), 5*time.Second)

@@ -34,13 +34,26 @@ type Collector struct {
 }
 
 func NewCollector(config *CollectorConfig, emitter *Emitter) *Collector {
+	defaults := DefaultCollectorConfig()
+
 	if config == nil {
-		config = DefaultCollectorConfig()
+		config = defaults
+	}
+
+	cfg := *config
+	if cfg.QueueSize <= 0 {
+		cfg.QueueSize = defaults.QueueSize
+	}
+	if cfg.BatchSize <= 0 {
+		cfg.BatchSize = defaults.BatchSize
+	}
+	if cfg.FlushInterval <= 0 {
+		cfg.FlushInterval = defaults.FlushInterval
 	}
 
 	return &Collector{
-		config:  config,
-		queue:   NewBoundedQueue(config.QueueSize),
+		config:  &cfg,
+		queue:   NewBoundedQueue(cfg.QueueSize),
 		emitter: emitter,
 	}
 }

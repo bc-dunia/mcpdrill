@@ -20,13 +20,16 @@ func (c *DNSCache) Lookup(hostname string) ([]net.IP, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	ips, ok := c.entries[hostname]
-	return ips, ok
+	if !ok {
+		return nil, false
+	}
+	return cloneIPs(ips), true
 }
 
 func (c *DNSCache) Store(hostname string, ips []net.IP) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[hostname] = ips
+	c.entries[hostname] = cloneIPs(ips)
 }
 
 func (c *DNSCache) Clear() {
@@ -168,4 +171,22 @@ func (v *DNSRebindingValidator) ipsMatch(a, b []net.IP) bool {
 
 func (v *DNSRebindingValidator) ClearCache() {
 	v.cache.Clear()
+}
+
+func cloneIPs(ips []net.IP) []net.IP {
+	if len(ips) == 0 {
+		return nil
+	}
+
+	cloned := make([]net.IP, len(ips))
+	for i, ip := range ips {
+		if ip == nil {
+			continue
+		}
+		dup := make(net.IP, len(ip))
+		copy(dup, ip)
+		cloned[i] = dup
+	}
+
+	return cloned
 }
