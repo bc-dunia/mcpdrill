@@ -133,6 +133,12 @@ func TestAPIKeyAuthenticator(t *testing.T) {
 			expectError: false,
 			expectRole:  RoleOperator,
 		},
+		{
+			name:        "valid key via lowercase bearer",
+			headers:     map[string]string{"Authorization": "bearer test-key-2"},
+			expectError: false,
+			expectRole:  RoleOperator,
+		},
 	}
 
 	for _, tt := range tests {
@@ -293,6 +299,23 @@ func TestJWTAuthenticator(t *testing.T) {
 		token := createTestJWT(t, secret, "test-user", "test-issuer", time.Now().Add(time.Hour).Unix(), []string{"admin"})
 		req := httptest.NewRequest("GET", "/test", nil)
 		req.Header.Set("Authorization", "Bearer "+token)
+
+		user, err := auth.Authenticate(req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if user.ID != "test-user" {
+			t.Errorf("expected user ID 'test-user', got %q", user.ID)
+		}
+		if !user.HasRole(RoleAdmin) {
+			t.Error("expected admin role")
+		}
+	})
+
+	t.Run("valid token with lowercase bearer", func(t *testing.T) {
+		token := createTestJWT(t, secret, "test-user", "test-issuer", time.Now().Add(time.Hour).Unix(), []string{"admin"})
+		req := httptest.NewRequest("GET", "/test", nil)
+		req.Header.Set("Authorization", "bearer "+token)
 
 		user, err := auth.Authenticate(req)
 		if err != nil {

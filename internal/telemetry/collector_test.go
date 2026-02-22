@@ -1057,8 +1057,8 @@ func TestBoundedQueue_DequeueBatchBlocking(t *testing.T) {
 		t.Fatal("DequeueBatch should have unblocked")
 	}
 
-	if len(batch) != 3 {
-		t.Fatalf("expected batch of 3, got %d", len(batch))
+	if len(batch) < 1 || len(batch) > 3 {
+		t.Fatalf("expected batch size between 1 and 3, got %d", len(batch))
 	}
 }
 

@@ -70,9 +70,9 @@ func (a *JWTAuthenticator) extractToken(r *http.Request) string {
 		return ""
 	}
 
-	const bearerPrefix = "Bearer "
-	if strings.HasPrefix(auth, bearerPrefix) {
-		return strings.TrimPrefix(auth, bearerPrefix)
+	parts := strings.Fields(auth)
+	if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+		return parts[1]
 	}
 
 	return ""
