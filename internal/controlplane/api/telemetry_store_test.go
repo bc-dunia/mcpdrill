@@ -625,6 +625,21 @@ func TestTelemetryStore_DefaultConfig(t *testing.T) {
 	}
 }
 
+func TestTelemetryStore_CalculateBucketSize_LongRunTargetsAbout25Points(t *testing.T) {
+	ts := NewTelemetryStore()
+
+	logs := []OperationLog{
+		{TimestampMs: 0},
+		{TimestampMs: 3600000}, // 1 hour
+	}
+
+	bucketSize := ts.calculateBucketSize(logs)
+	expected := int64(3600000 / 25)
+	if bucketSize != expected {
+		t.Fatalf("expected bucket size %dms for 1h run, got %dms", expected, bucketSize)
+	}
+}
+
 func TestTelemetryStore_GetStabilityMetrics_IncludeEvents(t *testing.T) {
 	ts := NewTelemetryStore()
 	runID := "run_0000000000000abc1"

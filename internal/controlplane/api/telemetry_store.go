@@ -844,12 +844,9 @@ func (ts *TelemetryStore) calculateBucketSize(logs []OperationLog) int64 {
 	const targetBuckets = 25
 	bucketSize := durationMs / targetBuckets
 
-	const minBucketSize, maxBucketSize = 100, 5000
+	const minBucketSize = 100
 	if bucketSize < minBucketSize {
 		bucketSize = minBucketSize
-	}
-	if bucketSize > maxBucketSize {
-		bucketSize = maxBucketSize
 	}
 
 	return bucketSize
