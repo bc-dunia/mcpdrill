@@ -118,6 +118,7 @@ func (ts *TelemetryStore) AddTelemetryBatch(runID string, batch TelemetryBatchRe
 			log := OperationLog{
 				TimestampMs: op.TimestampMs,
 				RunID:       runID,
+				ExecutionID: op.ExecutionID,
 				Stage:       stage,
 				StageID:     op.StageID,
 				WorkerID:    op.WorkerID,

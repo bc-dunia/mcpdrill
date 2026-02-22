@@ -404,6 +404,37 @@ func TestQueryLogs_ReturnsDeepCopiedPointerFields(t *testing.T) {
 	}
 }
 
+func TestQueryLogs_PreservesExecutionID(t *testing.T) {
+	ts := NewTelemetryStore()
+
+	batch := TelemetryBatchRequest{
+		RunID: "run_0000000000000d112",
+		Operations: []types.OperationOutcome{
+			{
+				OpID:        "op1",
+				Operation:   "tools/call",
+				ToolName:    "read_file",
+				LatencyMs:   120,
+				OK:          true,
+				TimestampMs: 1000,
+				ExecutionID: "exec_0000000000000001",
+			},
+		},
+	}
+	ts.AddTelemetryBatch("run_0000000000000d112", batch)
+
+	logs, _, err := ts.QueryLogs("run_0000000000000d112", LogFilters{Limit: 10, Offset: 0, Order: "desc"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected 1 log, got %d", len(logs))
+	}
+	if logs[0].ExecutionID != "exec_0000000000000001" {
+		t.Fatalf("expected execution_id %q, got %q", "exec_0000000000000001", logs[0].ExecutionID)
+	}
+}
+
 func TestHandleGetLogs_NotFound(t *testing.T) {
 	rm := newTestRunManagerForLogs(t)
 	server := NewServer("127.0.0.1:0", rm)
