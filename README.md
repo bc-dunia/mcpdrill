@@ -257,13 +257,24 @@ curl -N http://localhost:8080/runs/{run_id}/events
 ## Docker
 
 ### Images
+Published to [GitHub Container Registry](https://github.com/bc-dunia/mcpdrill/pkgs/container/) on every release:
 
-| Image | Description |
-|-------|-------------|
-| `mcpdrill/server` | Control plane + embedded Web UI (`go:embed`) |
-| `mcpdrill/worker` | Distributed load worker |
-| `mcpdrill/mockserver` | Built-in MCP mock server (27 tools) |
-| `mcpdrill/agent` | Server-side telemetry agent (optional) |
+| Image | GHCR | Description |
+|-------|------|-------------|
+| `server` | `ghcr.io/bc-dunia/mcpdrill/server` | Control plane + embedded Web UI (`go:embed`) |
+| `worker` | `ghcr.io/bc-dunia/mcpdrill/worker` | Distributed load worker |
+| `mockserver` | `ghcr.io/bc-dunia/mcpdrill/mockserver` | Built-in MCP mock server (27 tools) |
+| `agent` | `ghcr.io/bc-dunia/mcpdrill/agent` | Server-side telemetry agent (optional) |
+
+```bash
+# Pull a specific release (recommended)
+docker pull ghcr.io/bc-dunia/mcpdrill/server:0.1.3
+
+# Or use :latest for the most recent release
+docker pull ghcr.io/bc-dunia/mcpdrill/server:latest
+```
+
+> **Note**: Git tags use a `v` prefix (`v0.1.3`), but Docker image tags do not (`0.1.3`). Multi-arch images are published for `linux/amd64` and `linux/arm64`.
 
 ### Compose Profiles
 
@@ -278,11 +289,11 @@ docker compose up -d --scale worker=5      # scale workers
 
 ```bash
 make docker-build                          # all images
-make docker-build VERSION=v0.1.0           # with version tag
+make docker-build VERSION=v0.1.3           # with version tag
 make docker-server                         # server only
 ```
 
-Images are automatically published to GHCR on tag push via GitHub Actions.
+Images are automatically built and published to GHCR on tag push via GitHub Actions.
 
 ## Documentation
 

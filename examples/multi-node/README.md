@@ -342,4 +342,4 @@ kubectl scale statefulset worker --replicas=5
 
 - Read the [Multi-Node Deployment Guide](../../docs/multi-node-deployment.md) for detailed information
 - See the [Main README](../../README.md) for general usage
-- Check the [API Reference](../../ref/03-api-reference.md) for API details
+- Check the [API Reference](../../docs/api.md) for API details
