@@ -108,11 +108,11 @@ function ComparisonTableComponent({ comparison }: ComparisonTableProps) {
             <th scope="col" className="col-metric">Metric</th>
             <th scope="col" className="col-value">
               <span className="run-label run-a">Run A</span>
-              <span className="run-id">{run_a.run_id.slice(0, 16)}...</span>
+              <span className="run-id" title={run_a.run_id}>{run_a.run_id}</span>
             </th>
             <th scope="col" className="col-value">
               <span className="run-label run-b">Run B</span>
-              <span className="run-id">{run_b.run_id.slice(0, 16)}...</span>
+              <span className="run-id" title={run_b.run_id}>{run_b.run_id}</span>
             </th>
             <th scope="col" className="col-diff">Diff</th>
             <th scope="col" className="col-pct">% Change</th>

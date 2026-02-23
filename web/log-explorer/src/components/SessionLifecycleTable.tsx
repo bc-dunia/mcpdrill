@@ -1,4 +1,5 @@
-import { useState, useMemo, memo } from 'react';
+import { useState, useMemo, memo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { ConnectionMetrics } from '../types';
 import { Icon } from './Icon';
 
@@ -15,6 +16,49 @@ function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
   return `${(ms / 60000).toFixed(1)}m`;
+}
+
+/** Fixed tooltip that portals to body to escape overflow containers. */
+function SessionIdTooltip({ text, anchor }: { text: string; anchor: DOMRect }) {
+  return createPortal(
+    <div
+      className="id-fixed-tooltip"
+      style={{
+        position: 'fixed',
+        top: anchor.top - 8,
+        left: anchor.left + anchor.width / 2,
+        transform: 'translate(-50%, -100%)',
+        zIndex: 10000,
+      }}
+    >
+      {text}
+      <div className="id-fixed-tooltip-arrow" />
+    </div>,
+    document.body
+  );
+}
+
+/** Session ID cell with hover tooltip showing the full ID. */
+function SessionIdCell({ id }: { id: string }) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const ref = useRef<HTMLTableCellElement>(null);
+
+  const show = useCallback(() => {
+    if (ref.current) setRect(ref.current.getBoundingClientRect());
+  }, []);
+  const hide = useCallback(() => setRect(null), []);
+
+  return (
+    <td
+      ref={ref}
+      className="session-id"
+      onMouseEnter={show}
+      onMouseLeave={hide}
+    >
+      {id}
+      {rect && <SessionIdTooltip text={id} anchor={rect} />}
+    </td>
+  );
 }
 
 function getStateColor(state: string): string {
@@ -201,9 +245,7 @@ function SessionLifecycleTableComponent({ sessions, loading, onSessionClick }: S
                 }}
                 role={onSessionClick ? 'button' : undefined}
               >
-                <td className="session-id" title={session.session_id}>
-                  {session.session_id.slice(0, 12)}...
-                </td>
+                <SessionIdCell id={session.session_id} />
                 <td>
                   <span className="state-badge" style={{ color: getStateColor(session.state) }}>
                     {session.state}

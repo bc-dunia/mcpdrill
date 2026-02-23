@@ -10,10 +10,10 @@ interface StabilityScoreProps {
 }
 
 function getScoreColor(score: number): string {
-  if (score >= 90) return '#4ade80';
-  if (score >= 70) return '#fbbf24';
-  if (score >= 50) return '#fb923c';
-  return '#f87171';
+  if (score >= 90) return 'var(--accent-green, #4ade80)';
+  if (score >= 70) return 'var(--accent-amber, #fbbf24)';
+  if (score >= 50) return 'var(--accent-amber-dim, #fb923c)';
+  return 'var(--accent-red, #f87171)';
 }
 
 function getScoreLabel(score: number): string {
@@ -80,19 +80,19 @@ function StabilityScoreComponent({ score, dropRate, reconnectRate, protocolError
         <div className="stability-breakdown">
           <div className="breakdown-item">
             <span className="breakdown-label">Drop Rate</span>
-            <span className="breakdown-value" style={{ color: dropRate > 0.1 ? '#f87171' : '#4ade80' }}>
+            <span className={`breakdown-value ${dropRate > 0.1 ? 'value-danger' : 'value-healthy'}`}>
               {(dropRate * 100).toFixed(1)}%
             </span>
           </div>
           <div className="breakdown-item">
             <span className="breakdown-label">Reconnect Rate</span>
-            <span className="breakdown-value" style={{ color: reconnectRate > 0.2 ? '#fbbf24' : '#4ade80' }}>
+            <span className={`breakdown-value ${reconnectRate > 0.2 ? 'value-warning' : 'value-healthy'}`}>
               {(reconnectRate * 100).toFixed(1)}%
             </span>
           </div>
           <div className="breakdown-item">
             <span className="breakdown-label">Protocol Errors</span>
-            <span className="breakdown-value" style={{ color: protocolErrorRate > 5 ? '#f87171' : '#4ade80' }}>
+            <span className={`breakdown-value ${protocolErrorRate > 5 ? 'value-danger' : 'value-healthy'}`}>
               {protocolErrorRate.toFixed(1)}‰
             </span>
           </div>

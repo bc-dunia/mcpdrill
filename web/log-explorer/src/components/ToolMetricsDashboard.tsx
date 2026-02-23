@@ -558,12 +558,8 @@ function ToolMetricsDashboardComponent({ runId, onToolClick }: ToolMetricsDashbo
           className="summary-card-mini" 
           title={kpiMetrics.worstTool ? `Tool with highest error rate: ${kpiMetrics.worstTool.name}` : 'No data'}
         >
-          <span className="summary-value" style={{ fontSize: '12px' }}>
-            {kpiMetrics.worstTool 
-              ? (kpiMetrics.worstTool.name.length > 10 
-                  ? kpiMetrics.worstTool.name.slice(0, 10) + '...' 
-                  : kpiMetrics.worstTool.name)
-              : '—'}
+          <span className="summary-value summary-value-truncate" title={kpiMetrics.worstTool?.name}>
+            {kpiMetrics.worstTool ? kpiMetrics.worstTool.name : '—'}
           </span>
           <span className="summary-label">Top Errors</span>
         </div>
@@ -722,11 +718,11 @@ function ToolMetricsDashboardComponent({ runId, onToolClick }: ToolMetricsDashbo
                     }}
                     role={onToolClick ? 'button' : undefined}
                   >
-                    <td 
-                      className="tool-metrics-cell-name" 
+                    <td
+                      className="tool-metrics-cell-name"
                       title={name}
                     >
-                      {name.length > 28 ? name.slice(0, 28) + '...' : name}
+                      {name}
                     </td>
                     <td className="tool-metrics-cell-numeric">
                       {metrics.total_ops.toLocaleString()}

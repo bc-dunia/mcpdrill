@@ -146,13 +146,39 @@ export function LogExplorer() {
     if (selectedRunId && activeTab === 'logs') {
       loadLogs(selectedRunId, filters, 0, logsPerPage);
     }
-    
+
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
   }, [selectedRunId, filters, loadLogs, activeTab, logsPerPage]);
+
+  // Auto-refresh logs while the run is active
+  const isRunActive = selectedRun?.state
+    ? /running|stopping|preflight|baseline|ramp|soak|spike/.test(selectedRun.state)
+    : false;
+
+  useEffect(() => {
+    if (!isRunActive || !selectedRunId || activeTab !== 'logs') return;
+
+    const interval = setInterval(() => {
+      loadLogs(selectedRunId, filters, pagination.offset, logsPerPage);
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [isRunActive, selectedRunId, activeTab, filters, pagination.offset, logsPerPage, loadLogs]);
+
+  // Also refresh run list periodically so run state stays up-to-date
+  useEffect(() => {
+    if (!isRunActive) return;
+
+    const interval = setInterval(() => {
+      loadRuns();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [isRunActive, loadRuns]);
 
   const handleRunChange = useCallback((runId: string) => {
     setSelectedRunId(runId);

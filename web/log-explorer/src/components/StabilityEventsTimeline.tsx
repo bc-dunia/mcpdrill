@@ -15,6 +15,9 @@ const EVENT_CONFIG: Record<string, { icon: IconName; color: string; label: strin
   reconnect: { icon: 'refresh', color: 'var(--accent-purple)', label: 'Reconnected' },
 };
 
+/** Event types that indicate issues and should always be shown individually. */
+const NOTABLE_TYPES = new Set(['dropped', 'reconnect']);
+
 function formatEventTime(timestamp: string): string {
   const date = new Date(timestamp);
   return date.toLocaleTimeString('en-US', {
@@ -32,9 +35,61 @@ function formatDuration(ms: number | undefined): string {
   return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
 }
 
+/** A display row: either a single notable event or a collapsed group. */
+type TimelineRow =
+  | { kind: 'single'; event: ConnectionEvent }
+  | { kind: 'group'; eventType: string; count: number; firstTimestamp: string; lastTimestamp: string };
+
+/**
+ * Collapse consecutive runs of the same non-notable event type into groups
+ * while keeping notable events (dropped, reconnect) as individual rows.
+ */
+function buildTimelineRows(sortedEvents: ConnectionEvent[]): TimelineRow[] {
+  const rows: TimelineRow[] = [];
+  let i = 0;
+
+  while (i < sortedEvents.length) {
+    const event = sortedEvents[i];
+
+    // Notable events are always shown individually
+    if (NOTABLE_TYPES.has(event.event_type)) {
+      rows.push({ kind: 'single', event });
+      i++;
+      continue;
+    }
+
+    // Collect consecutive events of the same type
+    let j = i + 1;
+    while (
+      j < sortedEvents.length &&
+      sortedEvents[j].event_type === event.event_type &&
+      !NOTABLE_TYPES.has(sortedEvents[j].event_type)
+    ) {
+      j++;
+    }
+
+    const count = j - i;
+    if (count === 1) {
+      rows.push({ kind: 'single', event });
+    } else {
+      // sortedEvents is newest-first, so first in array = latest timestamp
+      rows.push({
+        kind: 'group',
+        eventType: event.event_type,
+        count,
+        firstTimestamp: sortedEvents[j - 1].timestamp, // oldest
+        lastTimestamp: event.timestamp,                  // newest
+      });
+    }
+    i = j;
+  }
+
+  return rows;
+}
+
 function StabilityEventsTimelineComponent({ events, loading }: StabilityEventsTimelineProps) {
   const sortedEvents = useMemo(() => {
-    return [...events].sort((a, b) => 
+    return [...events].sort((a, b) =>
       new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   }, [events]);
@@ -48,6 +103,8 @@ function StabilityEventsTimelineComponent({ events, loading }: StabilityEventsTi
     });
     return stats;
   }, [events]);
+
+  const timelineRows = useMemo(() => buildTimelineRows(sortedEvents), [sortedEvents]);
 
   if (loading) {
     return (
@@ -73,6 +130,8 @@ function StabilityEventsTimelineComponent({ events, loading }: StabilityEventsTi
     );
   }
 
+  const hasNotableEvents = eventStats.dropped > 0 || eventStats.reconnect > 0;
+
   return (
     <div className="stability-events-timeline">
       <div className="timeline-header">
@@ -95,50 +154,101 @@ function StabilityEventsTimelineComponent({ events, loading }: StabilityEventsTi
           </span>
         </div>
       </div>
-      
-      <div className="timeline-list">
-        {sortedEvents.slice(0, 50).map((event, index) => {
-          const config = EVENT_CONFIG[event.event_type] || {
-            icon: 'info' as IconName,
-            color: 'var(--text-muted)',
-            label: event.event_type,
-          };
-          
-          return (
-            <div key={index} className={`timeline-item event-${event.event_type}`}>
-              <div className="timeline-marker" style={{ backgroundColor: config.color }}>
-                <Icon name={config.icon} size="xs" aria-hidden={true} />
-              </div>
-              <div className="timeline-content">
-                <div className="timeline-main">
-                  <span className="timeline-label">{config.label}</span>
-                  <span className="timeline-time">{formatEventTime(event.timestamp)}</span>
+
+      {/* When no issues exist, show a compact healthy summary */}
+      {!hasNotableEvents && (
+        <div className="timeline-healthy-summary">
+          <Icon name="check-circle" size="sm" aria-hidden={true} />
+          <span>
+            {eventStats.created} sessions created
+            {eventStats.terminated > 0 && <>, {eventStats.terminated} terminated</>}
+            {eventStats.active > 0 && <>, {eventStats.active} active</>}
+          </span>
+          <span className="timeline-healthy-range">
+            {sortedEvents.length > 0 && (
+              <>
+                {formatEventTime(sortedEvents[sortedEvents.length - 1].timestamp)}
+                {' \u2013 '}
+                {formatEventTime(sortedEvents[0].timestamp)}
+              </>
+            )}
+          </span>
+        </div>
+      )}
+
+      {/* When there are issues, show collapsed timeline */}
+      {hasNotableEvents && (
+        <div className="timeline-list">
+          {timelineRows.slice(0, 80).map((row, index) => {
+            if (row.kind === 'group') {
+              const config = EVENT_CONFIG[row.eventType] || {
+                icon: 'info' as IconName,
+                color: 'var(--text-muted)',
+                label: row.eventType,
+              };
+              return (
+                <div key={index} className={`timeline-item timeline-item-group event-${row.eventType}`}>
+                  <div className="timeline-marker" style={{ backgroundColor: config.color, opacity: 0.7 }}>
+                    <Icon name={config.icon} size="xs" aria-hidden={true} />
+                  </div>
+                  <div className="timeline-content">
+                    <div className="timeline-main">
+                      <span className="timeline-label timeline-label-grouped">
+                        {config.label} <span className="timeline-group-count">&times;{row.count}</span>
+                      </span>
+                      <span className="timeline-time">
+                        {formatEventTime(row.firstTimestamp)} &ndash; {formatEventTime(row.lastTimestamp)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="timeline-details">
-                  <span className="timeline-session" title={event.session_id}>
-                    {event.session_id.slice(0, 16)}...
-                  </span>
-                  {event.duration_ms !== undefined && event.duration_ms > 0 && (
-                    <span className="timeline-duration">
-                      {formatDuration(event.duration_ms)}
+              );
+            }
+
+            const event = row.event;
+            const config = EVENT_CONFIG[event.event_type] || {
+              icon: 'info' as IconName,
+              color: 'var(--text-muted)',
+              label: event.event_type,
+            };
+            const isNotable = NOTABLE_TYPES.has(event.event_type);
+
+            return (
+              <div key={index} className={`timeline-item event-${event.event_type}${isNotable ? ' timeline-item-notable' : ''}`}>
+                <div className="timeline-marker" style={{ backgroundColor: config.color }}>
+                  <Icon name={config.icon} size="xs" aria-hidden={true} />
+                </div>
+                <div className="timeline-content">
+                  <div className="timeline-main">
+                    <span className="timeline-label">{config.label}</span>
+                    <span className="timeline-time">{formatEventTime(event.timestamp)}</span>
+                  </div>
+                  <div className="timeline-details">
+                    <span className="timeline-session" title={event.session_id}>
+                      {event.session_id}
                     </span>
-                  )}
-                  {event.reason && (
-                    <span className="timeline-reason" title={event.reason}>
-                      {event.reason}
-                    </span>
-                  )}
+                    {event.duration_ms !== undefined && event.duration_ms > 0 && (
+                      <span className="timeline-duration">
+                        {formatDuration(event.duration_ms)}
+                      </span>
+                    )}
+                    {event.reason && (
+                      <span className="timeline-reason" title={event.reason}>
+                        {event.reason}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
+            );
+          })}
+          {timelineRows.length > 80 && (
+            <div className="timeline-more">
+              +{timelineRows.length - 80} more groups
             </div>
-          );
-        })}
-        {sortedEvents.length > 50 && (
-          <div className="timeline-more">
-            +{sortedEvents.length - 50} more events
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

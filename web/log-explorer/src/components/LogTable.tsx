@@ -1,4 +1,5 @@
-import { memo, useState, useEffect } from 'react';
+import { memo, useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { OperationLog, PaginationState, LogFilters } from '../types'
 import { SkeletonTable } from './Skeleton'
 import { Icon } from './Icon';
@@ -36,6 +37,68 @@ function truncateId(id: string | undefined | null, chars = 6): string {
   if (!id) return '—';
   if (id.length <= chars) return id;
   return '...' + id.slice(-chars);
+}
+
+/** Fixed-position tooltip that escapes overflow containers via portal. */
+function FixedTooltip({ text, anchor }: { text: string; anchor: DOMRect }) {
+  return createPortal(
+    <div
+      className="id-fixed-tooltip"
+      style={{
+        position: 'fixed',
+        top: anchor.top - 8,
+        left: anchor.left + anchor.width / 2,
+        transform: 'translate(-50%, -100%)',
+        zIndex: 10000,
+      }}
+    >
+      {text}
+      <div className="id-fixed-tooltip-arrow" />
+    </div>,
+    document.body
+  );
+}
+
+/** Renders a truncated ID cell with a tooltip showing the full value on hover. */
+function IdCell({ id, filterKey, onFilterClick }: {
+  id: string | undefined | null;
+  filterKey: keyof LogFilters;
+  onFilterClick?: (key: keyof LogFilters, value: string) => void;
+}) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+
+  const showTooltip = useCallback(() => {
+    if (ref.current) setRect(ref.current.getBoundingClientRect());
+  }, []);
+  const hideTooltip = useCallback(() => setRect(null), []);
+
+  if (!id) return <span className="muted">—</span>;
+
+  const truncated = truncateId(id);
+  const needsTooltip = id.length > 6;
+
+  return (
+    <span
+      ref={ref}
+      onMouseEnter={needsTooltip ? showTooltip : undefined}
+      onMouseLeave={needsTooltip ? hideTooltip : undefined}
+    >
+      {onFilterClick ? (
+        <button
+          type="button"
+          className="filter-link"
+          onClick={() => onFilterClick(filterKey, id)}
+          aria-label={`Filter by ${filterKey}: ${id}`}
+        >
+          {truncated}
+        </button>
+      ) : (
+        <code>{truncated}</code>
+      )}
+      {rect && <FixedTooltip text={id} anchor={rect} />}
+    </span>
+  );
 }
 
 function LogTableComponent({ logs, loading, pagination, onPageChange, onLimitChange, onFilterClick }: LogTableProps) {
@@ -112,76 +175,16 @@ function LogTableComponent({ logs, loading, pagination, onPageChange, onLimitCha
                   <span className="timestamp-value">{formatTimestamp(log.timestamp_ms)}</span>
                 </td>
                 <td className="cell-id">
-                  {log.stage_id ? (
-                    onFilterClick ? (
-                      <button 
-                        type="button"
-                        className="filter-link"
-                        onClick={() => onFilterClick('stage_id', log.stage_id)}
-                        title={`Filter by stage: ${log.stage_id}`}
-                      >
-                        {truncateId(log.stage_id)}
-                      </button>
-                    ) : (
-                      <code title={log.stage_id}>{truncateId(log.stage_id)}</code>
-                    )
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
+                  <IdCell id={log.stage_id} filterKey="stage_id" onFilterClick={onFilterClick} />
                 </td>
                 <td className="cell-id">
-                  {log.worker_id ? (
-                    onFilterClick ? (
-                      <button 
-                        type="button"
-                        className="filter-link"
-                        onClick={() => onFilterClick('worker_id', log.worker_id)}
-                        title={`Filter by worker: ${log.worker_id}`}
-                      >
-                        {truncateId(log.worker_id)}
-                      </button>
-                    ) : (
-                      <code title={log.worker_id}>{truncateId(log.worker_id)}</code>
-                    )
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
+                  <IdCell id={log.worker_id} filterKey="worker_id" onFilterClick={onFilterClick} />
                 </td>
                 <td className="cell-id">
-                  {log.vu_id ? (
-                    onFilterClick ? (
-                      <button 
-                        type="button"
-                        className="filter-link"
-                        onClick={() => onFilterClick('vu_id', log.vu_id)}
-                        title={`Filter by VU: ${log.vu_id}`}
-                      >
-                        {truncateId(log.vu_id)}
-                      </button>
-                    ) : (
-                      <code title={log.vu_id}>{truncateId(log.vu_id)}</code>
-                    )
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
+                  <IdCell id={log.vu_id} filterKey="vu_id" onFilterClick={onFilterClick} />
                 </td>
                 <td className="cell-id">
-                  {log.session_id ? (
-                    onFilterClick ? (
-                      <button 
-                        type="button"
-                        className="filter-link"
-                        onClick={() => onFilterClick('session_id', log.session_id)}
-                        title={`Filter by session: ${log.session_id}`}
-                      >
-                        {truncateId(log.session_id)}
-                      </button>
-                    ) : (
-                      <code title={log.session_id}>{truncateId(log.session_id)}</code>
-                    )
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
+                  <IdCell id={log.session_id} filterKey="session_id" onFilterClick={onFilterClick} />
                 </td>
                 {hasTokenData && (
                   <td className="cell-token">
