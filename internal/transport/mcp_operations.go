@@ -40,6 +40,15 @@ func NewInitializedNotification() *JSONRPCRequest {
 	}
 }
 
+func NewServerDiscoverRequest(id string) *JSONRPCRequest {
+	return &JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  string(OpServerDiscover),
+		Params:  map[string]interface{}{},
+	}
+}
+
 func NewToolsListRequest(id string, cursor *string) *JSONRPCRequest {
 	params := map[string]interface{}{}
 	if cursor != nil {
@@ -54,14 +63,19 @@ func NewToolsListRequest(id string, cursor *string) *JSONRPCRequest {
 }
 
 func NewToolsCallRequest(id string, toolName string, arguments map[string]interface{}) *JSONRPCRequest {
+	params := ToolsCallParams{
+		Name:      toolName,
+		Arguments: arguments,
+	}
+	return NewToolsCallRequestWithParams(id, params)
+}
+
+func NewToolsCallRequestWithParams(id string, params ToolsCallParams) *JSONRPCRequest {
 	return &JSONRPCRequest{
 		JSONRPC: "2.0",
 		ID:      id,
 		Method:  string(OpToolsCall),
-		Params: ToolsCallParams{
-			Name:      toolName,
-			Arguments: arguments,
-		},
+		Params:  params,
 	}
 }
 
@@ -88,13 +102,16 @@ func NewResourcesListRequest(id string, cursor *string) *JSONRPCRequest {
 }
 
 func NewResourcesReadRequest(id string, uri string) *JSONRPCRequest {
+	params := ResourcesReadParams{URI: uri}
+	return NewResourcesReadRequestWithParams(id, params)
+}
+
+func NewResourcesReadRequestWithParams(id string, params ResourcesReadParams) *JSONRPCRequest {
 	return &JSONRPCRequest{
 		JSONRPC: "2.0",
 		ID:      id,
 		Method:  string(OpResourcesRead),
-		Params: ResourcesReadParams{
-			URI: uri,
-		},
+		Params:  params,
 	}
 }
 
@@ -112,19 +129,71 @@ func NewPromptsListRequest(id string, cursor *string) *JSONRPCRequest {
 }
 
 func NewPromptsGetRequest(id string, name string, arguments map[string]interface{}) *JSONRPCRequest {
+	params := PromptsGetParams{Name: name, Arguments: arguments}
+	return NewPromptsGetRequestWithParams(id, params)
+}
+
+func NewPromptsGetRequestWithParams(id string, params PromptsGetParams) *JSONRPCRequest {
 	return &JSONRPCRequest{
 		JSONRPC: "2.0",
 		ID:      id,
 		Method:  string(OpPromptsGet),
-		Params: PromptsGetParams{
-			Name:      name,
-			Arguments: arguments,
-		},
+		Params:  params,
+	}
+}
+
+func NewSubscriptionsListenRequest(id string, params *SubscriptionsListenParams) *JSONRPCRequest {
+	if params == nil {
+		params = &SubscriptionsListenParams{}
+	}
+	return &JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  string(OpSubscriptionsListen),
+		Params:  *params,
+	}
+}
+
+func NewTasksGetRequest(id string, taskID string) *JSONRPCRequest {
+	return &JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  string(OpTasksGet),
+		Params:  TasksGetParams{TaskID: taskID},
+	}
+}
+
+func NewTasksUpdateRequest(id string, params *TasksUpdateParams) *JSONRPCRequest {
+	if params == nil {
+		params = &TasksUpdateParams{}
+	}
+	return &JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  string(OpTasksUpdate),
+		Params:  *params,
+	}
+}
+
+func NewTasksCancelRequest(id string, taskID string) *JSONRPCRequest {
+	return &JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  string(OpTasksCancel),
+		Params:  TasksCancelParams{TaskID: taskID},
 	}
 }
 
 func ParseInitializeResult(data json.RawMessage) (*InitializeResult, error) {
 	var result InitializeResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func ParseDiscoverResult(data json.RawMessage) (*DiscoverResult, error) {
+	var result DiscoverResult
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, err
 	}

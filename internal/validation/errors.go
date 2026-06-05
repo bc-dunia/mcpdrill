@@ -177,6 +177,7 @@ const (
 	CodeDurationInvalid            = "DURATION_INVALID"
 	CodeLoadInvalid                = "LOAD_INVALID"
 	CodeOperationMixEmpty          = "OPERATION_MIX_EMPTY"
+	CodeInvalidOperationMix        = "INVALID_OPERATION_MIX"
 	CodeToolsCallRequiresTemplates = "TOOLS_CALL_REQUIRES_TEMPLATES"
 	CodeCapsRequired               = "CAPS_REQUIRED"
 	CodeCapsInconsistent           = "CAPS_INCONSISTENT"

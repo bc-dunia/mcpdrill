@@ -64,9 +64,13 @@ function mapOperation(op: OpMixEntry['operation']): string {
     'resources/read': 'resources_read',
     'prompts/list': 'prompts_list',
     'prompts/get': 'prompts_get',
+    'subscriptions/listen': 'subscriptions_listen',
+    'tasks/get': 'tasks_get',
+    'tasks/update': 'tasks_update',
+    'tasks/cancel': 'tasks_cancel',
     'ping': 'ping',
   };
-  return mapping[op] || 'tools_list';
+  return mapping[op] || op;
 }
 
 function convertToBackendConfig(config: RunConfig): BackendRunConfig {
@@ -76,17 +80,6 @@ function convertToBackendConfig(config: RunConfig): BackendRunConfig {
     : `.${targetUrl.hostname.split('.').slice(-2).join('.')}`;
 
   const toolTemplates: BackendToolTemplate[] = [];
-  config.workload.op_mix.forEach((op, idx) => {
-    if (op.operation === 'tools/call' && op.tool_name) {
-      toolTemplates.push({
-        template_id: `tool_${idx}_${op.tool_name}`,
-        tool_name: op.tool_name,
-        weight: op.weight,
-        arguments: (op.arguments || {}) as Record<string, unknown>,
-        expects_streaming: false,
-      });
-    }
-  });
 
   const maxVus = Math.max(...config.stages.map(s => s.load.target_vus), 10);
   const totalDuration = config.stages.reduce((sum, s) => sum + (s.enabled ? s.duration_ms : 0), 0);
@@ -99,6 +92,8 @@ function convertToBackendConfig(config: RunConfig): BackendRunConfig {
       url: normalizeMcpUrl(config.target.url),
       transport: config.target.transport,
       headers: config.target.headers || {},
+      protocol_version: config.target.protocol_version || 'auto',
+      protocol_version_policy: config.target.protocol_version_policy || 'supported',
       auth: {
         type: config.target.auth?.type || 'none',
         tokens: config.target.auth?.tokens,
@@ -140,19 +135,29 @@ function convertToBackendConfig(config: RunConfig): BackendRunConfig {
       pool_size: config.session_policy?.pool_size ?? 10,
       ttl_ms: config.session_policy?.ttl_ms ?? 60000,
       max_idle_ms: config.session_policy?.max_idle_ms ?? 30000,
+      churn_interval_ops: config.session_policy?.churn_interval_ops,
     },
     workload: {
-      in_flight_per_vu: 1,
+      in_flight_per_vu: config.workload.in_flight_per_vu ?? 1,
       think_time: {
-        mode: 'fixed',
-        base_ms: 100,
-        jitter_ms: 0,
+        mode: config.workload.think_time?.mode ?? 'fixed',
+        base_ms: config.workload.think_time?.base_ms ?? 100,
+        jitter_ms: config.workload.think_time?.jitter_ms ?? 0,
       },
+      user_journey: config.workload.user_journey,
       operation_mix: config.workload.op_mix.map(op => {
         const entry: BackendOperationMix = {
           operation: mapOperation(op.operation),
           weight: op.weight,
         };
+        if (op.operation === 'tools/call') {
+          if (op.tool_name) {
+            entry.tool_name = op.tool_name;
+          }
+          if (op.arguments && Object.keys(op.arguments).length > 0) {
+            entry.arguments = op.arguments;
+          }
+        }
         if (op.operation === 'resources/read' && op.uri) {
           entry.uri = op.uri;
         }
@@ -163,6 +168,23 @@ function convertToBackendConfig(config: RunConfig): BackendRunConfig {
           if (op.arguments && Object.keys(op.arguments).length > 0) {
             entry.arguments = op.arguments;
           }
+        }
+        if (op.operation === 'tasks/get' || op.operation === 'tasks/update' || op.operation === 'tasks/cancel') {
+          if (op.task_id) {
+            entry.task_id = op.task_id;
+          }
+        }
+        if (op.operation === 'tasks/update' && op.input_responses && Object.keys(op.input_responses).length > 0) {
+          entry.input_responses = op.input_responses;
+        }
+        if ((op.operation === 'tools/call' || op.operation === 'resources/read' || op.operation === 'prompts/get') && op.request_state) {
+          entry.request_state = op.request_state;
+        }
+        if ((op.operation === 'tools/call' || op.operation === 'resources/read' || op.operation === 'prompts/get') && op.input_responses && Object.keys(op.input_responses).length > 0) {
+          entry.input_responses = op.input_responses;
+        }
+        if (op.operation === 'subscriptions/listen' && op.notifications && Object.keys(op.notifications).length > 0) {
+          entry.notifications = op.notifications;
         }
         return entry;
       }),
@@ -199,7 +221,7 @@ function convertToBackendConfig(config: RunConfig): BackendRunConfig {
           }];
         }
         
-        return {
+        const backendStage = {
           stage_id: stage.stage_id,
           stage: stage.stage,
           enabled: true,
@@ -210,6 +232,15 @@ function convertToBackendConfig(config: RunConfig): BackendRunConfig {
           },
           stop_conditions: stopConditions,
         };
+
+        if (stage.streaming_stop_conditions) {
+          return {
+            ...backendStage,
+            streaming_stop_conditions: stage.streaming_stop_conditions,
+          };
+        }
+
+        return backendStage;
       }),
     safety: {
       ramp_by_default: false,

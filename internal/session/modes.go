@@ -2,8 +2,11 @@ package session
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,10 +16,7 @@ import (
 )
 
 func buildInitializeParams(config *SessionConfig) *transport.InitializeParams {
-	version := config.ProtocolVersion
-	if version == "" {
-		version = mcp.DefaultProtocolVersion
-	}
+	version := mcp.NormalizeRequestedVersion(config.ProtocolVersion)
 	return &transport.InitializeParams{
 		ProtocolVersion: version,
 		Capabilities:    make(map[string]interface{}),
@@ -38,7 +38,7 @@ func validateProtocolVersion(config *SessionConfig, outcome *transport.Operation
 	}
 
 	requested := config.ProtocolVersion
-	if requested == "" {
+	if requested == "" || requested == mcp.ProtocolVersionAuto {
 		requested = mcp.DefaultProtocolVersion
 	}
 
@@ -46,8 +46,27 @@ func validateProtocolVersion(config *SessionConfig, outcome *transport.Operation
 	if policy == "" {
 		policy = mcp.VersionPolicyStrict
 	}
+	if config.ProtocolVersion == mcp.ProtocolVersionAuto {
+		policy = mcp.VersionPolicySupported
+	}
 
 	return mcp.ValidateNegotiation(requested, result.ProtocolVersion, policy)
+}
+
+type protocolConfigurer interface {
+	ConfigureProtocol(version string)
+}
+
+type modernProtocolConfigurer interface {
+	ConfigureModernProtocol(version string)
+}
+
+type legacyProtocolConfigurer interface {
+	ConfigureLegacyProtocol(version string)
+}
+
+type modernDiscoverer interface {
+	Discover(ctx context.Context) (*transport.OperationOutcome, error)
 }
 
 type ModeHandler interface {
@@ -68,9 +87,30 @@ func closeWithLog(closer io.Closer, name string) {
 }
 
 func connectAndInitialize(ctx context.Context, config *SessionConfig) (transport.Connection, string, error) {
+	version := config.ProtocolVersion
+	if version == "" {
+		version = mcp.ProtocolVersionAuto
+	}
+
+	switch mcp.EraForVersion(version) {
+	case mcp.ProtocolEraAuto:
+		return connectAuto(ctx, config)
+	case mcp.ProtocolEraModern:
+		return connectModern(ctx, config, version, config.ProtocolVersionPolicy)
+	}
+
+	return connectLegacy(ctx, config, version)
+}
+
+func connectLegacy(ctx context.Context, config *SessionConfig, version string) (transport.Connection, string, error) {
 	conn, err := config.Adapter.Connect(ctx, config.TransportConfig)
 	if err != nil {
 		return nil, "", &SessionError{Op: "connect", Err: err}
+	}
+	if c, ok := conn.(legacyProtocolConfigurer); ok {
+		c.ConfigureLegacyProtocol(version)
+	} else if c, ok := conn.(protocolConfigurer); ok {
+		c.ConfigureProtocol(version)
 	}
 
 	params := buildInitializeParams(config)
@@ -106,6 +146,110 @@ func connectAndInitialize(ctx context.Context, config *SessionConfig) (transport
 	}
 
 	return conn, sessionID, nil
+}
+
+func connectModern(ctx context.Context, config *SessionConfig, version string, policy mcp.VersionPolicy) (transport.Connection, string, error) {
+	conn, err := config.Adapter.Connect(ctx, config.TransportConfig)
+	if err != nil {
+		return nil, "", &SessionError{Op: "connect", Err: err}
+	}
+
+	if c, ok := conn.(modernProtocolConfigurer); ok {
+		c.ConfigureModernProtocol(version)
+	} else if c, ok := conn.(protocolConfigurer); ok {
+		c.ConfigureProtocol(version)
+	}
+
+	discoverer, ok := conn.(modernDiscoverer)
+	if !ok {
+		closeWithLog(conn, "connection")
+		return nil, "", &SessionError{Op: "server_discover", Err: errModernDiscoveryUnsupported}
+	}
+
+	outcome, err := discoverer.Discover(ctx)
+	if err != nil {
+		closeWithLog(conn, "connection")
+		return nil, "", &SessionError{Op: "server_discover", Err: err}
+	}
+	if !outcome.OK {
+		closeWithLog(conn, "connection")
+		if outcome.Error != nil {
+			return nil, "", &SessionError{Op: "server_discover", Err: outcome.Error}
+		}
+		return nil, "", &SessionError{Op: "server_discover", Err: errSessionClosed}
+	}
+
+	discoverResult, err := transport.ParseDiscoverResult(outcome.Result)
+	if err != nil {
+		closeWithLog(conn, "connection")
+		return nil, "", &SessionError{Op: "server_discover", Err: err}
+	}
+	selectedVersion, err := selectModernProtocolVersion(version, discoverResult.SupportedVersions, policy)
+	if err != nil {
+		closeWithLog(conn, "connection")
+		return nil, "", &SessionError{Op: "server_discover", Err: err}
+	}
+	if selectedVersion != version {
+		if c, ok := conn.(modernProtocolConfigurer); ok {
+			c.ConfigureModernProtocol(selectedVersion)
+		} else if c, ok := conn.(protocolConfigurer); ok {
+			c.ConfigureProtocol(selectedVersion)
+		}
+	}
+
+	return conn, generateSessionID(), nil
+}
+
+func connectAuto(ctx context.Context, config *SessionConfig) (transport.Connection, string, error) {
+	conn, sessionID, err := connectModern(ctx, config, mcp.ModernProtocolVersion, mcp.VersionPolicySupported)
+	if err == nil {
+		return conn, sessionID, nil
+	}
+	if !shouldFallbackToLegacy(err) {
+		return nil, "", err
+	}
+	return connectLegacy(ctx, config, mcp.DefaultProtocolVersion)
+}
+
+func shouldFallbackToLegacy(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, errModernDiscoveryUnsupported) {
+		return true
+	}
+	var opErr *transport.OperationError
+	if errors.As(err, &opErr) {
+		return opErr.Code == transport.CodeJSONRPCMethodNotFound
+	}
+	return false
+}
+
+func selectModernProtocolVersion(requested string, supported []string, policy mcp.VersionPolicy) (string, error) {
+	if requested == "" || requested == mcp.ProtocolVersionAuto {
+		requested = mcp.ModernProtocolVersion
+	}
+	if policy == "" {
+		policy = mcp.VersionPolicyStrict
+	}
+	if policy == mcp.VersionPolicyNone {
+		return requested, nil
+	}
+	if slices.Contains(supported, requested) {
+		return requested, nil
+	}
+	if policy == mcp.VersionPolicySupported {
+		for _, version := range supported {
+			if mcp.IsSupported(version) && mcp.EraForVersion(version) == mcp.ProtocolEraModern {
+				return version, nil
+			}
+		}
+	}
+	return "", &mcp.VersionMismatchError{
+		Requested: requested,
+		Returned:  strings.Join(supported, ","),
+		Reason:    "server/discover did not advertise an acceptable modern protocol version",
+	}
 }
 
 type ReuseMode struct {

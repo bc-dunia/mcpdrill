@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -452,6 +454,267 @@ func TestMCPOperations(t *testing.T) {
 	})
 }
 
+func TestStreamableHTTPModernProtocolRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req JSONRPCRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if got := r.Header.Get(HeaderMCPProtocolVersion); got != "2026-07-28" {
+			t.Errorf("expected protocol header 2026-07-28, got %q", got)
+		}
+		if got := r.Header.Get(HeaderMCPMethod); got != req.Method {
+			t.Errorf("expected method header %s, got %q", req.Method, got)
+		}
+		if got := r.Header.Get(HeaderMCPSessionID); got != "" {
+			t.Errorf("modern request should not send session header, got %q", got)
+		}
+		if req.Method == string(OpToolsList) {
+			w.Header().Set(HeaderContentType, ContentTypeJSON)
+			json.NewEncoder(w).Encode(JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(`{"tools":[]}`),
+			})
+			return
+		}
+		if got := r.Header.Get(HeaderMCPName); got != "fast_echo" {
+			t.Errorf("expected name header fast_echo, got %q", got)
+		}
+		params, ok := req.Params.(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected map params, got %T", req.Params)
+		}
+		meta, ok := params["_meta"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected _meta map, got %T", params["_meta"])
+		}
+		if got := meta["io.modelcontextprotocol/protocolVersion"]; got != "2026-07-28" {
+			t.Errorf("expected _meta protocol version, got %v", got)
+		}
+		if _, ok := meta["io.modelcontextprotocol/clientInfo"].(map[string]interface{}); !ok {
+			t.Fatalf("expected clientInfo metadata")
+		}
+		capabilities, ok := meta["io.modelcontextprotocol/clientCapabilities"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected clientCapabilities metadata")
+		}
+		if _, ok := capabilities["io.modelcontextprotocol/tasks"]; ok {
+			t.Fatalf("expected task client capability under extensions, got stale flat shape %+v", capabilities)
+		}
+		extensions, ok := capabilities["extensions"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected extension client capabilities, got %+v", capabilities)
+		}
+		if _, ok := extensions["io.modelcontextprotocol/tasks"]; !ok {
+			t.Fatalf("expected task client capability, got %+v", extensions)
+		}
+		if _, ok := extensions["io.modelcontextprotocol/inputRequests"]; !ok {
+			t.Fatalf("expected input request client capability, got %+v", extensions)
+		}
+
+		w.Header().Set(HeaderContentType, ContentTypeJSON)
+		json.NewEncoder(w).Encode(JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result:  json.RawMessage(`{"content":[{"type":"text","text":"ok"}]}`),
+		})
+	}))
+	defer server.Close()
+
+	adapter := NewStreamableHTTPAdapter()
+	conn, err := adapter.Connect(context.Background(), &TransportConfig{
+		AllowPrivateNetworks: []string{"127.0.0.0/8"},
+		Endpoint:             server.URL,
+		Timeouts:             DefaultTimeoutConfig(),
+		SessionID:            "legacy-session",
+	})
+	if err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+	defer conn.Close()
+
+	streamConn := conn.(*StreamableHTTPConnection)
+	streamConn.ConfigureModernProtocol("2026-07-28")
+	outcome, err := streamConn.ToolsCall(context.Background(), &ToolsCallParams{
+		Name:      "fast_echo",
+		Arguments: map[string]interface{}{"message": "hello"},
+	})
+	if err != nil {
+		t.Fatalf("tools/call failed: %v", err)
+	}
+	if !outcome.OK {
+		t.Fatalf("expected OK, got %v", outcome.Error)
+	}
+}
+
+func TestStreamableHTTPModernMCPParamHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req JSONRPCRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+
+		switch req.Method {
+		case string(OpToolsList):
+			w.Header().Set(HeaderContentType, ContentTypeJSON)
+			json.NewEncoder(w).Encode(JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(`{"tools":[{"name":"fast_echo","inputSchema":{"type":"object","properties":{"trace":{"type":"string","x-mcp-header":"Trace-Id"},"priority":{"type":"integer","x-mcp-header":"Priority"},"dry_run":{"type":"boolean","x-mcp-header":"Dry-Run"},"unsafe":{"type":"string","x-mcp-header":"Unsafe"}}}}]}`),
+			})
+		case string(OpToolsCall):
+			if got := r.Header.Get("Mcp-Param-Trace-Id"); got != "abc123" {
+				t.Fatalf("expected trace header abc123, got %q", got)
+			}
+			if got := r.Header.Get("Mcp-Param-Priority"); got != "7" {
+				t.Fatalf("expected priority header 7, got %q", got)
+			}
+			if got := r.Header.Get("Mcp-Param-Dry-Run"); got != "true" {
+				t.Fatalf("expected dry-run header true, got %q", got)
+			}
+			if got := r.Header.Get("Mcp-Param-Unsafe"); got != "=?base64?IGxlYWRpbmc=?=" {
+				t.Fatalf("expected base64 unsafe header, got %q", got)
+			}
+			w.Header().Set(HeaderContentType, ContentTypeJSON)
+			json.NewEncoder(w).Encode(JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(`{"content":[{"type":"text","text":"ok"}]}`),
+			})
+		default:
+			t.Fatalf("unexpected method %s", req.Method)
+		}
+	}))
+	defer server.Close()
+
+	adapter := NewStreamableHTTPAdapter()
+	conn, err := adapter.Connect(context.Background(), &TransportConfig{
+		AllowPrivateNetworks: []string{"127.0.0.0/8"},
+		Endpoint:             server.URL,
+		Timeouts:             DefaultTimeoutConfig(),
+	})
+	if err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+	defer conn.Close()
+
+	streamConn := conn.(*StreamableHTTPConnection)
+	streamConn.ConfigureModernProtocol("2026-07-28")
+	outcome, err := streamConn.ToolsCall(context.Background(), &ToolsCallParams{
+		Name: "fast_echo",
+		Arguments: map[string]interface{}{
+			"trace":    "abc123",
+			"priority": 7,
+			"dry_run":  true,
+			"unsafe":   " leading",
+		},
+	})
+	if err != nil {
+		t.Fatalf("tools/call failed: %v", err)
+	}
+	if !outcome.OK {
+		t.Fatalf("expected OK, got %v", outcome.Error)
+	}
+}
+
+func TestStreamableHTTPModernMCPNameHeaderIsEncoded(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req JSONRPCRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+
+		switch req.Method {
+		case string(OpToolsList):
+			w.Header().Set(HeaderContentType, ContentTypeJSON)
+			json.NewEncoder(w).Encode(JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(`{"tools":[{"name":" leading","inputSchema":{"type":"object"}}]}`),
+			})
+		case string(OpToolsCall):
+			if got := r.Header.Get(HeaderMCPName); got != "=?base64?IGxlYWRpbmc=?=" {
+				t.Fatalf("expected encoded Mcp-Name, got %q", got)
+			}
+			w.Header().Set(HeaderContentType, ContentTypeJSON)
+			json.NewEncoder(w).Encode(JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(`{"content":[{"type":"text","text":"ok"}]}`),
+			})
+		default:
+			t.Fatalf("unexpected method %s", req.Method)
+		}
+	}))
+	defer server.Close()
+
+	adapter := NewStreamableHTTPAdapter()
+	conn, err := adapter.Connect(context.Background(), &TransportConfig{
+		AllowPrivateNetworks: []string{"127.0.0.0/8"},
+		Endpoint:             server.URL,
+		Timeouts:             DefaultTimeoutConfig(),
+	})
+	if err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+	defer conn.Close()
+
+	streamConn := conn.(*StreamableHTTPConnection)
+	streamConn.ConfigureModernProtocol("2026-07-28")
+	outcome, err := streamConn.ToolsCall(context.Background(), &ToolsCallParams{Name: " leading"})
+	if err != nil {
+		t.Fatalf("tools/call failed: %v", err)
+	}
+	if !outcome.OK {
+		t.Fatalf("expected OK, got %+v", outcome.Error)
+	}
+}
+
+func TestStreamableHTTPNotificationJSONRPCErrorFailsOutcome(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req JSONRPCRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set(HeaderContentType, ContentTypeJSON)
+		json.NewEncoder(w).Encode(JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error: &JSONRPCError{
+				Code:    -32601,
+				Message: "method not found",
+			},
+		})
+	}))
+	defer server.Close()
+
+	adapter := NewStreamableHTTPAdapter()
+	conn, err := adapter.Connect(context.Background(), &TransportConfig{
+		AllowPrivateNetworks: []string{"127.0.0.0/8"},
+		Endpoint:             server.URL,
+		Timeouts:             DefaultTimeoutConfig(),
+	})
+	if err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+	defer conn.Close()
+
+	outcome, err := conn.(*StreamableHTTPConnection).SendInitialized(context.Background())
+	if err != nil {
+		t.Fatalf("send initialized failed: %v", err)
+	}
+	if outcome.OK {
+		t.Fatal("expected JSON-RPC notification error outcome")
+	}
+	if outcome.Error == nil || outcome.Error.Type != ErrorTypeJSONRPC {
+		t.Fatalf("expected JSON-RPC error, got %+v", outcome.Error)
+	}
+	if outcome.JSONRPCErrorCode == nil || *outcome.JSONRPCErrorCode != -32601 {
+		t.Fatalf("expected JSON-RPC error code -32601, got %+v", outcome.JSONRPCErrorCode)
+	}
+}
+
 func TestValidateJSONRPCResponse(t *testing.T) {
 	t.Run("valid response", func(t *testing.T) {
 		resp := &JSONRPCResponse{
@@ -804,6 +1067,14 @@ func TestStreamableHTTPConnection(t *testing.T) {
 			}
 
 			w.Write([]byte(`data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progress":50}}` + "\n\n"))
+			flusher.Flush()
+
+			progressWithID := JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+			}
+			progressBytes, _ := json.Marshal(progressWithID)
+			w.Write([]byte("data: " + string(progressBytes) + "\n\n"))
 			flusher.Flush()
 
 			resp := JSONRPCResponse{
@@ -1220,6 +1491,325 @@ func TestConcurrentOperations(t *testing.T) {
 	mu.Unlock()
 }
 
+func TestStreamableHTTPModernFiltersReservedMCPParamConfigHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req JSONRPCRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+
+		switch req.Method {
+		case string(OpToolsList):
+			w.Header().Set(HeaderContentType, ContentTypeJSON)
+			json.NewEncoder(w).Encode(JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(`{"tools":[{"name":"fast_echo","inputSchema":{"type":"object","properties":{"trace":{"type":"string","x-mcp-header":"Trace-Id"}}}}]}`),
+			})
+		case string(OpToolsCall):
+			if got := r.Header.Get("Mcp-Param-Trace-Id"); got != "from-args" {
+				t.Fatalf("expected argument-derived Mcp-Param-Trace-Id, got %q", got)
+			}
+			if got := r.Header.Get("Mcp-Param-Injected"); got != "" {
+				t.Fatalf("expected injected Mcp-Param header to be filtered, got %q", got)
+			}
+			w.Header().Set(HeaderContentType, ContentTypeJSON)
+			json.NewEncoder(w).Encode(JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(`{"content":[{"type":"text","text":"ok"}]}`),
+			})
+		default:
+			t.Fatalf("unexpected method %s", req.Method)
+		}
+	}))
+	defer server.Close()
+
+	adapter := NewStreamableHTTPAdapter()
+	conn, err := adapter.Connect(context.Background(), &TransportConfig{
+		AllowPrivateNetworks: []string{"127.0.0.0/8"},
+		Endpoint:             server.URL,
+		Timeouts:             DefaultTimeoutConfig(),
+		Headers: map[string]string{
+			"Mcp-Param-Trace-Id": "from-config",
+			"Mcp-Param-Injected": "spoofed",
+		},
+	})
+	if err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+	defer conn.Close()
+
+	streamConn := conn.(*StreamableHTTPConnection)
+	streamConn.ConfigureModernProtocol("2026-07-28")
+	outcome, err := streamConn.ToolsCall(context.Background(), &ToolsCallParams{
+		Name:      "fast_echo",
+		Arguments: map[string]interface{}{"trace": "from-args"},
+	})
+	if err != nil {
+		t.Fatalf("tools/call failed: %v", err)
+	}
+	if !outcome.OK {
+		t.Fatalf("expected OK, got %v", outcome.Error)
+	}
+}
+
+func TestStreamableHTTPConcurrentFirstModernToolsCallPrimesMCPParamHeaders(t *testing.T) {
+	var toolsCallCount atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req JSONRPCRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+
+		switch req.Method {
+		case string(OpToolsList):
+			w.Header().Set(HeaderContentType, ContentTypeJSON)
+			json.NewEncoder(w).Encode(JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(`{"tools":[{"name":"fast_echo","inputSchema":{"type":"object","properties":{"trace":{"type":"string","x-mcp-header":"Trace-Id"}}}}]}`),
+			})
+		case string(OpToolsCall):
+			if got := r.Header.Get("Mcp-Param-Trace-Id"); got != "from-args" {
+				t.Fatalf("expected argument-derived Mcp-Param-Trace-Id, got %q", got)
+			}
+			toolsCallCount.Add(1)
+			w.Header().Set(HeaderContentType, ContentTypeJSON)
+			json.NewEncoder(w).Encode(JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(`{"content":[{"type":"text","text":"ok"}]}`),
+			})
+		default:
+			t.Fatalf("unexpected method %s", req.Method)
+		}
+	}))
+	defer server.Close()
+
+	adapter := NewStreamableHTTPAdapter()
+	conn, err := adapter.Connect(context.Background(), &TransportConfig{
+		AllowPrivateNetworks: []string{"127.0.0.0/8"},
+		Endpoint:             server.URL,
+		Timeouts:             DefaultTimeoutConfig(),
+	})
+	if err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+	defer conn.Close()
+
+	streamConn := conn.(*StreamableHTTPConnection)
+	streamConn.ConfigureModernProtocol("2026-07-28")
+
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			outcome, err := streamConn.ToolsCall(context.Background(), &ToolsCallParams{
+				Name:      "fast_echo",
+				Arguments: map[string]interface{}{"trace": "from-args"},
+			})
+			if err != nil {
+				t.Errorf("tools/call failed: %v", err)
+				return
+			}
+			if !outcome.OK {
+				t.Errorf("expected OK, got %v", outcome.Error)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := toolsCallCount.Load(); got != 2 {
+		t.Fatalf("expected 2 tools/call requests, got %d", got)
+	}
+}
+
+func TestStreamableHTTPModernToolHeaderBindingsRefreshAfterTTL(t *testing.T) {
+	var toolsListCount atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req JSONRPCRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+
+		switch req.Method {
+		case string(OpToolsList):
+			count := toolsListCount.Add(1)
+			headerName := "Trace-Id"
+			if count > 1 {
+				headerName = "Alt-Trace"
+			}
+			w.Header().Set(HeaderContentType, ContentTypeJSON)
+			json.NewEncoder(w).Encode(JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(fmt.Sprintf(`{"ttlMs":1,"tools":[{"name":"fast_echo","inputSchema":{"type":"object","properties":{"trace":{"type":"string","x-mcp-header":%q}}}}]}`, headerName)),
+			})
+		case string(OpToolsCall):
+			if toolsListCount.Load() == 1 {
+				if got := r.Header.Get("Mcp-Param-Trace-Id"); got != "first" {
+					t.Fatalf("expected first Trace-Id binding, got %q", got)
+				}
+			} else {
+				if got := r.Header.Get("Mcp-Param-Alt-Trace"); got != "second" {
+					t.Fatalf("expected refreshed Alt-Trace binding, got %q", got)
+				}
+				if got := r.Header.Get("Mcp-Param-Trace-Id"); got != "" {
+					t.Fatalf("expected stale Trace-Id binding to be gone, got %q", got)
+				}
+			}
+			w.Header().Set(HeaderContentType, ContentTypeJSON)
+			json.NewEncoder(w).Encode(JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(`{"content":[{"type":"text","text":"ok"}]}`),
+			})
+		default:
+			t.Fatalf("unexpected method %s", req.Method)
+		}
+	}))
+	defer server.Close()
+
+	adapter := NewStreamableHTTPAdapter()
+	conn, err := adapter.Connect(context.Background(), &TransportConfig{
+		AllowPrivateNetworks: []string{"127.0.0.0/8"},
+		Endpoint:             server.URL,
+		Timeouts:             DefaultTimeoutConfig(),
+	})
+	if err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+	defer conn.Close()
+
+	streamConn := conn.(*StreamableHTTPConnection)
+	streamConn.ConfigureModernProtocol("2026-07-28")
+	if outcome, err := streamConn.ToolsCall(context.Background(), &ToolsCallParams{Name: "fast_echo", Arguments: map[string]interface{}{"trace": "first"}}); err != nil || !outcome.OK {
+		t.Fatalf("first tools/call failed: outcome=%+v err=%v", outcome, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if outcome, err := streamConn.ToolsCall(context.Background(), &ToolsCallParams{Name: "fast_echo", Arguments: map[string]interface{}{"trace": "second"}}); err != nil || !outcome.OK {
+		t.Fatalf("second tools/call failed: outcome=%+v err=%v", outcome, err)
+	}
+	if got := toolsListCount.Load(); got != 2 {
+		t.Fatalf("expected tools/list refresh after TTL, got %d", got)
+	}
+}
+
+func TestStreamableHTTPToolsListFiltersInvalidMCPHeaderTools(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req JSONRPCRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set(HeaderContentType, ContentTypeJSON)
+		json.NewEncoder(w).Encode(JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result: json.RawMessage(`{"tools":[
+				{"name":"valid","inputSchema":{"type":"object","properties":{"trace":{"type":"string","x-mcp-header":"Trace-Id"}}}},
+				{"name":"invalid_header","inputSchema":{"type":"object","properties":{"trace":{"type":"string","x-mcp-header":"Bad Header"}}}},
+				{"name":"duplicate_header","inputSchema":{"type":"object","properties":{"a":{"type":"string","x-mcp-header":"Trace-Id"},"b":{"type":"string","x-mcp-header":"trace-id"}}}},
+				{"name":"unsupported_type","inputSchema":{"type":"object","properties":{"trace":{"type":"array","x-mcp-header":"Trace-Id"}}}}
+			]}`),
+		})
+	}))
+	defer server.Close()
+
+	adapter := NewStreamableHTTPAdapter()
+	conn, err := adapter.Connect(context.Background(), &TransportConfig{
+		AllowPrivateNetworks: []string{"127.0.0.0/8"},
+		Endpoint:             server.URL,
+		Timeouts:             DefaultTimeoutConfig(),
+	})
+	if err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+	defer conn.Close()
+
+	streamConn := conn.(*StreamableHTTPConnection)
+	streamConn.ConfigureModernProtocol("2026-07-28")
+	outcome, err := streamConn.ToolsList(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("tools/list failed: %v", err)
+	}
+	if !outcome.OK {
+		t.Fatalf("expected OK, got %v", outcome.Error)
+	}
+	var result ToolsListResult
+	if err := json.Unmarshal(outcome.Result, &result); err != nil {
+		t.Fatalf("unmarshal tools/list result: %v", err)
+	}
+	if len(result.Tools) != 1 || result.Tools[0].Name != "valid" {
+		t.Fatalf("expected only valid tool after filtering, got %+v", result.Tools)
+	}
+}
+
+func TestStreamableHTTPModernFiltersReservedConfigHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get(HeaderMCPProtocolVersion); got != "2026-07-28" {
+			t.Fatalf("expected protocol header from connection, got %q", got)
+		}
+		if got := r.Header.Get(HeaderMCPMethod); got != string(OpToolsList) {
+			t.Fatalf("expected method header from request, got %q", got)
+		}
+		if got := r.Header.Get(HeaderMCPName); got != "" {
+			t.Fatalf("expected config Mcp-Name header to be filtered on tools/list, got %q", got)
+		}
+		if got := r.Header.Get(HeaderMCPSessionID); got != "" {
+			t.Fatalf("expected config session header to be filtered in modern mode, got %q", got)
+		}
+		if got := r.Header.Get(HeaderLastEventID); got != "" {
+			t.Fatalf("expected config Last-Event-ID header to be filtered in modern mode, got %q", got)
+		}
+		if got := r.Header.Get("X-Custom"); got != "kept" {
+			t.Fatalf("expected ordinary config header to be preserved, got %q", got)
+		}
+
+		var req JSONRPCRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set(HeaderContentType, ContentTypeJSON)
+		json.NewEncoder(w).Encode(JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result:  json.RawMessage(`{"tools":[]}`),
+		})
+	}))
+	defer server.Close()
+
+	adapter := NewStreamableHTTPAdapter()
+	conn, err := adapter.Connect(context.Background(), &TransportConfig{
+		AllowPrivateNetworks: []string{"127.0.0.0/8"},
+		Endpoint:             server.URL,
+		Timeouts:             DefaultTimeoutConfig(),
+		Headers: map[string]string{
+			HeaderMCPProtocolVersion: "2025-06-18",
+			HeaderMCPMethod:          "spoofed/method",
+			HeaderMCPName:            "spoofed-name",
+			HeaderMCPSessionID:       "legacy-session",
+			HeaderLastEventID:        "evt_spoofed",
+			"X-Custom":               "kept",
+		},
+	})
+	if err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+	defer conn.Close()
+
+	streamConn := conn.(*StreamableHTTPConnection)
+	streamConn.ConfigureModernProtocol("2026-07-28")
+	outcome, err := streamConn.ToolsList(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("tools/list failed: %v", err)
+	}
+	if !outcome.OK {
+		t.Fatalf("expected OK, got %v", outcome.Error)
+	}
+}
+
 func TestSSEStreamStall(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req JSONRPCRequest
@@ -1494,6 +2084,25 @@ data: {"jsonrpc":"2.0","id":"tc_001","result":{"content":[{"type":"text","text":
 
 	if !signals.EndedNormally {
 		t.Error("expected stream to end normally")
+	}
+}
+
+func TestSSEResponseHandlerAcceptsSubscriptionAcknowledgementOnly(t *testing.T) {
+	sseData := `data: {"jsonrpc":"2.0","method":"notifications/subscriptions/acknowledged","params":{"_meta":{"io.modelcontextprotocol/subscriptionId":"sub-1"},"notifications":{"toolsListChanged":true}}}
+
+`
+	handler := NewSSEResponseHandler(5 * time.Second)
+	body := io.NopCloser(bytes.NewReader([]byte(sseData)))
+
+	resp, signals, err := handler.HandleSSEStream(context.Background(), body, "sub-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil || resp.ID != "sub-1" {
+		t.Fatalf("expected synthetic subscription response, got %+v", resp)
+	}
+	if !signals.EndedNormally {
+		t.Fatal("expected stream to end normally after subscription acknowledgement")
 	}
 }
 

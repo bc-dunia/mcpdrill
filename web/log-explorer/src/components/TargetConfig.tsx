@@ -103,7 +103,7 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
     setConnectionStatus('idle');
     setConnectionResult(null);
     onConnectionStatusChange?.('idle');
-  }, [config.url, config.transport, config.headers, authConfig, onConnectionStatusChange]);
+  }, [config.url, config.transport, config.headers, config.protocol_version, config.protocol_version_policy, authConfig, onConnectionStatusChange]);
 
    const handleTestConnection = useCallback(async () => {
      if (!isValidUrl(config.url)) {
@@ -123,7 +123,7 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
          headers['Authorization'] = `Bearer ${authConfig.tokens[safeIndex]}`;
        }
        
-       const result = await testConnection(config.url, headers);
+       const result = await testConnection(config.url, headers, config.protocol_version, config.protocol_version_policy);
        setConnectionResult(result);
        
        if (result.success) {
@@ -143,7 +143,7 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
        setConnectionStatus('failed');
        onConnectionStatusChange?.('failed', errorResult);
      }
-   }, [config.url, config.headers, authConfig, onConnectionStatusChange]);
+    }, [config.url, config.headers, config.protocol_version, config.protocol_version_policy, authConfig, onConnectionStatusChange]);
 
   const headerCollisions = useMemo(() => {
     const collisions = new Set<string>();
@@ -291,6 +291,41 @@ export function TargetConfig({ config, onChange, onConnectionStatusChange, serve
               readOnly
               aria-readonly="true"
             />
+          </div>
+        </div>
+
+        <div className="form-row">
+          <div className="form-field">
+            <label htmlFor="target-protocol-version">MCP Protocol Version</label>
+            <select
+              id="target-protocol-version"
+              value={config.protocol_version || 'auto'}
+              onChange={e => handleChange('protocol_version', e.target.value)}
+              className="select-input"
+            >
+              <option value="auto">Auto-detect</option>
+              <option value="2026-07-28">2026-07-28</option>
+              <option value="2025-11-25">2025-11-25</option>
+              <option value="2025-06-18">2025-06-18</option>
+              <option value="2025-03-26">2025-03-26</option>
+              <option value="2024-11-05">2024-11-05</option>
+            </select>
+            <span className="field-hint">Use auto to try modern server/discover first, then fall back to legacy initialize.</span>
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="target-protocol-policy">Version Policy</label>
+            <select
+              id="target-protocol-policy"
+              value={config.protocol_version_policy || 'supported'}
+              onChange={e => handleChange('protocol_version_policy', e.target.value)}
+              className="select-input"
+            >
+              <option value="supported">Supported</option>
+              <option value="strict">Strict</option>
+              <option value="none">None</option>
+            </select>
+            <span className="field-hint">Controls how strictly discovery validates the server's advertised protocol versions.</span>
           </div>
         </div>
 

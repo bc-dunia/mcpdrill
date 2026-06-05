@@ -173,6 +173,23 @@ func (s *mockServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch req.Method {
+	case "server/discover":
+		result := map[string]interface{}{
+			"resultType":        "complete",
+			"supportedVersions": []string{mcp.ModernProtocolVersion, mcp.DefaultProtocolVersion},
+			"capabilities": map[string]interface{}{
+				"tools":         map[string]interface{}{"listChanged": true},
+				"resources":     map[string]interface{}{"listChanged": true},
+				"prompts":       map[string]interface{}{"listChanged": true},
+				"subscriptions": map[string]interface{}{},
+				"extensions":    map[string]interface{}{"io.modelcontextprotocol/tasks": map[string]interface{}{}},
+			},
+			"serverInfo": map[string]interface{}{"name": "mockserver", "version": "1.0.0"},
+			"ttlMs":      int64(60000),
+			"cacheScope": "public",
+		}
+		writeJSONRPCResult(w, req.ID, result)
+		return
 	case "initialize":
 		var initParams types.InitializeParams
 		if req.Params != nil {
@@ -188,6 +205,9 @@ func (s *mockServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 			ServerInfo:      types.ServerInfo{Name: "mockserver", Version: "1.0.0"},
 		}
 		writeJSONRPCResult(w, req.ID, result)
+		return
+	case "notifications/initialized":
+		w.WriteHeader(http.StatusAccepted)
 		return
 	case "ping":
 		writeJSONRPCResult(w, req.ID, map[string]interface{}{"ok": true})
@@ -212,6 +232,18 @@ func (s *mockServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "prompts/get":
 		s.handlePromptsGet(w, req)
+		return
+	case "subscriptions/listen":
+		s.handleSubscriptionsListen(w, r, req)
+		return
+	case "tasks/get":
+		s.handleTasksGet(w, req)
+		return
+	case "tasks/update":
+		s.handleTasksUpdate(w, req)
+		return
+	case "tasks/cancel":
+		s.handleTasksCancel(w, req)
 		return
 	default:
 		writeJSONRPCError(w, req.ID, -32601, "method not found")
@@ -259,11 +291,11 @@ func (s *mockServer) handleStreamingTool(w http.ResponseWriter, r *http.Request,
 	for i := 0; i < chunks; i++ {
 		progress := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"method":  "progress",
-			"id":      id,
+			"method":  "notifications/progress",
 			"params": map[string]interface{}{
-				"chunk": i + 1,
-				"total": chunks,
+				"progressToken": id,
+				"chunk":         i + 1,
+				"total":         chunks,
 			},
 		}
 		if !writeSSE(w, progress) {
@@ -397,13 +429,89 @@ func buildToolsList() []types.Tool {
 
 	tools := make([]types.Tool, 0, len(names))
 	for _, name := range names {
+		inputSchema := schema
+		if name == "fast_echo" {
+			inputSchema = json.RawMessage(`{"type":"object","properties":{"message":{"type":"string"},"trace":{"type":"string","x-mcp-header":"Trace-Id"},"priority":{"type":"integer","x-mcp-header":"Priority"},"dry_run":{"type":"boolean","x-mcp-header":"Dry-Run"}}}`)
+		}
 		tools = append(tools, types.Tool{
 			Name:        name,
 			Description: "mock tool",
-			InputSchema: schema,
+			InputSchema: inputSchema,
 		})
 	}
 	return tools
+}
+
+func (s *mockServer) handleSubscriptionsListen(w http.ResponseWriter, r *http.Request, req types.JSONRPCRequest) {
+	var params types.SubscriptionsListenParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		writeJSONRPCError(w, req.ID, -32602, "invalid params")
+		return
+	}
+	result := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "notifications/subscriptions/acknowledged",
+		"params": map[string]interface{}{
+			"_meta": map[string]interface{}{
+				"io.modelcontextprotocol/subscriptionId": req.ID,
+			},
+			"notifications": params.Notifications,
+		},
+	}
+	if !acceptsSSE(r) {
+		resultWithoutJSONRPC := make(map[string]interface{}, len(result)-1)
+		for key, value := range result {
+			if key != "jsonrpc" {
+				resultWithoutJSONRPC[key] = value
+			}
+		}
+		writeJSONRPCResult(w, req.ID, resultWithoutJSONRPC)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	writeSSE(w, result)
+}
+
+func (s *mockServer) handleTasksGet(w http.ResponseWriter, req types.JSONRPCRequest) {
+	var params types.TasksGetParams
+	if err := json.Unmarshal(req.Params, &params); err != nil || params.TaskID == "" {
+		writeJSONRPCError(w, req.ID, -32602, "missing taskId parameter")
+		return
+	}
+	writeJSONRPCResult(w, req.ID, types.Task{
+		ResultType:     "complete",
+		TaskID:         params.TaskID,
+		Status:         types.TaskStatusCompleted,
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+		LastUpdatedAt:  time.Now().UTC().Format(time.RFC3339),
+		StatusMessage:  "mock task completed",
+		Result:         json.RawMessage(`{"content":[{"type":"text","text":"done"}]}`),
+		TTLMs:          60000,
+		PollIntervalMs: 1000,
+	})
+}
+
+func (s *mockServer) handleTasksUpdate(w http.ResponseWriter, req types.JSONRPCRequest) {
+	var params types.TasksUpdateParams
+	if err := json.Unmarshal(req.Params, &params); err != nil || params.TaskID == "" {
+		writeJSONRPCError(w, req.ID, -32602, "missing taskId parameter")
+		return
+	}
+	if len(params.InputResponses) == 0 {
+		writeJSONRPCError(w, req.ID, -32602, "missing inputResponses parameter")
+		return
+	}
+	writeJSONRPCResult(w, req.ID, map[string]interface{}{"resultType": "complete"})
+}
+
+func (s *mockServer) handleTasksCancel(w http.ResponseWriter, req types.JSONRPCRequest) {
+	var params types.TasksCancelParams
+	if err := json.Unmarshal(req.Params, &params); err != nil || params.TaskID == "" {
+		writeJSONRPCError(w, req.ID, -32602, "missing taskId parameter")
+		return
+	}
+	writeJSONRPCResult(w, req.ID, map[string]interface{}{"resultType": "complete"})
 }
 
 // buildResourcesList returns a list of mock resources.

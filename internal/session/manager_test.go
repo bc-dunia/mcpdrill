@@ -3,11 +3,14 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/bc-dunia/mcpdrill/internal/mcp"
 	"github.com/bc-dunia/mcpdrill/internal/transport"
 )
 
@@ -144,6 +147,174 @@ func (m *mockConnection) SetLastEventID(eventID string) {
 	m.lastEventID = eventID
 }
 
+func TestConnectAutoUsesModernDiscover(t *testing.T) {
+	var methods []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req transport.JSONRPCRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		methods = append(methods, req.Method)
+
+		if req.Method != string(transport.OpServerDiscover) {
+			t.Fatalf("expected only server/discover in modern setup, got %s", req.Method)
+		}
+		if got := r.Header.Get(transport.HeaderMCPProtocolVersion); got != mcp.ModernProtocolVersion {
+			t.Errorf("expected protocol header %s, got %q", mcp.ModernProtocolVersion, got)
+		}
+
+		w.Header().Set(transport.HeaderContentType, transport.ContentTypeJSON)
+		json.NewEncoder(w).Encode(transport.JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result: json.RawMessage(`{
+				"resultType":"complete",
+				"supportedVersions":["2026-07-28"],
+				"capabilities":{},
+				"serverInfo":{"name":"modern","version":"1.0"}
+			}`),
+		})
+	}))
+	defer server.Close()
+
+	manager, err := NewManager(&SessionConfig{
+		Mode:            ModePerRequest,
+		Adapter:         transport.NewStreamableHTTPAdapter(),
+		TransportConfig: &transport.TransportConfig{Endpoint: server.URL, AllowPrivateNetworks: []string{"127.0.0.0/8"}, Timeouts: transport.DefaultTimeoutConfig()},
+		ProtocolVersion: mcp.ProtocolVersionAuto,
+	})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	sess, err := manager.Acquire(context.Background(), "vu-1")
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	defer manager.Release(context.Background(), sess)
+
+	if len(methods) != 1 || methods[0] != string(transport.OpServerDiscover) {
+		t.Fatalf("expected only server/discover, got %v", methods)
+	}
+}
+
+func TestSelectModernProtocolVersionHonorsPolicy(t *testing.T) {
+	if got, err := selectModernProtocolVersion("2026-08-01", []string{mcp.ModernProtocolVersion}, mcp.VersionPolicyNone); err != nil || got != "2026-08-01" {
+		t.Fatalf("none policy selected %q err=%v", got, err)
+	}
+	if got, err := selectModernProtocolVersion("2026-08-01", []string{mcp.ModernProtocolVersion}, mcp.VersionPolicySupported); err != nil || got != mcp.ModernProtocolVersion {
+		t.Fatalf("supported policy selected %q err=%v", got, err)
+	}
+	if _, err := selectModernProtocolVersion("2026-08-01", []string{mcp.ModernProtocolVersion}, mcp.VersionPolicyStrict); err == nil {
+		t.Fatal("strict policy should reject non-advertised requested version")
+	}
+}
+
+func TestConnectAutoFallsBackToLegacyInitialize(t *testing.T) {
+	var methods []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req transport.JSONRPCRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		methods = append(methods, req.Method)
+
+		switch req.Method {
+		case string(transport.OpServerDiscover):
+			w.Header().Set(transport.HeaderContentType, transport.ContentTypeJSON)
+			json.NewEncoder(w).Encode(transport.JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Error:   &transport.JSONRPCError{Code: -32601, Message: "method not found"},
+			})
+			return
+		case string(transport.OpInitialize):
+			w.Header().Set(transport.HeaderContentType, transport.ContentTypeJSON)
+			json.NewEncoder(w).Encode(transport.JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(`{"protocolVersion":"2025-11-25","capabilities":{},"serverInfo":{"name":"legacy","version":"1.0"}}`),
+			})
+			return
+		case string(transport.OpInitialized):
+			w.WriteHeader(http.StatusAccepted)
+			return
+		default:
+			t.Fatalf("unexpected method %s", req.Method)
+		}
+	}))
+	defer server.Close()
+
+	manager, err := NewManager(&SessionConfig{
+		Mode:            ModePerRequest,
+		Adapter:         transport.NewStreamableHTTPAdapter(),
+		TransportConfig: &transport.TransportConfig{Endpoint: server.URL, AllowPrivateNetworks: []string{"127.0.0.0/8"}, Timeouts: transport.DefaultTimeoutConfig()},
+		ProtocolVersion: mcp.ProtocolVersionAuto,
+	})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	sess, err := manager.Acquire(context.Background(), "vu-1")
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	defer manager.Release(context.Background(), sess)
+
+	want := []string{string(transport.OpServerDiscover), string(transport.OpInitialize), string(transport.OpInitialized)}
+	if len(methods) != len(want) {
+		t.Fatalf("expected methods %v, got %v", want, methods)
+	}
+	for i := range want {
+		if methods[i] != want[i] {
+			t.Fatalf("expected methods %v, got %v", want, methods)
+		}
+	}
+}
+
+func TestConnectAutoDoesNotFallbackForModernVersionMismatch(t *testing.T) {
+	var methods []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req transport.JSONRPCRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		methods = append(methods, req.Method)
+		if req.Method != string(transport.OpServerDiscover) {
+			t.Fatalf("expected no legacy fallback, got %s", req.Method)
+		}
+		w.Header().Set(transport.HeaderContentType, transport.ContentTypeJSON)
+		json.NewEncoder(w).Encode(transport.JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result: json.RawMessage(`{
+				"resultType":"complete",
+				"supportedVersions":["2026-08-01"],
+				"capabilities":{},
+				"serverInfo":{"name":"future-modern","version":"1.0"}
+			}`),
+		})
+	}))
+	defer server.Close()
+
+	manager, err := NewManager(&SessionConfig{
+		Mode:            ModePerRequest,
+		Adapter:         transport.NewStreamableHTTPAdapter(),
+		TransportConfig: &transport.TransportConfig{Endpoint: server.URL, AllowPrivateNetworks: []string{"127.0.0.0/8"}, Timeouts: transport.DefaultTimeoutConfig()},
+		ProtocolVersion: mcp.ProtocolVersionAuto,
+	})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	if _, err := manager.Acquire(context.Background(), "vu-1"); err == nil {
+		t.Fatal("expected modern version mismatch error")
+	}
+	if len(methods) != 1 || methods[0] != string(transport.OpServerDiscover) {
+		t.Fatalf("expected only server/discover, got %v", methods)
+	}
+}
+
 func TestManagerCreation(t *testing.T) {
 	adapter := &mockAdapter{}
 	transportConfig := &transport.TransportConfig{
@@ -247,6 +418,7 @@ func TestReuseModeBasic(t *testing.T) {
 		MaxIdleMs:       30000,
 		Adapter:         adapter,
 		TransportConfig: &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion: mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := NewManager(config)
@@ -293,6 +465,7 @@ func TestPerRequestModeBasic(t *testing.T) {
 		Mode:            ModePerRequest,
 		Adapter:         adapter,
 		TransportConfig: &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion: mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := NewManager(config)
@@ -333,6 +506,7 @@ func TestPoolModeBasic(t *testing.T) {
 		MaxIdleMs:       30000,
 		Adapter:         adapter,
 		TransportConfig: &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion: mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := NewManager(config)

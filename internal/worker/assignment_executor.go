@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -228,6 +230,23 @@ func (e *AssignmentExecutor) buildTransportConfig(a types.WorkerAssignment) *tra
 			MaxResultSizeBytes:   100 * 1024 * 1024,
 		},
 	}
+	if a.Target.Timeouts != nil {
+		if a.Target.Timeouts.ConnectTimeoutMs > 0 {
+			cfg.Timeouts.ConnectTimeout = time.Duration(a.Target.Timeouts.ConnectTimeoutMs) * time.Millisecond
+		}
+		if a.Target.Timeouts.RequestTimeoutMs > 0 {
+			cfg.Timeouts.RequestTimeout = time.Duration(a.Target.Timeouts.RequestTimeoutMs) * time.Millisecond
+		}
+		if a.Target.Timeouts.StreamStallTimeoutMs > 0 {
+			cfg.Timeouts.StreamStallTimeout = time.Duration(a.Target.Timeouts.StreamStallTimeoutMs) * time.Millisecond
+		}
+	}
+	if a.Target.TLS != nil {
+		cfg.TLSSkipVerify = !a.Target.TLS.Verify
+		if caBundle := resolveSecretRef(a.Target.TLS.CABundleRef); caBundle != "" {
+			cfg.CABundle = []byte(caBundle)
+		}
+	}
 
 	if a.Target.RedirectPolicy != nil {
 		cfg.RedirectPolicy = &transport.RedirectPolicyConfig{
@@ -238,6 +257,21 @@ func (e *AssignmentExecutor) buildTransportConfig(a types.WorkerAssignment) *tra
 	}
 
 	return cfg
+}
+
+func resolveSecretRef(ref string) string {
+	switch {
+	case strings.HasPrefix(ref, "env://"):
+		return os.Getenv(strings.TrimPrefix(ref, "env://"))
+	case strings.HasPrefix(ref, "file://"):
+		data, err := os.ReadFile(strings.TrimPrefix(ref, "file://"))
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(data))
+	default:
+		return ""
+	}
 }
 
 // buildSessionConfig creates session configuration from assignment.
@@ -251,6 +285,7 @@ func (e *AssignmentExecutor) buildSessionConfig(a types.WorkerAssignment, transp
 		Adapter:               adapter,
 		ProtocolVersion:       a.Target.ProtocolVersion,
 		ProtocolVersionPolicy: mcp.ParseVersionPolicy(a.Target.ProtocolVersionPolicy),
+		ChurnIntervalOps:      a.SessionPolicy.ChurnIntervalOps,
 	}
 
 	// Set defaults if not specified
@@ -271,16 +306,43 @@ func (e *AssignmentExecutor) buildVUConfig(a types.WorkerAssignment, sessionMgr 
 		AssignmentID:     a.LeaseID, // Use LeaseID for unique VU IDs
 		WorkerID:         e.workerID,
 		LeaseID:          a.LeaseID,
-		Load:             vu.LoadTarget{TargetVUs: vuCount},
+		Load:             vu.LoadTarget{TargetVUs: vuCount, TargetRPS: a.Load.TargetRPS},
 		OperationMix:     mapOperationMix(a.Workload.OpMix),
-		InFlightPerVU:    1,
-		ThinkTime:        vu.ThinkTimeConfig{BaseMs: 0, JitterMs: 0},
+		InFlightPerVU:    a.Workload.InFlightPerVU,
+		ThinkTime:        vu.ThinkTimeConfig{BaseMs: a.Workload.ThinkTime.BaseMs, JitterMs: a.Workload.ThinkTime.JitterMs},
 		SessionManager:   sessionMgr,
 		TransportAdapter: adapter,
 		TransportConfig:  transportCfg,
 		Mode:             vu.ModeNormal,
-		UserJourney:      vu.DefaultUserJourneyConfig(),
+		UserJourney:      mapUserJourney(a.Workload.UserJourney),
 	}
+}
+
+func mapUserJourney(journey *types.UserJourneyConfig) *vu.UserJourneyConfig {
+	result := vu.DefaultUserJourneyConfig()
+	if journey == nil {
+		return result
+	}
+	if journey.StartupSequence != nil {
+		result.StartupSequence = &vu.StartupSequenceConfig{RunToolsListOnStart: journey.StartupSequence.RunToolsListOnStart}
+	}
+	if journey.PeriodicOps != nil {
+		result.PeriodicOps = &vu.PeriodicOpsConfig{
+			ToolsListIntervalMs:  journey.PeriodicOps.ToolsListIntervalMs,
+			ToolsListAfterErrors: journey.PeriodicOps.ToolsListAfterErrors,
+		}
+	}
+	if journey.ReconnectPolicy != nil {
+		result.ReconnectPolicy = &vu.ReconnectPolicyConfig{
+			Enabled:        journey.ReconnectPolicy.Enabled,
+			InitialDelayMs: journey.ReconnectPolicy.InitialDelayMs,
+			MaxDelayMs:     journey.ReconnectPolicy.MaxDelayMs,
+			Multiplier:     journey.ReconnectPolicy.Multiplier,
+			JitterFraction: journey.ReconnectPolicy.JitterFraction,
+			MaxRetries:     journey.ReconnectPolicy.MaxRetries,
+		}
+	}
+	return result
 }
 
 // cleanupAssignment removes an assignment from tracking.
@@ -371,12 +433,16 @@ func mapOperationMix(entries []types.OpMixEntry) *vu.OperationMix {
 	ops := make([]vu.OperationWeight, len(entries))
 	for i, e := range entries {
 		ops[i] = vu.OperationWeight{
-			Operation:  vu.OperationType(e.Operation),
-			Weight:     e.Weight,
-			ToolName:   e.ToolName,
-			Arguments:  e.Arguments,
-			URI:        e.URI,
-			PromptName: e.PromptName,
+			Operation:      vu.OperationType(e.Operation),
+			Weight:         e.Weight,
+			ToolName:       e.ToolName,
+			Arguments:      e.Arguments,
+			URI:            e.URI,
+			PromptName:     e.PromptName,
+			TaskID:         e.TaskID,
+			InputResponses: e.InputResponses,
+			RequestState:   e.RequestState,
+			Notifications:  e.Notifications,
 		}
 	}
 	return &vu.OperationMix{Operations: ops}

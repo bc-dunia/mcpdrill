@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,16 +17,21 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/bc-dunia/mcpdrill/internal/mcp"
 )
 
 const (
 	TransportIDStreamableHTTP = "streamable_http"
 
-	HeaderContentType   = "Content-Type"
-	HeaderAccept        = "Accept"
-	HeaderMCPSessionID  = "Mcp-Session-Id"
-	HeaderLastEventID   = "Last-Event-ID"
-	HeaderAuthorization = "Authorization"
+	HeaderContentType        = "Content-Type"
+	HeaderAccept             = "Accept"
+	HeaderMCPProtocolVersion = "MCP-Protocol-Version"
+	HeaderMCPMethod          = "Mcp-Method"
+	HeaderMCPName            = "Mcp-Name"
+	HeaderMCPSessionID       = "Mcp-Session-Id"
+	HeaderLastEventID        = "Last-Event-ID"
+	HeaderAuthorization      = "Authorization"
 
 	ContentTypeJSON = "application/json"
 	ContentTypeSSE  = "text/event-stream"
@@ -81,13 +87,16 @@ func (a *StreamableHTTPAdapter) Connect(ctx context.Context, config *TransportCo
 	}
 
 	conn := &StreamableHTTPConnection{
-		client:       client,
-		transport:    transport,
-		config:       config,
-		sseHandler:   NewSSEResponseHandler(config.Timeouts.StreamStallTimeout),
-		sessionID:    config.SessionID,
-		lastEventID:  config.LastEventID,
-		requestCount: 0,
+		client:          client,
+		transport:       transport,
+		config:          config,
+		sseHandler:      NewSSEResponseHandler(config.Timeouts.StreamStallTimeout),
+		sessionID:       config.SessionID,
+		lastEventID:     config.LastEventID,
+		protocolEra:     mcp.ProtocolEraLegacy,
+		protocolVersion: mcp.DefaultProtocolVersion,
+		toolHeaders:     make(map[string][]toolHeaderBinding),
+		requestCount:    0,
 	}
 
 	return conn, nil
@@ -163,15 +172,26 @@ func buildCheckRedirect(config *TransportConfig) func(req *http.Request, via []*
 }
 
 type StreamableHTTPConnection struct {
-	client       *http.Client
-	transport    *http.Transport
-	config       *TransportConfig
-	sseHandler   *SSEResponseHandler
-	sessionID    string
-	lastEventID  string
-	requestCount int64
-	mu           sync.RWMutex
-	closed       int32
+	client            *http.Client
+	transport         *http.Transport
+	config            *TransportConfig
+	sseHandler        *SSEResponseHandler
+	sessionID         string
+	lastEventID       string
+	protocolEra       mcp.ProtocolEra
+	protocolVersion   string
+	toolHeaders       map[string][]toolHeaderBinding
+	toolHeadersReady  bool
+	toolHeadersExpiry time.Time
+	requestCount      int64
+	mu                sync.RWMutex
+	closed            int32
+}
+
+type toolHeaderBinding struct {
+	Path       []string
+	HeaderName string
+	ValueType  string
 }
 
 func (c *StreamableHTTPConnection) SessionID() string {
@@ -190,6 +210,51 @@ func (c *StreamableHTTPConnection) SetLastEventID(eventID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.lastEventID = eventID
+}
+
+func (c *StreamableHTTPConnection) ConfigureProtocol(version string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if version == "" || version == mcp.ProtocolVersionAuto {
+		version = mcp.DefaultProtocolVersion
+	}
+	c.protocolVersion = version
+	c.protocolEra = mcp.EraForVersion(version)
+}
+
+func (c *StreamableHTTPConnection) ConfigureModernProtocol(version string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if version == "" || version == mcp.ProtocolVersionAuto {
+		version = mcp.ModernProtocolVersion
+	}
+	c.protocolVersion = version
+	c.protocolEra = mcp.ProtocolEraModern
+}
+
+func (c *StreamableHTTPConnection) ConfigureLegacyProtocol(version string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if version == "" || version == mcp.ProtocolVersionAuto {
+		version = mcp.DefaultProtocolVersion
+	}
+	c.protocolVersion = version
+	c.protocolEra = mcp.ProtocolEraLegacy
+}
+
+func (c *StreamableHTTPConnection) ProtocolEra() mcp.ProtocolEra {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.protocolEra
+}
+
+func (c *StreamableHTTPConnection) ProtocolVersion() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.protocolVersion
 }
 
 func (c *StreamableHTTPConnection) Close() error {
@@ -215,6 +280,14 @@ func (c *StreamableHTTPConnection) SendInitialized(ctx context.Context) (*Operat
 	return outcome, nil
 }
 
+func (c *StreamableHTTPConnection) Discover(ctx context.Context) (*OperationOutcome, error) {
+	requestID := c.nextRequestID()
+	req := NewServerDiscoverRequest(requestID)
+
+	outcome := c.doRequest(ctx, req, OpServerDiscover, requestID)
+	return outcome, nil
+}
+
 func (c *StreamableHTTPConnection) ToolsList(ctx context.Context, cursor *string) (*OperationOutcome, error) {
 	requestID := c.nextRequestID()
 	req := NewToolsListRequest(requestID, cursor)
@@ -225,6 +298,7 @@ func (c *StreamableHTTPConnection) ToolsList(ctx context.Context, cursor *string
 
 func (c *StreamableHTTPConnection) ToolsCall(ctx context.Context, params *ToolsCallParams) (*OperationOutcome, error) {
 	requestID := c.nextRequestID()
+	c.ensureToolHeaderBindings(ctx, params.Name)
 
 	if c.config.ValidationConfig != nil && c.config.ValidationConfig.MaxArgumentSizeBytes > 0 {
 		if err := ValidateArgumentSize(params.Arguments, c.config.ValidationConfig.MaxArgumentSizeBytes); err != nil {
@@ -235,14 +309,49 @@ func (c *StreamableHTTPConnection) ToolsCall(ctx context.Context, params *ToolsC
 		}
 	}
 
-	req := NewToolsCallRequest(requestID, params.Name, params.Arguments)
+	req := NewToolsCallRequestWithParams(requestID, *params)
 
 	outcome := c.doRequest(ctx, req, OpToolsCall, requestID, params.Name)
 	return outcome, nil
 }
 
+func (c *StreamableHTTPConnection) ensureToolHeaderBindings(ctx context.Context, toolName string) {
+	if toolName == "" || c.ProtocolEra() != mcp.ProtocolEraModern {
+		return
+	}
+	c.mu.RLock()
+	_, hasBindings := c.toolHeaders[toolName]
+	ready := c.toolHeadersReady
+	expiry := c.toolHeadersExpiry
+	c.mu.RUnlock()
+	if !expiry.IsZero() && !time.Now().Before(expiry) {
+		hasBindings = false
+		ready = false
+	}
+	if hasBindings || ready {
+		return
+	}
+	c.mu.Lock()
+	if c.toolHeadersReady && (c.toolHeadersExpiry.IsZero() || time.Now().Before(c.toolHeadersExpiry)) {
+		c.mu.Unlock()
+		return
+	}
+	c.toolHeadersReady = false
+	c.mu.Unlock()
+	outcome, err := c.ToolsList(ctx, nil)
+	if err != nil || outcome == nil || !outcome.OK {
+		c.mu.Lock()
+		c.toolHeadersReady = false
+		c.toolHeadersExpiry = time.Time{}
+		c.mu.Unlock()
+	}
+}
+
 func (c *StreamableHTTPConnection) Ping(ctx context.Context) (*OperationOutcome, error) {
 	requestID := c.nextRequestID()
+	if c.ProtocolEra() == mcp.ProtocolEraModern {
+		return c.unsupportedModernOutcome(OpPing, requestID), nil
+	}
 	req := NewPingRequest(requestID)
 
 	outcome := c.doRequest(ctx, req, OpPing, requestID)
@@ -259,7 +368,7 @@ func (c *StreamableHTTPConnection) ResourcesList(ctx context.Context, cursor *st
 
 func (c *StreamableHTTPConnection) ResourcesRead(ctx context.Context, params *ResourcesReadParams) (*OperationOutcome, error) {
 	requestID := c.nextRequestID()
-	req := NewResourcesReadRequest(requestID, params.URI)
+	req := NewResourcesReadRequestWithParams(requestID, *params)
 
 	outcome := c.doRequest(ctx, req, OpResourcesRead, requestID)
 	return outcome, nil
@@ -275,10 +384,57 @@ func (c *StreamableHTTPConnection) PromptsList(ctx context.Context, cursor *stri
 
 func (c *StreamableHTTPConnection) PromptsGet(ctx context.Context, params *PromptsGetParams) (*OperationOutcome, error) {
 	requestID := c.nextRequestID()
-	req := NewPromptsGetRequest(requestID, params.Name, params.Arguments)
+	req := NewPromptsGetRequestWithParams(requestID, *params)
 
 	outcome := c.doRequest(ctx, req, OpPromptsGet, requestID)
 	return outcome, nil
+}
+
+func (c *StreamableHTTPConnection) SubscriptionsListen(ctx context.Context, params *SubscriptionsListenParams) (*OperationOutcome, error) {
+	requestID := c.nextRequestID()
+	req := NewSubscriptionsListenRequest(requestID, params)
+
+	outcome := c.doRequest(ctx, req, OpSubscriptionsListen, requestID)
+	return outcome, nil
+}
+
+func (c *StreamableHTTPConnection) TasksGet(ctx context.Context, taskID string) (*OperationOutcome, error) {
+	requestID := c.nextRequestID()
+	req := NewTasksGetRequest(requestID, taskID)
+
+	outcome := c.doRequest(ctx, req, OpTasksGet, requestID)
+	return outcome, nil
+}
+
+func (c *StreamableHTTPConnection) TasksUpdate(ctx context.Context, params *TasksUpdateParams) (*OperationOutcome, error) {
+	requestID := c.nextRequestID()
+	req := NewTasksUpdateRequest(requestID, params)
+
+	outcome := c.doRequest(ctx, req, OpTasksUpdate, requestID)
+	return outcome, nil
+}
+
+func (c *StreamableHTTPConnection) TasksCancel(ctx context.Context, taskID string) (*OperationOutcome, error) {
+	requestID := c.nextRequestID()
+	req := NewTasksCancelRequest(requestID, taskID)
+
+	outcome := c.doRequest(ctx, req, OpTasksCancel, requestID)
+	return outcome, nil
+}
+
+func (c *StreamableHTTPConnection) unsupportedModernOutcome(op OperationType, requestID string) *OperationOutcome {
+	return &OperationOutcome{
+		Operation: op,
+		JSONRPCID: requestID,
+		Transport: TransportIDStreamableHTTP,
+		StartTime: time.Now(),
+		OK:        false,
+		Error: &OperationError{
+			Type:    ErrorTypeProtocol,
+			Code:    CodeJSONRPCMethodNotFound,
+			Message: fmt.Sprintf("%s is not supported by modern MCP protocol %s", op, c.ProtocolVersion()),
+		},
+	}
 }
 
 func (c *StreamableHTTPConnection) nextRequestID() string {
@@ -307,6 +463,7 @@ func (c *StreamableHTTPConnection) doRequest(
 	defer cancel()
 
 	tracedCtx, phaseTracker := createTracedContext(ctx)
+	jsonrpcReq = c.prepareRequest(jsonrpcReq)
 
 	body, err := json.Marshal(jsonrpcReq)
 	if err != nil {
@@ -328,7 +485,7 @@ func (c *StreamableHTTPConnection) doRequest(
 	c.mu.RLock()
 	hasLastEventID := c.lastEventID != ""
 	c.mu.RUnlock()
-	c.setHeaders(httpReq, hasLastEventID)
+	c.setHeaders(httpReq, jsonrpcReq, hasLastEventID)
 
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
@@ -380,6 +537,7 @@ func (c *StreamableHTTPConnection) doNotification(
 	defer cancel()
 
 	tracedCtx, phaseTracker := createTracedContext(ctx)
+	jsonrpcReq = c.prepareRequest(jsonrpcReq)
 
 	body, err := json.Marshal(jsonrpcReq)
 	if err != nil {
@@ -398,7 +556,7 @@ func (c *StreamableHTTPConnection) doNotification(
 		return outcome
 	}
 
-	c.setHeaders(httpReq, false)
+	c.setHeaders(httpReq, jsonrpcReq, false)
 
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
@@ -414,8 +572,23 @@ func (c *StreamableHTTPConnection) doNotification(
 	outcome.ContentType = resp.Header.Get(HeaderContentType)
 
 	switch resp.StatusCode {
-	case http.StatusOK, http.StatusAccepted, http.StatusNoContent:
+	case http.StatusNoContent:
 		outcome.OK = true
+	case http.StatusOK, http.StatusAccepted:
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+		outcome.BytesIn = int64(len(bodyBytes))
+		if len(strings.TrimSpace(string(bodyBytes))) == 0 {
+			outcome.OK = true
+			break
+		}
+		var jsonrpcResp JSONRPCResponse
+		if err := json.Unmarshal(bodyBytes, &jsonrpcResp); err == nil && jsonrpcResp.Error != nil {
+			outcome.OK = false
+			outcome.Error = ExtractJSONRPCError(&jsonrpcResp)
+			outcome.JSONRPCErrorCode = &jsonrpcResp.Error.Code
+		} else {
+			outcome.OK = true
+		}
 	default:
 		outcome.OK = false
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
@@ -428,14 +601,103 @@ func (c *StreamableHTTPConnection) doNotification(
 	return outcome
 }
 
-func (c *StreamableHTTPConnection) setHeaders(req *http.Request, includeLastEventID bool) {
+func (c *StreamableHTTPConnection) prepareRequest(req *JSONRPCRequest) *JSONRPCRequest {
+	if req == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	era := c.protocolEra
+	version := c.protocolVersion
+	c.mu.RUnlock()
+
+	if era != mcp.ProtocolEraModern {
+		return req
+	}
+	if version == "" {
+		version = mcp.ModernProtocolVersion
+	}
+
+	prepared := *req
+	params := paramsToMap(prepared.Params)
+	params["_meta"] = ModernRequestMeta{
+		ProtocolVersion: version,
+		ClientInfo: Implementation{
+			Name:    mcp.ClientName,
+			Version: mcp.ClientVersion,
+		},
+		ClientCapabilities: modernClientCapabilities(),
+	}
+	prepared.Params = params
+	return &prepared
+}
+
+func modernClientCapabilities() map[string]interface{} {
+	return map[string]interface{}{
+		"extensions": map[string]interface{}{
+			"io.modelcontextprotocol/tasks":         map[string]interface{}{},
+			"io.modelcontextprotocol/inputRequests": map[string]interface{}{},
+		},
+	}
+}
+
+func paramsToMap(params interface{}) map[string]interface{} {
+	if params == nil {
+		return map[string]interface{}{}
+	}
+	if m, ok := params.(map[string]interface{}); ok {
+		copyMap := make(map[string]interface{}, len(m)+1)
+		for k, v := range m {
+			copyMap[k] = v
+		}
+		return copyMap
+	}
+
+	data, err := json.Marshal(params)
+	if err != nil {
+		return map[string]interface{}{}
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		return map[string]interface{}{}
+	}
+	return m
+}
+
+func (c *StreamableHTTPConnection) setHeaders(req *http.Request, jsonrpcReq *JSONRPCRequest, includeLastEventID bool) {
 	req.Header.Set(HeaderContentType, ContentTypeJSON)
 	req.Header.Set(HeaderAccept, AcceptBoth)
 
 	c.mu.RLock()
 	sessionID := c.sessionID
 	lastEventID := c.lastEventID
+	era := c.protocolEra
+	version := c.protocolVersion
 	c.mu.RUnlock()
+
+	if era == mcp.ProtocolEraModern {
+		if version == "" {
+			version = mcp.ModernProtocolVersion
+		}
+		req.Header.Set(HeaderMCPProtocolVersion, version)
+		if jsonrpcReq != nil {
+			req.Header.Set(HeaderMCPMethod, jsonrpcReq.Method)
+			if name := modernRouteName(jsonrpcReq); name != "" {
+				encoded, ok := encodeMCPParamHeaderValue(name, "string")
+				if ok {
+					req.Header.Set(HeaderMCPName, encoded)
+				}
+			}
+			c.setMCPParamHeaders(req, jsonrpcReq)
+		}
+		for key, value := range c.config.Headers {
+			if isModernReservedHeader(key) {
+				continue
+			}
+			req.Header.Set(key, value)
+		}
+		return
+	}
 
 	if sessionID != "" {
 		req.Header.Set(HeaderMCPSessionID, sessionID)
@@ -448,6 +710,264 @@ func (c *StreamableHTTPConnection) setHeaders(req *http.Request, includeLastEven
 	for key, value := range c.config.Headers {
 		req.Header.Set(key, value)
 	}
+}
+
+func isModernReservedHeader(key string) bool {
+	if strings.HasPrefix(strings.ToLower(key), "mcp-param-") {
+		return true
+	}
+	for _, reserved := range []string{HeaderMCPProtocolVersion, HeaderMCPMethod, HeaderMCPName, HeaderMCPSessionID, HeaderLastEventID} {
+		if strings.EqualFold(key, reserved) {
+			return true
+		}
+	}
+	return false
+}
+
+func modernRouteName(req *JSONRPCRequest) string {
+	if req == nil {
+		return ""
+	}
+	params := paramsToMap(req.Params)
+	switch OperationType(req.Method) {
+	case OpToolsCall, OpPromptsGet:
+		if name, ok := params["name"].(string); ok {
+			return name
+		}
+	case OpResourcesRead:
+		if uri, ok := params["uri"].(string); ok {
+			return uri
+		}
+	case OpTasksGet, OpTasksUpdate, OpTasksCancel:
+		if taskID, ok := params["taskId"].(string); ok {
+			return taskID
+		}
+	}
+	return ""
+}
+
+func (c *StreamableHTTPConnection) cacheToolHeaderBindings(data json.RawMessage) json.RawMessage {
+	var result ToolsListResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return data
+	}
+
+	bindings := make(map[string][]toolHeaderBinding, len(result.Tools))
+	validTools := make([]Tool, 0, len(result.Tools))
+	for _, tool := range result.Tools {
+		toolBindings, ok := extractToolHeaderBindings(tool.InputSchema)
+		if !ok {
+			continue
+		}
+		validTools = append(validTools, tool)
+		if len(toolBindings) > 0 {
+			bindings[tool.Name] = toolBindings
+		}
+	}
+	if len(validTools) != len(result.Tools) {
+		result.Tools = validTools
+		if filtered, err := json.Marshal(result); err == nil {
+			data = filtered
+		}
+	}
+
+	c.mu.Lock()
+	c.toolHeaders = bindings
+	c.toolHeadersReady = true
+	if result.TTLMs > 0 {
+		c.toolHeadersExpiry = time.Now().Add(time.Duration(result.TTLMs) * time.Millisecond)
+	} else {
+		c.toolHeadersExpiry = time.Time{}
+	}
+	c.mu.Unlock()
+	return data
+}
+
+func extractToolHeaderBindings(schema json.RawMessage) ([]toolHeaderBinding, bool) {
+	if len(schema) == 0 {
+		return nil, true
+	}
+	var root map[string]interface{}
+	if err := json.Unmarshal(schema, &root); err != nil {
+		return nil, false
+	}
+
+	seen := map[string]struct{}{}
+	bindings := make([]toolHeaderBinding, 0)
+	if !collectToolHeaderBindings(root, nil, seen, &bindings) {
+		return nil, false
+	}
+	return bindings, true
+}
+
+func collectToolHeaderBindings(node map[string]interface{}, path []string, seen map[string]struct{}, bindings *[]toolHeaderBinding) bool {
+	if rawHeader, hasHeader := node["x-mcp-header"]; hasHeader {
+		header, ok := rawHeader.(string)
+		if !ok || !isValidMCPHeaderName(header) {
+			return false
+		}
+		lower := strings.ToLower(header)
+		if _, exists := seen[lower]; exists {
+			return false
+		}
+		valueType := primitiveSchemaType(node["type"])
+		if valueType == "" {
+			return false
+		}
+		seen[lower] = struct{}{}
+		pathCopy := append([]string(nil), path...)
+		*bindings = append(*bindings, toolHeaderBinding{Path: pathCopy, HeaderName: header, ValueType: valueType})
+	}
+
+	props, ok := node["properties"].(map[string]interface{})
+	if !ok {
+		return true
+	}
+	for name, child := range props {
+		childMap, ok := child.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if !collectToolHeaderBindings(childMap, append(path, name), seen, bindings) {
+			return false
+		}
+	}
+	return true
+}
+
+func primitiveSchemaType(value interface{}) string {
+	s, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	switch s {
+	case "string", "integer", "boolean":
+		return s
+	default:
+		return ""
+	}
+}
+
+func isValidMCPHeaderName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if r > 127 || !(r == '!' || r == '#' || r == '$' || r == '%' || r == '&' || r == '\'' || r == '*' || r == '+' || r == '-' || r == '.' || r == '^' || r == '_' || r == '`' || r == '|' || r == '~' || (r >= '0' && r <= '9') || (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z')) {
+			return false
+		}
+	}
+	return true
+}
+
+func (c *StreamableHTTPConnection) setMCPParamHeaders(req *http.Request, jsonrpcReq *JSONRPCRequest) {
+	if OperationType(jsonrpcReq.Method) != OpToolsCall {
+		return
+	}
+	params := paramsToMap(jsonrpcReq.Params)
+	toolName, _ := params["name"].(string)
+	arguments, _ := params["arguments"].(map[string]interface{})
+	if toolName == "" || len(arguments) == 0 {
+		return
+	}
+
+	c.mu.RLock()
+	bindings := append([]toolHeaderBinding(nil), c.toolHeaders[toolName]...)
+	c.mu.RUnlock()
+
+	for _, binding := range bindings {
+		value, ok := nestedArgument(arguments, binding.Path)
+		if !ok || value == nil {
+			continue
+		}
+		encoded, ok := encodeMCPParamHeaderValue(value, binding.ValueType)
+		if !ok {
+			continue
+		}
+		req.Header.Set("Mcp-Param-"+binding.HeaderName, encoded)
+	}
+}
+
+func nestedArgument(arguments map[string]interface{}, path []string) (interface{}, bool) {
+	if len(path) == 0 {
+		return nil, false
+	}
+	var current interface{} = arguments
+	for _, segment := range path {
+		m, ok := current.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		current, ok = m[segment]
+		if !ok {
+			return nil, false
+		}
+	}
+	return current, true
+}
+
+func encodeMCPParamHeaderValue(value interface{}, valueType string) (string, bool) {
+	var s string
+	switch valueType {
+	case "string":
+		v, ok := value.(string)
+		if !ok {
+			return "", false
+		}
+		s = v
+	case "integer":
+		i, ok := integerValue(value)
+		if !ok {
+			return "", false
+		}
+		s = fmt.Sprintf("%d", i)
+	case "boolean":
+		v, ok := value.(bool)
+		if !ok {
+			return "", false
+		}
+		if v {
+			s = "true"
+		} else {
+			s = "false"
+		}
+	default:
+		return "", false
+	}
+
+	if needsMCPHeaderBase64(s) {
+		return "=?base64?" + base64.StdEncoding.EncodeToString([]byte(s)) + "?=", true
+	}
+	return s, true
+}
+
+func integerValue(value interface{}) (int64, bool) {
+	switch v := value.(type) {
+	case int:
+		return int64(v), true
+	case int64:
+		return v, true
+	case float64:
+		if v == float64(int64(v)) {
+			return int64(v), true
+		}
+	}
+	return 0, false
+}
+
+func needsMCPHeaderBase64(s string) bool {
+	if strings.HasPrefix(s, "=?base64?") && strings.HasSuffix(s, "?=") {
+		return true
+	}
+	if strings.TrimSpace(s) != s {
+		return true
+	}
+	for _, r := range s {
+		if r < 0x20 || r > 0x7e {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *StreamableHTTPConnection) handleResponse(
@@ -512,6 +1032,9 @@ func (c *StreamableHTTPConnection) handleJSONResponse(
 
 	outcome.OK = true
 	outcome.Result = jsonrpcResp.Result
+	if outcome.Operation == OpToolsList {
+		outcome.Result = c.cacheToolHeaderBindings(jsonrpcResp.Result)
+	}
 
 	if outcome.Operation == OpToolsCall {
 		var toolResult ToolsCallResult
@@ -577,6 +1100,9 @@ func (c *StreamableHTTPConnection) handleSSEResponse(
 
 	outcome.OK = true
 	outcome.Result = jsonrpcResp.Result
+	if outcome.Operation == OpToolsList {
+		outcome.Result = c.cacheToolHeaderBindings(jsonrpcResp.Result)
+	}
 
 	if outcome.Operation == OpToolsCall {
 		var toolResult ToolsCallResult

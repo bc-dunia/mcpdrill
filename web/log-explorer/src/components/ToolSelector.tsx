@@ -13,6 +13,8 @@ interface ToolSelectorProps {
   tools?: FetchedTool[];
   onToolsFetched?: (tools: FetchedTool[]) => void;
   headers?: Record<string, string>;
+  protocolVersion?: string;
+  protocolVersionPolicy?: string;
 }
 
 interface SchemaDisplayProps {
@@ -73,6 +75,8 @@ function ToolSelectorComponent({
   tools: externalTools,
   onToolsFetched,
   headers,
+  protocolVersion,
+  protocolVersionPolicy,
 }: ToolSelectorProps) {
   const [tools, setTools] = useState<FetchedTool[]>(externalTools || []);
   const [loading, setLoading] = useState(false);
@@ -94,7 +98,7 @@ function ToolSelectorComponent({
     setError(null);
 
     try {
-      const fetchedTools: FetchedTool[] = await discoverTools(targetUrl, headers);
+      const fetchedTools: FetchedTool[] = await discoverTools(targetUrl, headers, protocolVersion, protocolVersionPolicy);
       setTools(fetchedTools);
       onToolsFetched?.(fetchedTools);
     } catch (err) {
@@ -103,7 +107,7 @@ function ToolSelectorComponent({
     } finally {
       setLoading(false);
     }
-  }, [targetUrl, headers, onToolsFetched]);
+  }, [targetUrl, headers, protocolVersion, protocolVersionPolicy, onToolsFetched]);
 
   useEffect(() => {
     if (externalTools) {

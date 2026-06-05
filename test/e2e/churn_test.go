@@ -11,6 +11,7 @@ import (
 	"github.com/bc-dunia/mcpdrill/internal/analysis"
 	"github.com/bc-dunia/mcpdrill/internal/controlplane/api"
 	"github.com/bc-dunia/mcpdrill/internal/controlplane/runmanager"
+	"github.com/bc-dunia/mcpdrill/internal/mcp"
 	"github.com/bc-dunia/mcpdrill/internal/session"
 	"github.com/bc-dunia/mcpdrill/internal/transport"
 )
@@ -419,6 +420,7 @@ func TestChurnModeSessionManager(t *testing.T) {
 		ChurnIntervalOps: 1, // Churn after every operation
 		Adapter:          adapter,
 		TransportConfig:  &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion:  mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := session.NewManager(config)
@@ -467,6 +469,7 @@ func TestChurnMetricsAccuracy(t *testing.T) {
 		ChurnIntervalOps: 2, // Churn after every 2 operations
 		Adapter:          adapter,
 		TransportConfig:  &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion:  mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := session.NewManager(config)
@@ -568,6 +571,7 @@ func TestChurnModeMultipleVUs(t *testing.T) {
 		ChurnIntervalOps: 3, // Churn after every 3 operations
 		Adapter:          adapter,
 		TransportConfig:  &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion:  mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := session.NewManager(config)
@@ -623,6 +627,7 @@ func TestChurnModeClose(t *testing.T) {
 		ChurnIntervalOps: 10,
 		Adapter:          adapter,
 		TransportConfig:  &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion:  mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := session.NewManager(config)
@@ -671,6 +676,7 @@ func TestChurnModeInvalidate(t *testing.T) {
 		ChurnIntervalOps: 100, // High interval so we can test invalidation
 		Adapter:          adapter,
 		TransportConfig:  &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion:  mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := session.NewManager(config)

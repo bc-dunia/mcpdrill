@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bc-dunia/mcpdrill/internal/mcp"
 	"github.com/bc-dunia/mcpdrill/internal/session"
 	"github.com/bc-dunia/mcpdrill/internal/transport"
 )
@@ -158,6 +159,7 @@ func TestChurnModeOpsBasedDefault(t *testing.T) {
 		Mode:            session.ModeChurn,
 		Adapter:         adapter,
 		TransportConfig: &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion: mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := session.NewManager(config)
@@ -197,6 +199,7 @@ func TestChurnModeOpsBasedInterval(t *testing.T) {
 		ChurnIntervalOps: 3,
 		Adapter:          adapter,
 		TransportConfig:  &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion:  mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := session.NewManager(config)
@@ -252,6 +255,7 @@ func TestChurnModeTimeBasedStillWorks(t *testing.T) {
 		ChurnIntervalMs: 100,
 		Adapter:         adapter,
 		TransportConfig: &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion: mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := session.NewManager(config)
@@ -296,6 +300,7 @@ func TestChurnModeOpsBasedMultipleVUs(t *testing.T) {
 		ChurnIntervalOps: 2,
 		Adapter:          adapter,
 		TransportConfig:  &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion:  mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := session.NewManager(config)
@@ -338,6 +343,7 @@ func TestChurnModeMetrics(t *testing.T) {
 		ChurnIntervalOps: 1,
 		Adapter:          adapter,
 		TransportConfig:  &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion:  mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := session.NewManager(config)
@@ -385,6 +391,7 @@ func TestChurnModeConcurrent(t *testing.T) {
 		ChurnIntervalOps: 5,
 		Adapter:          adapter,
 		TransportConfig:  &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion:  mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := session.NewManager(config)
@@ -431,6 +438,7 @@ func TestChurnModeClose(t *testing.T) {
 		ChurnIntervalOps: 10,
 		Adapter:          adapter,
 		TransportConfig:  &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion:  mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := session.NewManager(config)
@@ -463,6 +471,7 @@ func TestChurnModeInvalidate(t *testing.T) {
 		ChurnIntervalOps: 100,
 		Adapter:          adapter,
 		TransportConfig:  &transport.TransportConfig{Endpoint: "http://localhost:8080"},
+		ProtocolVersion:  mcp.DefaultProtocolVersion,
 	}
 
 	mgr, err := session.NewManager(config)

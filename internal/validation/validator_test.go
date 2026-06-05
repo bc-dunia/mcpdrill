@@ -1031,12 +1031,36 @@ func TestUnifiedValidatorOpLog(t *testing.T) {
 
 	t.Run("rejects op-log missing correlation keys", func(t *testing.T) {
 		opLog := map[string]interface{}{
-			"schema_version": "op-log/v1",
+			"version": "op-log/v1",
 		}
 		data, _ := json.Marshal(opLog)
 		report := v.ValidateOpLog(data)
 		if report.OK {
 			t.Error("Expected validation to fail for missing correlation keys")
+		}
+	})
+
+	t.Run("accepts producer shaped op-log", func(t *testing.T) {
+		opLog := map[string]interface{}{
+			"version":      "op-log/v1",
+			"timestamp":    "2026-06-05T10:00:00Z",
+			"tier":         1.0,
+			"run_id":       "run_0000000000000001",
+			"execution_id": "exe_0000000000000001",
+			"stage":        "ramp",
+			"stage_id":     "stg_0000000000000001",
+			"worker_id":    "wkr_0000000000000001",
+			"vu_id":        "lse_0000000000000001-vu-1",
+			"session_id":   "ses_1",
+			"operation":    "tools/call",
+			"tool_name":    "fast_echo",
+			"latency_ms":   1.0,
+			"ok":           true,
+		}
+		data, _ := json.Marshal(opLog)
+		report := v.ValidateOpLog(data)
+		if !report.OK {
+			t.Fatalf("expected producer shaped op-log to validate, got %+v", report.Errors)
 		}
 	})
 }
@@ -1097,6 +1121,140 @@ func TestSchemaValidatorMethods(t *testing.T) {
 		result := v.ValidateReport(data)
 		if result.OK {
 			t.Log("Report validation passed")
+		}
+	})
+
+	t.Run("ValidateRunConfig accepts slash MCP operation names", func(t *testing.T) {
+		config := map[string]interface{}{
+			"schema_version": "run-config/v1",
+			"scenario_id":    "slash-operation-schema-test",
+			"target": map[string]interface{}{
+				"kind":                    "server",
+				"url":                     "http://127.0.0.1:3000/mcp",
+				"transport":               "streamable_http",
+				"headers":                 map[string]interface{}{},
+				"protocol_version":        "2026-07-28",
+				"protocol_version_policy": "supported",
+				"auth": map[string]interface{}{
+					"type": "none",
+				},
+				"identification": map[string]interface{}{
+					"run_id_header": map[string]interface{}{
+						"name":           "X-MCPDrill-Run-Id",
+						"value_template": "${run_id}",
+					},
+					"user_agent": map[string]interface{}{
+						"value": "mcpdrill/1.0",
+					},
+				},
+				"timeouts": map[string]interface{}{
+					"connect_timeout_ms":      5000,
+					"request_timeout_ms":      30000,
+					"stream_stall_timeout_ms": 15000,
+				},
+				"tls": map[string]interface{}{
+					"verify":        true,
+					"ca_bundle_ref": nil,
+				},
+				"redirect_policy": map[string]interface{}{
+					"mode":          "deny",
+					"max_redirects": 3,
+				},
+			},
+			"environment": map[string]interface{}{
+				"allowlist": map[string]interface{}{
+					"mode": "deny_by_default",
+					"allowed_targets": []interface{}{
+						map[string]interface{}{"kind": "exact", "value": "127.0.0.1"},
+					},
+				},
+				"forbidden_patterns": []interface{}{},
+			},
+			"session_policy": map[string]interface{}{
+				"mode":        "reuse",
+				"pool_size":   10,
+				"ttl_ms":      60000,
+				"max_idle_ms": 30000,
+			},
+			"workload": map[string]interface{}{
+				"in_flight_per_vu": 1,
+				"think_time": map[string]interface{}{
+					"mode":      "fixed",
+					"base_ms":   100,
+					"jitter_ms": 0,
+				},
+				"operation_mix": []interface{}{
+					map[string]interface{}{"operation": "subscriptions/listen", "weight": 1, "notifications": map[string]interface{}{"toolsListChanged": true}},
+					map[string]interface{}{"operation": "tasks/get", "weight": 1, "task_id": "task-1"},
+				},
+				"tools": map[string]interface{}{
+					"selection": map[string]interface{}{"mode": "round_robin"},
+					"templates": []interface{}{},
+				},
+				"payload_profiles": []interface{}{},
+			},
+			"stages": []interface{}{
+				map[string]interface{}{
+					"stage_id":    "stg_abc123",
+					"stage":       "preflight",
+					"enabled":     true,
+					"duration_ms": 10000,
+					"load":        map[string]interface{}{"target_vus": 1, "target_rps": 1},
+					"stop_conditions": []interface{}{
+						map[string]interface{}{"id": "sc", "metric": "error_rate", "comparator": ">", "threshold": 0.5, "window_ms": 5000, "sustain_windows": 1, "scope": map[string]interface{}{}},
+					},
+				},
+			},
+			"safety": map[string]interface{}{
+				"ramp_by_default":        false,
+				"emergency_stop_enabled": true,
+				"worker_failure_policy":  "fail_fast",
+				"hard_caps": map[string]interface{}{
+					"max_vus":               10,
+					"max_rps":               100,
+					"max_connections":       100,
+					"max_duration_ms":       60000,
+					"max_in_flight_per_vu":  10,
+					"max_telemetry_q_depth": 1000,
+				},
+				"stop_policy": map[string]interface{}{
+					"mode":             "drain",
+					"drain_timeout_ms": 30000,
+				},
+				"identification_required": true,
+			},
+			"reporting": map[string]interface{}{
+				"formats": []interface{}{"json"},
+				"retention": map[string]interface{}{
+					"raw_logs_days": 1,
+					"metrics_days":  1,
+					"reports_days":  1,
+				},
+				"include": map[string]interface{}{
+					"store_raw_logs":         true,
+					"store_metrics_snapshot": true,
+					"store_event_log":        true,
+				},
+				"redaction": map[string]interface{}{"redact_headers": []interface{}{}},
+			},
+			"telemetry": map[string]interface{}{
+				"structured_logs": map[string]interface{}{
+					"enabled":     true,
+					"sample_rate": 1,
+				},
+				"traces": map[string]interface{}{
+					"enabled": true,
+					"propagation": map[string]interface{}{
+						"accept_incoming_traceparent": false,
+					},
+				},
+			},
+		}
+
+		data, _ := json.Marshal(config)
+		result := v.ValidateRunConfig(data)
+		if !result.OK {
+			t.Fatalf("ValidateRunConfig rejected slash operation names: %s", result.String())
 		}
 	})
 }
@@ -1261,6 +1419,175 @@ func TestSemanticValidator_AllRules(t *testing.T) {
 		}
 		if !hasCode {
 			t.Error("Expected TOOLS_CALL_REQUIRES_TEMPLATES error")
+		}
+	})
+
+	t.Run("modern_protocol_disallows_ping", func(t *testing.T) {
+		config := map[string]interface{}{
+			"target": map[string]interface{}{
+				"protocol_version": "2026-07-28",
+			},
+			"workload": map[string]interface{}{
+				"operation_mix": []interface{}{
+					map[string]interface{}{"operation": "ping", "weight": 1.0},
+				},
+			},
+		}
+		data, _ := json.Marshal(config)
+		report := v.Validate(data)
+		hasCode := false
+		for _, e := range report.Errors {
+			if e.Code == CodeInvalidOperationMix && e.JSONPointer == "/workload/operation_mix/0/operation" {
+				hasCode = true
+				break
+			}
+		}
+		if !hasCode {
+			t.Error("Expected INVALID_OPERATION_MIX error for modern ping")
+		}
+	})
+
+	t.Run("ping_requires_explicit_legacy_protocol", func(t *testing.T) {
+		for _, version := range []string{"", "auto", "2026-07-28"} {
+			t.Run(version, func(t *testing.T) {
+				target := map[string]interface{}{}
+				if version != "" {
+					target["protocol_version"] = version
+				}
+				config := map[string]interface{}{
+					"target": target,
+					"workload": map[string]interface{}{
+						"operation_mix": []interface{}{
+							map[string]interface{}{"operation": "ping", "weight": 1.0},
+						},
+					},
+				}
+				data, _ := json.Marshal(config)
+				report := v.Validate(data)
+				hasCode := false
+				for _, e := range report.Errors {
+					if e.Code == CodeInvalidOperationMix && e.JSONPointer == "/workload/operation_mix/0/operation" {
+						hasCode = true
+						break
+					}
+				}
+				if !hasCode {
+					t.Fatalf("expected INVALID_OPERATION_MIX error for %q ping, got %+v", version, report.Errors)
+				}
+			})
+		}
+	})
+
+	t.Run("explicit_legacy_protocol_allows_ping", func(t *testing.T) {
+		for _, version := range []string{"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"} {
+			t.Run(version, func(t *testing.T) {
+				config := map[string]interface{}{
+					"target": map[string]interface{}{
+						"protocol_version": version,
+					},
+					"workload": map[string]interface{}{
+						"operation_mix": []interface{}{
+							map[string]interface{}{"operation": "ping", "weight": 1.0},
+						},
+					},
+				}
+				data, _ := json.Marshal(config)
+				report := v.Validate(data)
+				for _, e := range report.Errors {
+					if e.Code == CodeInvalidOperationMix {
+						t.Fatalf("explicit legacy protocol should allow ping, got %+v", report.Errors)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("non_modern_protocol_disallows_2026_only_operations", func(t *testing.T) {
+		for _, version := range []string{"auto", "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"} {
+			t.Run(version, func(t *testing.T) {
+				config := map[string]interface{}{
+					"target": map[string]interface{}{
+						"protocol_version": version,
+					},
+					"workload": map[string]interface{}{
+						"operation_mix": []interface{}{
+							map[string]interface{}{"operation": "subscriptions/listen", "weight": 1.0, "notifications": map[string]interface{}{"toolsListChanged": true}},
+							map[string]interface{}{"operation": "tasks/get", "weight": 1.0, "task_id": "task-1"},
+						},
+					},
+				}
+				data, _ := json.Marshal(config)
+				report := v.Validate(data)
+				matches := 0
+				for _, e := range report.Errors {
+					if e.Code == CodeInvalidOperationMix {
+						matches++
+					}
+				}
+				if matches != 2 {
+					t.Fatalf("expected two INVALID_OPERATION_MIX errors for %s 2026-only ops, got %d: %+v", version, matches, report.Errors)
+				}
+			})
+		}
+	})
+
+	t.Run("modern_protocol_allows_2026_only_operations", func(t *testing.T) {
+		config := map[string]interface{}{
+			"target": map[string]interface{}{"protocol_version": "2026-07-28"},
+			"workload": map[string]interface{}{
+				"operation_mix": []interface{}{
+					map[string]interface{}{"operation": "subscriptions/listen", "weight": 1.0, "notifications": map[string]interface{}{"toolsListChanged": true}},
+					map[string]interface{}{"operation": "tasks/get", "weight": 1.0, "task_id": "task-1"},
+				},
+			},
+		}
+		data, _ := json.Marshal(config)
+		report := v.Validate(data)
+		for _, e := range report.Errors {
+			if e.Code == CodeInvalidOperationMix {
+				t.Fatalf("modern protocol should allow 2026-only ops, got %+v", report.Errors)
+			}
+		}
+	})
+
+	t.Run("tasks_update_requires_input_responses", func(t *testing.T) {
+		config := map[string]interface{}{
+			"target": map[string]interface{}{"protocol_version": "2026-07-28"},
+			"workload": map[string]interface{}{
+				"operation_mix": []interface{}{
+					map[string]interface{}{"operation": "tasks/update", "weight": 1.0, "task_id": "task-1"},
+				},
+			},
+		}
+		data, _ := json.Marshal(config)
+		report := v.Validate(data)
+		hasCode := false
+		for _, e := range report.Errors {
+			if e.Code == CodeRequiredFieldMissing && e.JSONPointer == "/workload/operation_mix/0/input_responses" {
+				hasCode = true
+				break
+			}
+		}
+		if !hasCode {
+			t.Fatalf("expected required input_responses error, got %+v", report.Errors)
+		}
+	})
+
+	t.Run("tasks_update_allows_input_responses", func(t *testing.T) {
+		config := map[string]interface{}{
+			"target": map[string]interface{}{"protocol_version": "2026-07-28"},
+			"workload": map[string]interface{}{
+				"operation_mix": []interface{}{
+					map[string]interface{}{"operation": "tasks/update", "weight": 1.0, "task_id": "task-1", "input_responses": map[string]interface{}{"request-1": map[string]interface{}{"type": "text", "text": "ok"}}},
+				},
+			},
+		}
+		data, _ := json.Marshal(config)
+		report := v.Validate(data)
+		for _, e := range report.Errors {
+			if e.Code == CodeRequiredFieldMissing && e.JSONPointer == "/workload/operation_mix/0/input_responses" {
+				t.Fatalf("tasks/update with input_responses should be valid, got %+v", report.Errors)
+			}
 		}
 	})
 

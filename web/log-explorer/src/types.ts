@@ -77,6 +77,8 @@ export interface TargetConfig {
   transport: 'streamable_http';
   headers?: Record<string, string>;
   auth?: AuthConfig;
+  protocol_version?: 'auto' | '2026-07-28' | '2025-11-25' | '2025-06-18' | '2025-03-26' | '2024-11-05';
+  protocol_version_policy?: 'strict' | 'supported' | 'none';
 }
 
 export interface StopCondition {
@@ -108,16 +110,43 @@ export interface StageConfig {
 }
 
 export interface OpMixEntry {
-  operation: 'tools/list' | 'tools/call' | 'ping' | 'resources/list' | 'resources/read' | 'prompts/list' | 'prompts/get';
+  operation: 'tools/list' | 'tools/call' | 'ping' | 'resources/list' | 'resources/read' | 'prompts/list' | 'prompts/get' | 'subscriptions/listen' | 'tasks/get' | 'tasks/update' | 'tasks/cancel';
   weight: number;
   tool_name?: string;
   arguments?: Record<string, unknown>;
   uri?: string;
   prompt_name?: string;
+  task_id?: string;
+  input_responses?: Record<string, unknown>;
+  request_state?: string;
+  notifications?: Record<string, unknown>;
 }
 
 export interface WorkloadConfig {
   op_mix: OpMixEntry[];
+  in_flight_per_vu?: number;
+  think_time?: {
+    mode?: 'none' | 'fixed' | 'jitter';
+    base_ms?: number;
+    jitter_ms?: number;
+  };
+  user_journey?: {
+    startup_sequence?: {
+      run_tools_list_on_start?: boolean;
+    } | null;
+    periodic_ops?: {
+      tools_list_interval_ms?: number;
+      tools_list_after_errors?: number;
+    } | null;
+    reconnect_policy?: {
+      enabled?: boolean;
+      initial_delay_ms?: number;
+      max_delay_ms?: number;
+      multiplier?: number;
+      jitter_fraction?: number;
+      max_retries?: number;
+    } | null;
+  } | null;
 }
 
 export interface SessionPolicy {
@@ -125,6 +154,7 @@ export interface SessionPolicy {
   pool_size?: number;
   ttl_ms?: number;
   max_idle_ms?: number;
+  churn_interval_ops?: number;
 }
 
 export interface HardCaps {

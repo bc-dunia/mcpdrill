@@ -102,16 +102,16 @@ func (v *SchemaValidator) ValidateOpLog(data []byte) *ValidationReport {
 		return report
 	}
 
-	schemaVersion, ok := record["schema_version"].(string)
+	schemaVersion, ok := record["version"].(string)
 	if !ok {
-		report.AddError(CodeRequiredFieldMissing, "schema_version is required", "/schema_version")
+		report.AddError(CodeRequiredFieldMissing, "version is required", "/version")
 		return report
 	}
 
 	if schemaVersion != "op-log/v1" {
 		report.AddError(CodeInvalidSchemaVersion,
-			fmt.Sprintf("Expected schema_version 'op-log/v1', got '%s'", schemaVersion),
-			"/schema_version")
+			fmt.Sprintf("Expected version 'op-log/v1', got '%s'", schemaVersion),
+			"/version")
 		return report
 	}
 

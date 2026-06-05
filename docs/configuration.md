@@ -63,7 +63,9 @@ Full schema for test run configuration files.
     "url": "string (required)",
     "transport": "streamable_http",
     "headers": { "key": "value" },
-    "timeout_ms": 30000
+    "timeout_ms": 30000,
+    "protocol_version": "auto | 2026-07-28 | 2025-11-25 | 2025-06-18 | 2025-03-26 | 2024-11-05",
+    "protocol_version_policy": "strict | supported | none"
   },
   "stages": [
     {
@@ -87,8 +89,7 @@ Full schema for test run configuration files.
   "workload": {
     "op_mix": [
       { "operation": "tools/list", "weight": 1 },
-      { "operation": "tools/call", "weight": 5, "tool_name": "echo", "arguments": {} },
-      { "operation": "ping", "weight": 1 }
+      { "operation": "tools/call", "weight": 5, "tool_name": "echo", "arguments": {} }
     ],
     "think_time": {
       "base_ms": 100,
@@ -129,6 +130,10 @@ Full schema for test run configuration files.
 | `transport` | string | Transport type (`streamable_http`) |
 | `headers` | object | Custom HTTP headers |
 | `timeout_ms` | number | Request timeout in milliseconds |
+| `protocol_version` | string | MCP protocol version. `auto` tries modern discovery first and falls back to legacy initialization. |
+| `protocol_version_policy` | string | Version negotiation policy: `strict`, `supported`, or `none`. |
+
+`ping` is a legacy MCP operation. If your workload includes `ping`, set `target.protocol_version` to an explicit legacy version such as `2025-11-25`; `auto` is rejected because it may negotiate a modern protocol where ping no longer exists. `subscriptions/listen` and `tasks/*` operations require explicit `2026-07-28`.
 
 ## Stage Types
 
@@ -165,28 +170,34 @@ Full schema for test run configuration files.
 
 | Operation | Description | Required Fields |
 |-----------|-------------|-----------------|
-| `tools_list` | List available tools from server | - |
-| `tools_call` | Call a specific tool | Uses `workload.tools.templates` |
-| `resources_list` | List available resources | - |
-| `resources_read` | Read a specific resource | `uri` |
-| `prompts_list` | List available prompts | - |
-| `prompts_get` | Get a specific prompt | `prompt_name` |
-| `ping` | Simple connectivity check | - |
+| `tools/list` or `tools_list` | List available tools from server | - |
+| `tools/call` or `tools_call` | Call a specific tool | `tool_name` and optional `arguments`, or `workload.tools.templates` |
+| `resources/list` or `resources_list` | List available resources | - |
+| `resources/read` or `resources_read` | Read a specific resource | `uri` |
+| `prompts/list` or `prompts_list` | List available prompts | - |
+| `prompts/get` or `prompts_get` | Get a specific prompt | `prompt_name` |
+| `subscriptions/listen` or `subscriptions_listen` | Open a 2026 subscription stream | explicit `target.protocol_version: "2026-07-28"` |
+| `tasks/get` or `tasks_get` | Fetch a 2026 task | explicit `target.protocol_version: "2026-07-28"`, `task_id` |
+| `tasks/update` or `tasks_update` | Submit input responses for a 2026 task | explicit `target.protocol_version: "2026-07-28"`, `task_id`, non-empty `input_responses` |
+| `tasks/cancel` or `tasks_cancel` | Cancel a 2026 task | explicit `target.protocol_version: "2026-07-28"`, `task_id` |
+| `ping` | Legacy connectivity check | explicit legacy `target.protocol_version` |
 
 ### Operation Examples
 
-**tools_call** - Uses tool templates defined in `workload.tools.templates`:
+**tools/call** - Calls a named tool directly or uses tool templates defined in `workload.tools.templates`:
 ```json
 {
-  "operation": "tools_call",
-  "weight": 5
+  "operation": "tools/call",
+  "weight": 5,
+  "tool_name": "fast_echo",
+  "arguments": { "message": "hello" }
 }
 ```
 
 **resources_read** - Requires `uri` field:
 ```json
 {
-  "operation": "resources_read",
+  "operation": "resources/read",
   "weight": 2,
   "uri": "file:///docs/readme.md"
 }
@@ -195,7 +206,7 @@ Full schema for test run configuration files.
 **prompts_get** - Requires `prompt_name` field:
 ```json
 {
-  "operation": "prompts_get",
+  "operation": "prompts/get",
   "weight": 1,
   "prompt_name": "summarize",
   "arguments": { "text": "Hello world" }
@@ -218,7 +229,7 @@ For complete, validated examples, see the `examples/` directory, particularly `e
 
 ### Minimal Configuration Reference
 
-The run config requires `schema_version: "run-config/v1"` and uses underscore-style operation names (`tools_list`, not `tools/list`). Here's a simplified reference:
+The run config requires `schema_version: "run-config/v1"` and accepts MCP-style slash operation names (`tools/list`) plus underscore aliases (`tools_list`). Here's a simplified reference:
 
 ```json
 {
@@ -230,8 +241,8 @@ The run config requires `schema_version: "run-config/v1"` and uses underscore-st
   },
   "workload": {
     "operation_mix": [
-      { "operation": "tools_list", "weight": 1 },
-      { "operation": "tools_call", "weight": 3 }
+      { "operation": "tools/list", "weight": 1 },
+      { "operation": "tools/call", "weight": 3 }
     ],
     "tools": {
       "selection": { "mode": "weighted" },

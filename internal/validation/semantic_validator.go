@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/bc-dunia/mcpdrill/internal/mcp"
 )
 
 var stageIDPatternSemantic = regexp.MustCompile(`^stg_[0-9a-f]{3,81}$`)
@@ -79,6 +81,9 @@ func (v *SemanticValidator) Validate(data []byte) *ValidationReport {
 	v.validateToolsCallRequiresTools(config, report)
 	v.validateResourcesReadRequiresURI(config, report)
 	v.validatePromptsGetRequiresName(config, report)
+	v.validateTasksRequireTaskID(config, report)
+	v.validateModernProtocolDisallowsPing(config, report)
+	v.validateLegacyProtocolDisallowsModernOperations(config, report)
 	v.validateCapsRequired(config, report)
 	v.validateCapsConsistent(config, report)
 	v.validateCapsWithinSystemPolicy(config, report)
@@ -318,7 +323,7 @@ func (v *SemanticValidator) validateToolsCallRequiresTools(config map[string]int
 		return
 	}
 
-	hasToolsCall := false
+	hasTemplateToolsCall := false
 	opMix, ok := workload["operation_mix"].([]interface{})
 	if !ok {
 		opMix, ok = workload["op_mix"].([]interface{})
@@ -331,14 +336,17 @@ func (v *SemanticValidator) validateToolsCallRequiresTools(config map[string]int
 			}
 			if operation, ok := opMap["operation"].(string); ok {
 				if operation == "tools_call" || operation == "tools/call" {
-					hasToolsCall = true
-					break
+					toolName, _ := opMap["tool_name"].(string)
+					if toolName == "" {
+						hasTemplateToolsCall = true
+						break
+					}
 				}
 			}
 		}
 	}
 
-	if !hasToolsCall {
+	if !hasTemplateToolsCall {
 		return
 	}
 
@@ -422,6 +430,131 @@ func (v *SemanticValidator) validatePromptsGetRequiresName(config map[string]int
 					"prompts_get operation requires 'prompt_name' field",
 					"/workload/operation_mix/"+strconv.Itoa(i)+"/prompt_name")
 			}
+		}
+	}
+}
+
+func (v *SemanticValidator) validateTasksRequireTaskID(config map[string]interface{}, report *ValidationReport) {
+	workload, ok := config["workload"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	opMix, ok := workload["operation_mix"].([]interface{})
+	if !ok {
+		opMix, ok = workload["op_mix"].([]interface{})
+	}
+	if !ok {
+		return
+	}
+
+	for i, op := range opMix {
+		opMap, ok := op.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		operation, ok := opMap["operation"].(string)
+		if !ok {
+			continue
+		}
+		switch operation {
+		case "tasks_get", "tasks/get", "tasks_update", "tasks/update", "tasks_cancel", "tasks/cancel":
+			taskID, _ := opMap["task_id"].(string)
+			if taskID == "" {
+				report.AddError(CodeRequiredFieldMissing,
+					operation+" operation requires 'task_id' field",
+					"/workload/operation_mix/"+strconv.Itoa(i)+"/task_id")
+			}
+			if operation == "tasks_update" || operation == "tasks/update" {
+				inputResponses, ok := opMap["input_responses"].(map[string]interface{})
+				if !ok || len(inputResponses) == 0 {
+					report.AddError(CodeRequiredFieldMissing,
+						operation+" operation requires non-empty 'input_responses' field",
+						"/workload/operation_mix/"+strconv.Itoa(i)+"/input_responses")
+				}
+			}
+		}
+	}
+}
+
+func (v *SemanticValidator) validateModernProtocolDisallowsPing(config map[string]interface{}, report *ValidationReport) {
+	target, ok := config["target"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	protocolVersion, _ := target["protocol_version"].(string)
+	if isExplicitLegacyProtocol(protocolVersion) {
+		return
+	}
+
+	workload, ok := config["workload"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	opMix, ok := workload["operation_mix"].([]interface{})
+	if !ok {
+		opMix, ok = workload["op_mix"].([]interface{})
+	}
+	if !ok {
+		return
+	}
+
+	for i, op := range opMix {
+		opMap, ok := op.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		operation, _ := opMap["operation"].(string)
+		if operation == "ping" {
+			report.AddError(CodeInvalidOperationMix,
+				"ping requires an explicit legacy target.protocol_version",
+				"/workload/operation_mix/"+strconv.Itoa(i)+"/operation")
+		}
+	}
+}
+
+func isExplicitLegacyProtocol(protocolVersion string) bool {
+	switch protocolVersion {
+	case mcp.DefaultProtocolVersion, "2025-06-18", "2025-03-26", "2024-11-05":
+		return true
+	default:
+		return false
+	}
+}
+
+func (v *SemanticValidator) validateLegacyProtocolDisallowsModernOperations(config map[string]interface{}, report *ValidationReport) {
+	target, ok := config["target"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	protocolVersion, _ := target["protocol_version"].(string)
+	if mcp.EraForVersion(protocolVersion) == mcp.ProtocolEraModern {
+		return
+	}
+
+	workload, ok := config["workload"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	opMix, ok := workload["operation_mix"].([]interface{})
+	if !ok {
+		opMix, ok = workload["op_mix"].([]interface{})
+	}
+	if !ok {
+		return
+	}
+
+	for i, op := range opMix {
+		opMap, ok := op.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		operation, _ := opMap["operation"].(string)
+		switch operation {
+		case "subscriptions_listen", "subscriptions/listen", "tasks_get", "tasks/get", "tasks_update", "tasks/update", "tasks_cancel", "tasks/cancel":
+			report.AddError(CodeInvalidOperationMix,
+				operation+" requires target.protocol_version 2026-07-28",
+				"/workload/operation_mix/"+strconv.Itoa(i)+"/operation")
 		}
 	}
 }

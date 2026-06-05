@@ -485,7 +485,7 @@ Replace the mock server URL with your target:
   "target": {
     "auth": {
       "type": "bearer_token",
-      "bearer_token_ref": "env:API_TOKEN"
+      "bearer_token_ref": "env://API_TOKEN"
     }
   }
 }

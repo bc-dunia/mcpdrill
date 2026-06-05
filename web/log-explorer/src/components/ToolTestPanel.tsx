@@ -8,6 +8,8 @@ interface ToolTestPanelProps {
   toolName: string;
   value: Record<string, unknown>;
   headers?: Record<string, string>;
+  protocolVersion?: string;
+  protocolVersionPolicy?: string;
   isValid: boolean;
   children: React.ReactNode;
 }
@@ -16,6 +18,8 @@ interface ToolTestPanelContextValue {
   targetUrl?: string;
   toolName: string;
   headers?: Record<string, string>;
+  protocolVersion?: string;
+  protocolVersionPolicy?: string;
   isValid: boolean;
   isTesting: boolean;
   testResult: ToolTestResult | null;
@@ -34,6 +38,8 @@ export function ToolTestPanel({
   toolName,
   value,
   headers,
+  protocolVersion,
+  protocolVersionPolicy,
   isValid,
   children,
 }: ToolTestPanelProps) {
@@ -47,7 +53,7 @@ export function ToolTestPanel({
     setTestResult(null);
 
     try {
-      const result = await testTool(targetUrl, toolName, value, headers);
+      const result = await testTool(targetUrl, toolName, value, headers, protocolVersion, protocolVersionPolicy);
       setTestResult(result);
     } catch (err) {
       setTestResult({
@@ -58,7 +64,7 @@ export function ToolTestPanel({
     } finally {
       setIsTesting(false);
     }
-  }, [targetUrl, toolName, value, headers]);
+  }, [targetUrl, toolName, value, headers, protocolVersion, protocolVersionPolicy]);
 
   const dismissResult = useCallback(() => setTestResult(null), []);
 
@@ -66,6 +72,8 @@ export function ToolTestPanel({
     targetUrl,
     toolName,
     headers,
+    protocolVersion,
+    protocolVersionPolicy,
     isValid,
     isTesting,
     testResult,
@@ -75,6 +83,8 @@ export function ToolTestPanel({
     targetUrl,
     toolName,
     headers,
+    protocolVersion,
+    protocolVersionPolicy,
     isValid,
     isTesting,
     testResult,

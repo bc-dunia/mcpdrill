@@ -387,6 +387,13 @@ func TestHandleReplaceIfPossible_Success(t *testing.T) {
 	wid3, _ := registry.RegisterWorker(types.HostInfo{Hostname: "host3"}, types.WorkerCapacity{MaxVUs: 50})
 
 	runID := createTestRunWithPolicy(t, rm, "replace_if_possible")
+	setRunSessionPolicy(t, rm, runID, map[string]interface{}{
+		"mode":               "churn",
+		"pool_size":          100,
+		"ttl_ms":             900000,
+		"max_idle_ms":        60000,
+		"churn_interval_ops": 9,
+	})
 	setRunState(t, rm, runID, RunStateBaselineRunning)
 	setActiveStage(t, rm, runID, "baseline", "stg_000000000002")
 
@@ -444,6 +451,32 @@ func TestHandleReplaceIfPossible_Success(t *testing.T) {
 	}
 	if totalAssignments == 0 {
 		t.Error("expected assignments to be issued to remaining workers")
+	}
+
+	var reassignment types.WorkerAssignment
+	for _, assignments := range mockSender.assignments {
+		if len(assignments) > 0 {
+			reassignment = assignments[0]
+			break
+		}
+	}
+	if reassignment.Target.Timeouts == nil || reassignment.Target.Timeouts.ConnectTimeoutMs != 5000 || reassignment.Target.Timeouts.RequestTimeoutMs != 30000 || reassignment.Target.Timeouts.StreamStallTimeoutMs != 15000 {
+		t.Fatalf("replacement did not preserve target timeouts: %+v", reassignment.Target.Timeouts)
+	}
+	if reassignment.Target.TLS == nil || !reassignment.Target.TLS.Verify {
+		t.Fatalf("replacement did not preserve target TLS: %+v", reassignment.Target.TLS)
+	}
+	if reassignment.Load.TargetRPS != 100 {
+		t.Fatalf("replacement TargetRPS = %v, want 100", reassignment.Load.TargetRPS)
+	}
+	if reassignment.Workload.InFlightPerVU != 2 {
+		t.Fatalf("replacement InFlightPerVU = %d, want 2", reassignment.Workload.InFlightPerVU)
+	}
+	if reassignment.Workload.ThinkTime.BaseMs != 50 || reassignment.Workload.ThinkTime.JitterMs != 50 {
+		t.Fatalf("replacement ThinkTime = %+v", reassignment.Workload.ThinkTime)
+	}
+	if reassignment.SessionPolicy.Mode != "churn" || reassignment.SessionPolicy.ChurnIntervalOps != 9 {
+		t.Fatalf("replacement SessionPolicy = %+v", reassignment.SessionPolicy)
 	}
 
 	_ = wid2
@@ -582,6 +615,26 @@ func setActiveStage(t *testing.T, rm *RunManager, runID, stage, stageID string) 
 		t.Fatalf("run not found: %s", runID)
 	}
 	record.ActiveStage = &ActiveStageInfo{Stage: stage, StageID: stageID}
+}
+
+func setRunSessionPolicy(t *testing.T, rm *RunManager, runID string, sessionPolicy map[string]interface{}) {
+	t.Helper()
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+	record, ok := rm.runs[runID]
+	if !ok {
+		t.Fatalf("run not found: %s", runID)
+	}
+	var config map[string]interface{}
+	if err := json.Unmarshal(record.Config, &config); err != nil {
+		t.Fatalf("failed to unmarshal config: %v", err)
+	}
+	config["session_policy"] = sessionPolicy
+	updated, err := json.Marshal(config)
+	if err != nil {
+		t.Fatalf("failed to marshal config: %v", err)
+	}
+	record.Config = updated
 }
 
 func TestIsValidWorkerFailurePolicy(t *testing.T) {

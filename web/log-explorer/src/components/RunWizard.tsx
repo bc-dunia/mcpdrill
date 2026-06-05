@@ -14,6 +14,8 @@ type ConnectionStatus = 'idle' | 'testing' | 'success' | 'failed';
 
 const WIZARD_STORAGE_KEY = 'mcpdrill-wizard-progress';
 
+const LEGACY_PROTOCOL_VERSIONS = new Set(['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']);
+
 interface Props {
   onRunStarted: (runId: string) => void;
 }
@@ -41,6 +43,8 @@ function createDefaultConfig(): RunConfig {
       kind: 'server',
       url: 'http://127.0.0.1:3000/mcp',
       transport: 'streamable_http',
+      protocol_version: 'auto',
+      protocol_version_policy: 'supported',
     },
     stages: [
       {
@@ -249,7 +253,7 @@ export function RunWizard({ onRunStarted }: Props) {
   }, []);
 
   const handleWorkloadChange = useCallback((workload: WorkloadConfigType) => {
-    setConfig(prev => ({ ...prev, workload }));
+    setConfig(prev => ({ ...prev, workload: { ...prev.workload, ...workload } }));
   }, []);
 
   const handleServerTelemetryChange = useCallback((serverTelemetry: ServerTelemetryConfig | undefined) => {
@@ -315,9 +319,26 @@ export function RunWizard({ onRunStarted }: Props) {
       if (op.operation === 'prompts/get' && !op.prompt_name?.trim()) {
         return 'Prompt name is required for prompts/get operations';
       }
+      if ((op.operation === 'tasks/get' || op.operation === 'tasks/update' || op.operation === 'tasks/cancel') && !op.task_id?.trim()) {
+        return 'Task ID is required for task operations';
+      }
+      if (op.operation === 'tasks/update' && (!op.input_responses || Object.keys(op.input_responses).length === 0)) {
+        return 'Input responses are required for tasks/update operations';
+      }
+      if (op.operation === 'ping' && !LEGACY_PROTOCOL_VERSIONS.has(config.target.protocol_version ?? '')) {
+        return 'Ping requires an explicit legacy protocol version';
+      }
+      if (config.target.protocol_version !== '2026-07-28' && (
+        op.operation === 'subscriptions/listen' ||
+        op.operation === 'tasks/get' ||
+        op.operation === 'tasks/update' ||
+        op.operation === 'tasks/cancel'
+      )) {
+        return `${op.operation} requires protocol version 2026-07-28`;
+      }
     }
     return null;
-  }, [isStepValid, config.server_telemetry, config.workload.op_mix]);
+  }, [isStepValid, config.server_telemetry, config.target.protocol_version, config.workload.op_mix]);
 
   const handleStart = async () => {
     const validationError = validateAllSteps();
@@ -470,6 +491,8 @@ export function RunWizard({ onRunStarted }: Props) {
               config={config.workload} 
               onChange={handleWorkloadChange} 
               targetUrl={config.target.url}
+              protocolVersion={config.target.protocol_version}
+              protocolVersionPolicy={config.target.protocol_version_policy}
               headers={(() => {
                 const h = { ...config.target.headers };
                 if (authConfig?.type === 'bearer_token' && authConfig.tokens && authConfig.tokens.length > 0) {

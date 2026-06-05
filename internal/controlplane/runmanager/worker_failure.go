@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/bc-dunia/mcpdrill/internal/controlplane/scheduler"
-	"github.com/bc-dunia/mcpdrill/internal/types"
 )
 
 // WorkerFailurePolicy represents the policy for handling worker failures.
@@ -260,6 +259,12 @@ func (rm *RunManager) handleReplaceIfPossibleLocked(record *RunRecord, workerID 
 		return rm.handleFailFastLocked(record, workerID)
 	}
 
+	stageConfig := findStageByID(parsedConfig, stageID)
+	if stageConfig == nil {
+		rm.emitReallocationFailedDecision(eventLog, record, workerID, "stage_not_found")
+		return rm.handleFailFastLocked(record, workerID)
+	}
+
 	for wid, assignment := range workerAssignments {
 		leaseID, err := rm.leaseManager.IssueLease(wid, assignment)
 		if err != nil {
@@ -267,34 +272,7 @@ func (rm *RunManager) handleReplaceIfPossibleLocked(record *RunRecord, workerID 
 			continue
 		}
 
-		workerAssignment := types.WorkerAssignment{
-			RunID:       assignment.RunID,
-			ExecutionID: record.ExecutionID,
-			StageID:     assignment.StageID,
-			Stage:       string(record.ActiveStage.Stage),
-			LeaseID:     string(leaseID),
-			VUIDStart:   assignment.VUIDRange.Start,
-			VUIDEnd:     assignment.VUIDRange.End,
-			DurationMs:  rm.getStageDuration(parsedConfig, stageID),
-			Target: types.TargetConfig{
-				URL:                   parsedConfig.Target.URL,
-				Transport:             parsedConfig.Target.Transport,
-				Headers:               buildTargetHeaders(record.RunID, &parsedConfig.Target),
-				RedirectPolicy:        buildRedirectPolicy(parsedConfig.Target.RedirectPolicy),
-				Auth:                  buildAuthConfig(parsedConfig.Target.Auth),
-				ProtocolVersion:       parsedConfig.Target.ProtocolVersion,
-				ProtocolVersionPolicy: parsedConfig.Target.ProtocolVersionPolicy,
-			},
-			Workload: types.WorkloadConfig{
-				OpMix: convertOpMix(parsedConfig.Workload.OpMix),
-			},
-			SessionPolicy: types.SessionPolicyConfig{
-				Mode:      parsedConfig.SessionPolicy.Mode,
-				PoolSize:  parsedConfig.SessionPolicy.PoolSize,
-				TTLMs:     parsedConfig.SessionPolicy.TTLMs,
-				MaxIdleMs: parsedConfig.SessionPolicy.MaxIdleMs,
-			},
-		}
+		workerAssignment := buildWorkerAssignment(record.RunID, record.ExecutionID, assignment.StageID, StageName(record.ActiveStage.Stage), string(leaseID), assignment.VUIDRange.Start, assignment.VUIDRange.End, stageConfig.DurationMs, parsedConfig, stageConfig)
 
 		rm.assignmentSender.AddAssignment(string(wid), workerAssignment)
 

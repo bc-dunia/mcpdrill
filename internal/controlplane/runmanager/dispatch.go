@@ -150,34 +150,7 @@ func (rm *RunManager) createAndDispatchAssignmentsForStage(runID, executionID st
 			continue
 		}
 
-		workerAssignment := types.WorkerAssignment{
-			RunID:       assignment.RunID,
-			ExecutionID: executionID,
-			Stage:       string(stageName),
-			StageID:     assignment.StageID,
-			LeaseID:     string(leaseID),
-			VUIDStart:   assignment.VUIDRange.Start,
-			VUIDEnd:     assignment.VUIDRange.End,
-			DurationMs:  stage.DurationMs,
-			Target: types.TargetConfig{
-				URL:                   parsedConfig.Target.URL,
-				Transport:             parsedConfig.Target.Transport,
-				Headers:               buildTargetHeaders(runID, &parsedConfig.Target),
-				RedirectPolicy:        buildRedirectPolicy(parsedConfig.Target.RedirectPolicy),
-				Auth:                  buildAuthConfig(parsedConfig.Target.Auth),
-				ProtocolVersion:       parsedConfig.Target.ProtocolVersion,
-				ProtocolVersionPolicy: parsedConfig.Target.ProtocolVersionPolicy,
-			},
-			Workload: types.WorkloadConfig{
-				OpMix: convertOpMix(parsedConfig.Workload.OpMix),
-			},
-			SessionPolicy: types.SessionPolicyConfig{
-				Mode:      parsedConfig.SessionPolicy.Mode,
-				PoolSize:  parsedConfig.SessionPolicy.PoolSize,
-				TTLMs:     parsedConfig.SessionPolicy.TTLMs,
-				MaxIdleMs: parsedConfig.SessionPolicy.MaxIdleMs,
-			},
-		}
+		workerAssignment := buildWorkerAssignment(assignment.RunID, executionID, stage.StageID, stageName, string(leaseID), assignment.VUIDRange.Start, assignment.VUIDRange.End, stage.DurationMs, parsedConfig, stage)
 
 		assignmentSender.AddAssignment(string(workerID), workerAssignment)
 
@@ -205,6 +178,39 @@ func (rm *RunManager) emitAllocationFailedEvent(runID, executionID string, event
 		Evidence:    []Evidence{},
 	}
 	appendEventWithLog(eventLog, event, "emitAllocationFailedEvent")
+}
+
+func buildWorkerAssignment(runID, executionID, stageID string, stageName StageName, leaseID string, vuStart, vuEnd int, durationMs int64, parsedConfig *parsedRunConfig, stage *parsedStage) types.WorkerAssignment {
+	return types.WorkerAssignment{
+		RunID:       runID,
+		ExecutionID: executionID,
+		Stage:       string(stageName),
+		StageID:     stageID,
+		LeaseID:     leaseID,
+		VUIDStart:   vuStart,
+		VUIDEnd:     vuEnd,
+		DurationMs:  durationMs,
+		Load:        buildLoadConfig(stage.Load),
+		Target: types.TargetConfig{
+			URL:                   parsedConfig.Target.URL,
+			Transport:             parsedConfig.Target.Transport,
+			Headers:               buildTargetHeaders(runID, &parsedConfig.Target),
+			RedirectPolicy:        buildRedirectPolicy(parsedConfig.Target.RedirectPolicy),
+			Timeouts:              buildTimeoutConfig(parsedConfig.Target.Timeouts),
+			TLS:                   buildTLSConfig(parsedConfig.Target.TLS),
+			Auth:                  buildAuthConfig(parsedConfig.Target.Auth),
+			ProtocolVersion:       parsedConfig.Target.ProtocolVersion,
+			ProtocolVersionPolicy: parsedConfig.Target.ProtocolVersionPolicy,
+		},
+		Workload: buildWorkloadConfig(parsedConfig.Workload),
+		SessionPolicy: types.SessionPolicyConfig{
+			Mode:             parsedConfig.SessionPolicy.Mode,
+			PoolSize:         parsedConfig.SessionPolicy.PoolSize,
+			TTLMs:            parsedConfig.SessionPolicy.TTLMs,
+			MaxIdleMs:        parsedConfig.SessionPolicy.MaxIdleMs,
+			ChurnIntervalOps: parsedConfig.SessionPolicy.ChurnIntervalOps,
+		},
+	}
 }
 
 func (rm *RunManager) emitWorkerAssignedEvent(runID, executionID string, eventLog *EventLog, workerID, leaseID string, vuStart, vuEnd int, stageID string, stageName StageName) {
@@ -289,34 +295,7 @@ func (rm *RunManager) dispatchRampAssignments(runID, executionID string, config 
 			continue
 		}
 
-		workerAssignment := types.WorkerAssignment{
-			RunID:       offsetAssignment.RunID,
-			ExecutionID: executionID,
-			Stage:       string(StageNameRamp),
-			StageID:     offsetAssignment.StageID,
-			LeaseID:     string(leaseID),
-			VUIDStart:   offsetAssignment.VUIDRange.Start,
-			VUIDEnd:     offsetAssignment.VUIDRange.End,
-			DurationMs:  remainingDurationMs,
-			Target: types.TargetConfig{
-				URL:                   parsedConfig.Target.URL,
-				Transport:             parsedConfig.Target.Transport,
-				Headers:               buildTargetHeaders(runID, &parsedConfig.Target),
-				RedirectPolicy:        buildRedirectPolicy(parsedConfig.Target.RedirectPolicy),
-				Auth:                  buildAuthConfig(parsedConfig.Target.Auth),
-				ProtocolVersion:       parsedConfig.Target.ProtocolVersion,
-				ProtocolVersionPolicy: parsedConfig.Target.ProtocolVersionPolicy,
-			},
-			Workload: types.WorkloadConfig{
-				OpMix: convertOpMix(parsedConfig.Workload.OpMix),
-			},
-			SessionPolicy: types.SessionPolicyConfig{
-				Mode:      parsedConfig.SessionPolicy.Mode,
-				PoolSize:  parsedConfig.SessionPolicy.PoolSize,
-				TTLMs:     parsedConfig.SessionPolicy.TTLMs,
-				MaxIdleMs: parsedConfig.SessionPolicy.MaxIdleMs,
-			},
-		}
+		workerAssignment := buildWorkerAssignment(offsetAssignment.RunID, executionID, stage.StageID, StageNameRamp, string(leaseID), offsetAssignment.VUIDRange.Start, offsetAssignment.VUIDRange.End, remainingDurationMs, parsedConfig, stage)
 
 		assignmentSender.AddAssignment(string(workerID), workerAssignment)
 

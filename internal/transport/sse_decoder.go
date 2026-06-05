@@ -320,6 +320,11 @@ func (h *SSEResponseHandler) HandleSSEStream(
 			}
 			if json.Unmarshal([]byte(event.Data), &notification) == nil && notification.Method != "" {
 				notifications = append(notifications, json.RawMessage(event.Data))
+				if subscriptionAck := subscriptionAcknowledgementResponse(notifications, requestID); subscriptionAck != nil {
+					signals.EndedNormally = true
+					h.finalizeStreamSignals(signals, gapTracker, firstEventTime, startTime)
+					return subscriptionAck, signals, nil
+				}
 				continue
 			}
 			h.finalizeStreamSignals(signals, gapTracker, firstEventTime, startTime)
@@ -328,7 +333,7 @@ func (h *SSEResponseHandler) HandleSSEStream(
 
 		if msg.ID != nil {
 			idStr := fmt.Sprintf("%v", msg.ID)
-			if idStr == requestID {
+			if idStr == requestID && (msg.Result != nil || msg.Error != nil) {
 				finalResponse = &msg
 				signals.EndedNormally = true
 				break
@@ -337,10 +342,20 @@ func (h *SSEResponseHandler) HandleSSEStream(
 
 		if msg.Result == nil && msg.Error == nil {
 			notifications = append(notifications, json.RawMessage(event.Data))
+			if subscriptionAck := subscriptionAcknowledgementResponse(notifications, requestID); subscriptionAck != nil {
+				signals.EndedNormally = true
+				h.finalizeStreamSignals(signals, gapTracker, firstEventTime, startTime)
+				return subscriptionAck, signals, nil
+			}
 		}
 	}
 
 	if finalResponse == nil {
+		if subscriptionAck := subscriptionAcknowledgementResponse(notifications, requestID); subscriptionAck != nil {
+			signals.EndedNormally = true
+			h.finalizeStreamSignals(signals, gapTracker, firstEventTime, startTime)
+			return subscriptionAck, signals, nil
+		}
 		signals.EndedNormally = false
 		h.finalizeStreamSignals(signals, gapTracker, firstEventTime, startTime)
 		return nil, signals, NewSSEDisconnectError(signals.EventsCount, decoder.LastEventID())
@@ -350,6 +365,32 @@ func (h *SSEResponseHandler) HandleSSEStream(
 	h.finalizeStreamSignals(signals, gapTracker, firstEventTime, startTime)
 
 	return finalResponse, signals, nil
+}
+
+func subscriptionAcknowledgementResponse(notifications []json.RawMessage, requestID string) *JSONRPCResponse {
+	for _, raw := range notifications {
+		var msg struct {
+			Method string `json:"method"`
+			Params struct {
+				Meta map[string]interface{} `json:"_meta"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			continue
+		}
+		if msg.Method != "notifications/subscriptions/acknowledged" {
+			continue
+		}
+		if fmt.Sprintf("%v", msg.Params.Meta["io.modelcontextprotocol/subscriptionId"]) != requestID {
+			continue
+		}
+		return &JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      requestID,
+			Result:  raw,
+		}
+	}
+	return nil
 }
 
 func (h *SSEResponseHandler) finalizeStreamSignals(

@@ -18,6 +18,13 @@ import (
 
 var privateNetworkCIDRs = []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"}
 
+type discoveryRequest struct {
+	TargetURL             string            `json:"target_url"`
+	Headers               map[string]string `json:"headers,omitempty"`
+	ProtocolVersion       string            `json:"protocol_version,omitempty"`
+	ProtocolVersionPolicy string            `json:"protocol_version_policy,omitempty"`
+}
+
 func validateTargetURL(urlStr string) (string, error) {
 	if urlStr == "" {
 		return "", fmt.Errorf("target_url is required")
@@ -54,10 +61,7 @@ func (s *Server) handleDiscoverTools(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		TargetURL string            `json:"target_url"`
-		Headers   map[string]string `json:"headers,omitempty"`
-	}
+	var req discoveryRequest
 	if err := json.NewDecoder(limitedBody(w, r)).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, NewInvalidRequestErrorResponse(
 			"Invalid JSON request body",
@@ -90,12 +94,12 @@ func (s *Server) handleDiscoverTools(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	conn, err := adapter.Connect(ctx, config)
+	conn, err := connectDiscoverySession(ctx, adapter, config, req.ProtocolVersion, req.ProtocolVersionPolicy)
 	if err != nil {
 		s.writeError(w, http.StatusBadGateway, &ErrorResponse{
 			ErrorType:    "connection_error",
 			ErrorCode:    "TARGET_UNREACHABLE",
-			ErrorMessage: fmt.Sprintf("Failed to connect to target: %v", err),
+			ErrorMessage: fmt.Sprintf("Failed to connect to target MCP server: %v", err),
 			Details:      map[string]interface{}{"target_url": req.TargetURL},
 		})
 		return
@@ -105,50 +109,6 @@ func (s *Server) handleDiscoverTools(w http.ResponseWriter, r *http.Request) {
 			log.Printf("failed to close discovery connection: %v", err)
 		}
 	}()
-
-	initParams := &transport.InitializeParams{
-		ProtocolVersion: mcp.DefaultProtocolVersion,
-		Capabilities:    make(map[string]interface{}),
-		ClientInfo: transport.ClientInfo{
-			Name:    mcp.ClientName,
-			Version: mcp.ClientVersion,
-		},
-	}
-
-	initOutcome, err := conn.Initialize(ctx, initParams)
-	if err != nil {
-		s.writeError(w, http.StatusBadGateway, &ErrorResponse{
-			ErrorType:    "mcp_error",
-			ErrorCode:    "INIT_FAILED",
-			ErrorMessage: fmt.Sprintf("MCP initialize failed: %v", err),
-			Details:      map[string]interface{}{"target_url": req.TargetURL},
-		})
-		return
-	}
-
-	if !initOutcome.OK {
-		errMsg := "MCP initialize failed"
-		if initOutcome.Error != nil {
-			errMsg = fmt.Sprintf("MCP initialize failed: %v", initOutcome.Error.Message)
-		}
-		s.writeError(w, http.StatusBadGateway, &ErrorResponse{
-			ErrorType:    "mcp_error",
-			ErrorCode:    "INIT_FAILED",
-			ErrorMessage: errMsg,
-			Details:      map[string]interface{}{"target_url": req.TargetURL},
-		})
-		return
-	}
-
-	if _, err = conn.SendInitialized(ctx); err != nil {
-		s.writeError(w, http.StatusBadGateway, &ErrorResponse{
-			ErrorType:    "mcp_error",
-			ErrorCode:    "INIT_FAILED",
-			ErrorMessage: fmt.Sprintf("MCP initialized notification failed: %v", err),
-			Details:      map[string]interface{}{"target_url": req.TargetURL},
-		})
-		return
-	}
 
 	outcome, err := conn.ToolsList(ctx, nil)
 	if err != nil {
@@ -196,10 +156,7 @@ func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		TargetURL string            `json:"target_url"`
-		Headers   map[string]string `json:"headers,omitempty"`
-	}
+	var req discoveryRequest
 	if err := json.NewDecoder(limitedBody(w, r)).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, NewInvalidRequestErrorResponse(
 			"Invalid JSON request body",
@@ -234,7 +191,7 @@ func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 
 	startTime := time.Now()
 
-	conn, err := adapter.Connect(ctx, config)
+	conn, err := connectDiscoverySession(ctx, adapter, config, req.ProtocolVersion, req.ProtocolVersionPolicy)
 	connectLatency := time.Since(startTime)
 	if err != nil {
 		s.writeJSON(w, http.StatusOK, &struct {
@@ -255,74 +212,6 @@ func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 			log.Printf("failed to close discovery connection: %v", err)
 		}
 	}()
-
-	// MCP protocol requires initialize handshake before any other operations
-	initParams := &transport.InitializeParams{
-		ProtocolVersion: mcp.DefaultProtocolVersion,
-		Capabilities:    make(map[string]interface{}),
-		ClientInfo: transport.ClientInfo{
-			Name:    mcp.ClientName,
-			Version: mcp.ClientVersion,
-		},
-	}
-
-	initOutcome, err := conn.Initialize(ctx, initParams)
-	if err != nil {
-		s.writeJSON(w, http.StatusOK, &struct {
-			Success        bool   `json:"success"`
-			Error          string `json:"error"`
-			ErrorCode      string `json:"error_code"`
-			ConnectLatency int64  `json:"connect_latency_ms"`
-			TotalLatency   int64  `json:"total_latency_ms"`
-		}{
-			Success:        false,
-			Error:          fmt.Sprintf("MCP initialize failed: %v", err),
-			ErrorCode:      "INIT_FAILED",
-			ConnectLatency: connectLatency.Milliseconds(),
-			TotalLatency:   time.Since(startTime).Milliseconds(),
-		})
-		return
-	}
-
-	if !initOutcome.OK {
-		errMsg := "MCP initialize failed"
-		if initOutcome.Error != nil {
-			errMsg = fmt.Sprintf("MCP initialize failed: %v", initOutcome.Error.Message)
-		}
-		s.writeJSON(w, http.StatusOK, &struct {
-			Success        bool   `json:"success"`
-			Error          string `json:"error"`
-			ErrorCode      string `json:"error_code"`
-			ConnectLatency int64  `json:"connect_latency_ms"`
-			TotalLatency   int64  `json:"total_latency_ms"`
-		}{
-			Success:        false,
-			Error:          errMsg,
-			ErrorCode:      "INIT_FAILED",
-			ConnectLatency: connectLatency.Milliseconds(),
-			TotalLatency:   time.Since(startTime).Milliseconds(),
-		})
-		return
-	}
-
-	// Send initialized notification to complete handshake
-	_, err = conn.SendInitialized(ctx)
-	if err != nil {
-		s.writeJSON(w, http.StatusOK, &struct {
-			Success        bool   `json:"success"`
-			Error          string `json:"error"`
-			ErrorCode      string `json:"error_code"`
-			ConnectLatency int64  `json:"connect_latency_ms"`
-			TotalLatency   int64  `json:"total_latency_ms"`
-		}{
-			Success:        false,
-			Error:          fmt.Sprintf("MCP initialized notification failed: %v", err),
-			ErrorCode:      "INIT_FAILED",
-			ConnectLatency: connectLatency.Milliseconds(),
-			TotalLatency:   time.Since(startTime).Milliseconds(),
-		})
-		return
-	}
 
 	toolsStartTime := time.Now()
 	outcome, err := conn.ToolsList(ctx, nil)
@@ -400,10 +289,12 @@ func (s *Server) handleTestTool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		TargetURL string                 `json:"target_url"`
-		ToolName  string                 `json:"tool_name"`
-		Arguments map[string]interface{} `json:"arguments,omitempty"`
-		Headers   map[string]string      `json:"headers,omitempty"`
+		TargetURL             string                 `json:"target_url"`
+		ToolName              string                 `json:"tool_name"`
+		Arguments             map[string]interface{} `json:"arguments,omitempty"`
+		Headers               map[string]string      `json:"headers,omitempty"`
+		ProtocolVersion       string                 `json:"protocol_version,omitempty"`
+		ProtocolVersionPolicy string                 `json:"protocol_version_policy,omitempty"`
 	}
 	if err := json.NewDecoder(limitedBody(w, r)).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, NewInvalidRequestErrorResponse(
@@ -447,7 +338,7 @@ func (s *Server) handleTestTool(w http.ResponseWriter, r *http.Request) {
 
 	startTime := time.Now()
 
-	conn, err := adapter.Connect(ctx, config)
+	conn, err := connectDiscoverySession(ctx, adapter, config, req.ProtocolVersion, req.ProtocolVersionPolicy)
 	if err != nil {
 		s.writeJSON(w, http.StatusOK, &struct {
 			Success   bool   `json:"success"`
@@ -465,60 +356,6 @@ func (s *Server) handleTestTool(w http.ResponseWriter, r *http.Request) {
 			log.Printf("failed to close test-tool connection: %v", err)
 		}
 	}()
-
-	// MCP protocol requires initialize handshake before any other operations
-	initParams := &transport.InitializeParams{
-		ProtocolVersion: mcp.DefaultProtocolVersion,
-		Capabilities:    make(map[string]interface{}),
-		ClientInfo: transport.ClientInfo{
-			Name:    mcp.ClientName,
-			Version: mcp.ClientVersion,
-		},
-	}
-
-	initOutcome, err := conn.Initialize(ctx, initParams)
-	if err != nil {
-		s.writeJSON(w, http.StatusOK, &struct {
-			Success   bool   `json:"success"`
-			Error     string `json:"error"`
-			LatencyMs int64  `json:"latency_ms"`
-		}{
-			Success:   false,
-			Error:     fmt.Sprintf("MCP initialize failed: %v", err),
-			LatencyMs: time.Since(startTime).Milliseconds(),
-		})
-		return
-	}
-
-	if !initOutcome.OK {
-		errMsg := "MCP initialize failed"
-		if initOutcome.Error != nil {
-			errMsg = fmt.Sprintf("MCP initialize failed: %v", initOutcome.Error.Message)
-		}
-		s.writeJSON(w, http.StatusOK, &struct {
-			Success   bool   `json:"success"`
-			Error     string `json:"error"`
-			LatencyMs int64  `json:"latency_ms"`
-		}{
-			Success:   false,
-			Error:     errMsg,
-			LatencyMs: time.Since(startTime).Milliseconds(),
-		})
-		return
-	}
-
-	if _, err = conn.SendInitialized(ctx); err != nil {
-		s.writeJSON(w, http.StatusOK, &struct {
-			Success   bool   `json:"success"`
-			Error     string `json:"error"`
-			LatencyMs int64  `json:"latency_ms"`
-		}{
-			Success:   false,
-			Error:     fmt.Sprintf("MCP initialized notification failed: %v", err),
-			LatencyMs: time.Since(startTime).Milliseconds(),
-		})
-		return
-	}
 
 	outcome, err := conn.ToolsCall(ctx, &transport.ToolsCallParams{
 		Name:      req.ToolName,
@@ -590,6 +427,188 @@ func (s *Server) handleTestTool(w http.ResponseWriter, r *http.Request) {
 		Result:    toolResult.Content,
 		LatencyMs: latencyMs,
 	})
+}
+
+type discoveryProtocolConfigurer interface {
+	ConfigureProtocol(version string)
+}
+
+type discoveryModernProtocolConfigurer interface {
+	ConfigureModernProtocol(version string)
+}
+
+type discoveryLegacyProtocolConfigurer interface {
+	ConfigureLegacyProtocol(version string)
+}
+
+type discoveryModernDiscoverer interface {
+	Discover(ctx context.Context) (*transport.OperationOutcome, error)
+}
+
+func connectDiscoverySession(ctx context.Context, adapter transport.Adapter, config *transport.TransportConfig, version string, policy string) (transport.Connection, error) {
+	if version == "" {
+		version = mcp.ProtocolVersionAuto
+	}
+	if policy == "" {
+		policy = string(mcp.VersionPolicySupported)
+	}
+	versionPolicy := mcp.ParseVersionPolicy(policy)
+
+	switch mcp.EraForVersion(version) {
+	case mcp.ProtocolEraModern:
+		return connectModernDiscoverySession(ctx, adapter, config, version, versionPolicy)
+	case mcp.ProtocolEraLegacy:
+		return connectLegacyDiscoverySession(ctx, adapter, config, version, versionPolicy)
+	}
+
+	modernConn, err := adapter.Connect(ctx, config)
+	if err == nil {
+		if err := prepareModernDiscoverySession(ctx, modernConn, mcp.ModernProtocolVersion, versionPolicy); err == nil {
+			return modernConn, nil
+		}
+		if closeErr := modernConn.Close(); closeErr != nil {
+			log.Printf("failed to close failed modern discovery connection: %v", closeErr)
+		}
+	}
+
+	return connectLegacyDiscoverySession(ctx, adapter, config, mcp.DefaultProtocolVersion, versionPolicy)
+}
+
+func connectModernDiscoverySession(ctx context.Context, adapter transport.Adapter, config *transport.TransportConfig, version string, policy mcp.VersionPolicy) (transport.Connection, error) {
+	conn, err := adapter.Connect(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	if err := prepareModernDiscoverySession(ctx, conn, version, policy); err != nil {
+		if closeErr := conn.Close(); closeErr != nil {
+			log.Printf("failed to close failed modern discovery connection: %v", closeErr)
+		}
+		return nil, err
+	}
+	return conn, nil
+}
+
+func connectLegacyDiscoverySession(ctx context.Context, adapter transport.Adapter, config *transport.TransportConfig, version string, policy mcp.VersionPolicy) (transport.Connection, error) {
+	legacyConn, err := adapter.Connect(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	if err := prepareLegacyDiscoverySession(ctx, legacyConn, version, policy); err != nil {
+		if closeErr := legacyConn.Close(); closeErr != nil {
+			log.Printf("failed to close failed legacy discovery connection: %v", closeErr)
+		}
+		return nil, err
+	}
+	return legacyConn, nil
+}
+
+func prepareModernDiscoverySession(ctx context.Context, conn transport.Connection, version string, policy mcp.VersionPolicy) error {
+	if version == "" || version == mcp.ProtocolVersionAuto {
+		version = mcp.ModernProtocolVersion
+	}
+	if c, ok := conn.(discoveryModernProtocolConfigurer); ok {
+		c.ConfigureModernProtocol(version)
+	} else if c, ok := conn.(discoveryProtocolConfigurer); ok {
+		c.ConfigureProtocol(version)
+	}
+
+	discoverer, ok := conn.(discoveryModernDiscoverer)
+	if !ok {
+		return fmt.Errorf("transport does not support server/discover")
+	}
+	outcome, err := discoverer.Discover(ctx)
+	if err != nil {
+		return err
+	}
+	if !outcome.OK {
+		if outcome.Error != nil {
+			return fmt.Errorf("server/discover failed: %s", outcome.Error.Message)
+		}
+		return fmt.Errorf("server/discover failed")
+	}
+	discoverResult, err := transport.ParseDiscoverResult(outcome.Result)
+	if err != nil {
+		return err
+	}
+	selectedVersion, err := selectModernDiscoveryVersion(version, discoverResult.SupportedVersions, policy)
+	if err != nil {
+		return err
+	}
+	if selectedVersion != version {
+		if c, ok := conn.(discoveryModernProtocolConfigurer); ok {
+			c.ConfigureModernProtocol(selectedVersion)
+		} else if c, ok := conn.(discoveryProtocolConfigurer); ok {
+			c.ConfigureProtocol(selectedVersion)
+		}
+	}
+	return nil
+}
+
+func selectModernDiscoveryVersion(requested string, supported []string, policy mcp.VersionPolicy) (string, error) {
+	if requested == "" || requested == mcp.ProtocolVersionAuto {
+		requested = mcp.ModernProtocolVersion
+	}
+	if policy == "" {
+		policy = mcp.VersionPolicyStrict
+	}
+	if policy == mcp.VersionPolicyNone {
+		return requested, nil
+	}
+	for _, supportedVersion := range supported {
+		if supportedVersion == requested {
+			return requested, nil
+		}
+	}
+	if policy == mcp.VersionPolicySupported {
+		for _, supportedVersion := range supported {
+			if mcp.IsSupported(supportedVersion) && mcp.EraForVersion(supportedVersion) == mcp.ProtocolEraModern {
+				return supportedVersion, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("server/discover did not advertise an acceptable modern protocol version for %s", requested)
+}
+
+func prepareLegacyDiscoverySession(ctx context.Context, conn transport.Connection, version string, policy mcp.VersionPolicy) error {
+	if version == "" || version == mcp.ProtocolVersionAuto {
+		version = mcp.DefaultProtocolVersion
+	}
+	if c, ok := conn.(discoveryLegacyProtocolConfigurer); ok {
+		c.ConfigureLegacyProtocol(version)
+	} else if c, ok := conn.(discoveryProtocolConfigurer); ok {
+		c.ConfigureProtocol(version)
+	}
+
+	initParams := &transport.InitializeParams{
+		ProtocolVersion: version,
+		Capabilities:    make(map[string]interface{}),
+		ClientInfo: transport.ClientInfo{
+			Name:    mcp.ClientName,
+			Version: mcp.ClientVersion,
+		},
+	}
+
+	initOutcome, err := conn.Initialize(ctx, initParams)
+	if err != nil {
+		return fmt.Errorf("MCP initialize failed: %w", err)
+	}
+	if !initOutcome.OK {
+		if initOutcome.Error != nil {
+			return fmt.Errorf("MCP initialize failed: %s", initOutcome.Error.Message)
+		}
+		return fmt.Errorf("MCP initialize failed")
+	}
+	initResult, err := transport.ParseInitializeResult(initOutcome.Result)
+	if err != nil {
+		return err
+	}
+	if err := mcp.ValidateNegotiation(version, initResult.ProtocolVersion, policy); err != nil {
+		return err
+	}
+	if _, err = conn.SendInitialized(ctx); err != nil {
+		return fmt.Errorf("MCP initialized notification failed: %w", err)
+	}
+	return nil
 }
 
 func (s *Server) discoveryPrivateNetworks() []string {

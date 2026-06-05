@@ -1,8 +1,8 @@
 package validation
 
 import (
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"regexp"
 )
 
@@ -12,7 +12,7 @@ var (
 	workerIDPattern    = regexp.MustCompile(`^wkr_[0-9a-f]{8,64}$`)
 	scenarioIDPattern  = regexp.MustCompile(`^scn_[a-z0-9][a-z0-9._-]{2,80}$`)
 	stageIDPattern     = regexp.MustCompile(`^stg_[0-9a-f]{3,81}$`)
-	vuIDPattern        = regexp.MustCompile(`^vu_[0-9]{1,10}$`)
+	vuIDPattern        = regexp.MustCompile(`^(vu_[0-9]{1,10}|lse_[0-9a-f]{8,64}-vu-[0-9]{1,10})$`)
 	sessionIDPattern   = regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,256}$`)
 	leaseIDPattern     = regexp.MustCompile(`^lse_[0-9a-f]{8,64}$`)
 	eventIDPattern     = regexp.MustCompile(`^evt_[0-9a-f]{8,64}$`)
@@ -132,9 +132,9 @@ func (v *CorrelationValidator) validateIDFormats(record map[string]interface{}, 
 	if vuID, ok := record["vu_id"].(string); ok {
 		if !vuIDPattern.MatchString(vuID) {
 			report.AddErrorWithRemediation(CodeInvalidIDFormat,
-				"vu_id must match pattern ^vu_[0-9]{1,10}$",
+				"vu_id must match pattern ^vu_[0-9]{1,10}$ or ^lse_[0-9a-f]{8,64}-vu-[0-9]{1,10}$",
 				"/vu_id",
-				"Use format: vu_<1-10 digit number>")
+				"Use format: vu_<1-10 digit number> or lse_<8-64 hex chars>-vu-<1-10 digit number>")
 		}
 	}
 

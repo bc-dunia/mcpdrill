@@ -1,9 +1,14 @@
 export interface BackendOperationMix {
   operation: string;
   weight: number;
+  tool_name?: string;
   uri?: string;
   prompt_name?: string;
   arguments?: Record<string, unknown>;
+  task_id?: string;
+  input_responses?: Record<string, unknown>;
+  request_state?: string;
+  notifications?: Record<string, unknown>;
 }
 
 export interface BackendToolTemplate {
@@ -38,6 +43,8 @@ export interface BackendRunConfig {
     url: string;
     transport: 'streamable_http';
     headers: Record<string, string>;
+    protocol_version?: string;
+    protocol_version_policy?: string;
     auth: {
       type: string;
       tokens?: string[];
@@ -77,6 +84,7 @@ export interface BackendRunConfig {
     pool_size: number | null;
     ttl_ms: number | null;
     max_idle_ms: number | null;
+    churn_interval_ops?: number | null;
   };
   workload: {
     in_flight_per_vu: number;
@@ -85,6 +93,23 @@ export interface BackendRunConfig {
       base_ms: number;
       jitter_ms: number;
     };
+    user_journey?: {
+      startup_sequence?: {
+        run_tools_list_on_start?: boolean;
+      } | null;
+      periodic_ops?: {
+        tools_list_interval_ms?: number;
+        tools_list_after_errors?: number;
+      } | null;
+      reconnect_policy?: {
+        enabled?: boolean;
+        initial_delay_ms?: number;
+        max_delay_ms?: number;
+        multiplier?: number;
+        jitter_fraction?: number;
+        max_retries?: number;
+      } | null;
+    } | null;
     operation_mix: BackendOperationMix[];
     tools: {
       selection: {
@@ -105,6 +130,10 @@ export interface BackendRunConfig {
       target_rps: number | null;
     };
     stop_conditions: BackendStopCondition[];
+    streaming_stop_conditions?: {
+      stream_stall_seconds?: number;
+      min_events_per_second?: number;
+    };
   }>;
   safety: {
     ramp_by_default: boolean;

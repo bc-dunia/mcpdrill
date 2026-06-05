@@ -47,7 +47,9 @@ async function extractErrorMessage(response: Response, fallbackAction: string): 
 
 export async function discoverTools(
   targetUrl: string,
-  headers?: Record<string, string>
+  headers?: Record<string, string>,
+  protocolVersion?: string,
+  protocolVersionPolicy?: string
 ): Promise<DiscoveredTool[]> {
   const response = await fetch(`${API_BASE}/discover-tools`, {
     method: 'POST',
@@ -55,6 +57,8 @@ export async function discoverTools(
     body: JSON.stringify({ 
       target_url: normalizeMcpUrl(targetUrl),
       headers: headers || {},
+      protocol_version: protocolVersion || 'auto',
+      protocol_version_policy: protocolVersionPolicy || 'supported',
     }),
   });
   if (!response.ok) {
@@ -66,12 +70,19 @@ export async function discoverTools(
 
 export async function testConnection(
   targetUrl: string, 
-  headers?: Record<string, string>
+  headers?: Record<string, string>,
+  protocolVersion?: string,
+  protocolVersionPolicy?: string
 ): Promise<ConnectionTestResult> {
   const response = await fetch(`${API_BASE}/test-connection`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ target_url: normalizeMcpUrl(targetUrl), headers: headers || {} }),
+    body: JSON.stringify({
+      target_url: normalizeMcpUrl(targetUrl),
+      headers: headers || {},
+      protocol_version: protocolVersion || 'auto',
+      protocol_version_policy: protocolVersionPolicy || 'supported',
+    }),
   });
   
   if (!response.ok) {
@@ -90,7 +101,9 @@ export async function testTool(
   targetUrl: string,
   toolName: string,
   args: Record<string, unknown>,
-  headers?: Record<string, string>
+  headers?: Record<string, string>,
+  protocolVersion?: string,
+  protocolVersionPolicy?: string
 ): Promise<ToolTestResult> {
   const response = await fetch(`${API_BASE}/test-tool`, {
     method: 'POST',
@@ -100,6 +113,8 @@ export async function testTool(
       tool_name: toolName,
       arguments: args,
       headers: headers || {},
+      protocol_version: protocolVersion || 'auto',
+      protocol_version_policy: protocolVersionPolicy || 'supported',
     }),
   });
   

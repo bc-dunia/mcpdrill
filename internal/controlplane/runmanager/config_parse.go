@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bc-dunia/mcpdrill/internal/mcp"
 	"github.com/bc-dunia/mcpdrill/internal/types"
 )
 
@@ -23,9 +24,23 @@ type parsedRedirectPolicy struct {
 	Allowlist    []string `json:"allowlist,omitempty"`
 }
 
+type parsedTimeouts struct {
+	ConnectTimeoutMs     int64 `json:"connect_timeout_ms,omitempty"`
+	RequestTimeoutMs     int64 `json:"request_timeout_ms,omitempty"`
+	StreamStallTimeoutMs int64 `json:"stream_stall_timeout_ms,omitempty"`
+}
+
+type parsedTLS struct {
+	Verify      bool   `json:"verify"`
+	CABundleRef string `json:"ca_bundle_ref,omitempty"`
+}
+
 type parsedAuth struct {
-	Type   string   `json:"type"`
-	Tokens []string `json:"tokens,omitempty"`
+	Type             string   `json:"type"`
+	Tokens           []string `json:"tokens,omitempty"`
+	BearerTokenRef   string   `json:"bearer_token_ref,omitempty"`
+	APIKeyHeaderName string   `json:"api_key_header_name,omitempty"`
+	APIKeyRef        string   `json:"api_key_ref,omitempty"`
 }
 
 type parsedTarget struct {
@@ -34,6 +49,8 @@ type parsedTarget struct {
 	Headers               map[string]string     `json:"headers,omitempty"`
 	Auth                  *parsedAuth           `json:"auth,omitempty"`
 	Identification        *parsedIdentification `json:"identification,omitempty"`
+	Timeouts              *parsedTimeouts       `json:"timeouts,omitempty"`
+	TLS                   *parsedTLS            `json:"tls,omitempty"`
 	RedirectPolicy        *parsedRedirectPolicy `json:"redirect_policy,omitempty"`
 	ProtocolVersion       string                `json:"protocol_version,omitempty"`
 	ProtocolVersionPolicy string                `json:"protocol_version_policy,omitempty"`
@@ -80,16 +97,50 @@ type parsedStopCondition struct {
 }
 
 type parsedLoad struct {
-	TargetVUs  int `json:"target_vus"`
-	StartVUs   int `json:"start_vus,omitempty"`    // Starting VUs for ramp (default: 10% of target)
-	RampSteps  int `json:"ramp_steps,omitempty"`   // Number of steps to reach target (default: 5)
-	StepHoldMs int `json:"step_hold_ms,omitempty"` // How long to hold each step (default: duration/steps)
+	TargetVUs  int     `json:"target_vus"`
+	TargetRPS  float64 `json:"target_rps,omitempty"`
+	StartVUs   int     `json:"start_vus,omitempty"`    // Starting VUs for ramp (default: 10% of target)
+	RampSteps  int     `json:"ramp_steps,omitempty"`   // Number of steps to reach target (default: 5)
+	StepHoldMs int     `json:"step_hold_ms,omitempty"` // How long to hold each step (default: duration/steps)
 }
 
 type parsedWorkload struct {
-	OpMix        []parsedOpMixEntry `json:"op_mix"`
-	OperationMix []parsedOpMixEntry `json:"operation_mix"`
-	Tools        *parsedToolsConfig `json:"tools,omitempty"`
+	OpMix         []parsedOpMixEntry `json:"op_mix"`
+	OperationMix  []parsedOpMixEntry `json:"operation_mix"`
+	InFlightPerVU int                `json:"in_flight_per_vu,omitempty"`
+	ThinkTime     parsedThinkTime    `json:"think_time,omitempty"`
+	UserJourney   *parsedUserJourney `json:"user_journey,omitempty"`
+	Tools         *parsedToolsConfig `json:"tools,omitempty"`
+}
+
+type parsedThinkTime struct {
+	Mode     string `json:"mode,omitempty"`
+	BaseMs   int64  `json:"base_ms,omitempty"`
+	JitterMs int64  `json:"jitter_ms,omitempty"`
+}
+
+type parsedUserJourney struct {
+	StartupSequence *parsedStartupSequence `json:"startup_sequence,omitempty"`
+	PeriodicOps     *parsedPeriodicOps     `json:"periodic_ops,omitempty"`
+	ReconnectPolicy *parsedReconnectPolicy `json:"reconnect_policy,omitempty"`
+}
+
+type parsedStartupSequence struct {
+	RunToolsListOnStart bool `json:"run_tools_list_on_start"`
+}
+
+type parsedPeriodicOps struct {
+	ToolsListIntervalMs  int64 `json:"tools_list_interval_ms,omitempty"`
+	ToolsListAfterErrors int   `json:"tools_list_after_errors,omitempty"`
+}
+
+type parsedReconnectPolicy struct {
+	Enabled        bool    `json:"enabled"`
+	InitialDelayMs int64   `json:"initial_delay_ms,omitempty"`
+	MaxDelayMs     int64   `json:"max_delay_ms,omitempty"`
+	Multiplier     float64 `json:"multiplier,omitempty"`
+	JitterFraction float64 `json:"jitter_fraction,omitempty"`
+	MaxRetries     int     `json:"max_retries,omitempty"`
 }
 
 type parsedToolsConfig struct {
@@ -109,19 +160,24 @@ type parsedToolTemplate struct {
 }
 
 type parsedOpMixEntry struct {
-	Operation  string                 `json:"operation"`
-	Weight     int                    `json:"weight"`
-	ToolName   string                 `json:"tool_name,omitempty"`
-	Arguments  map[string]interface{} `json:"arguments,omitempty"`
-	URI        string                 `json:"uri,omitempty"`
-	PromptName string                 `json:"prompt_name,omitempty"`
+	Operation      string                 `json:"operation"`
+	Weight         int                    `json:"weight"`
+	ToolName       string                 `json:"tool_name,omitempty"`
+	Arguments      map[string]interface{} `json:"arguments,omitempty"`
+	URI            string                 `json:"uri,omitempty"`
+	PromptName     string                 `json:"prompt_name,omitempty"`
+	TaskID         string                 `json:"task_id,omitempty"`
+	InputResponses map[string]interface{} `json:"input_responses,omitempty"`
+	RequestState   string                 `json:"request_state,omitempty"`
+	Notifications  map[string]interface{} `json:"notifications,omitempty"`
 }
 
 type parsedSessionPolicy struct {
-	Mode      string `json:"mode"`
-	PoolSize  int    `json:"pool_size,omitempty"`
-	TTLMs     int64  `json:"ttl_ms,omitempty"`
-	MaxIdleMs int64  `json:"max_idle_ms,omitempty"`
+	Mode             string `json:"mode"`
+	PoolSize         int    `json:"pool_size,omitempty"`
+	TTLMs            int64  `json:"ttl_ms,omitempty"`
+	MaxIdleMs        int64  `json:"max_idle_ms,omitempty"`
+	ChurnIntervalOps int64  `json:"churn_interval_ops,omitempty"`
 }
 
 type parsedSafety struct {
@@ -150,6 +206,12 @@ func parseRunConfig(config []byte) (*parsedRunConfig, error) {
 	if len(parsed.Workload.OpMix) == 0 && len(parsed.Workload.OperationMix) > 0 {
 		parsed.Workload.OpMix = parsed.Workload.OperationMix
 	}
+	if parsed.Target.ProtocolVersion == "" {
+		parsed.Target.ProtocolVersion = mcp.ProtocolVersionAuto
+	}
+	if parsed.Target.ProtocolVersionPolicy == "" {
+		parsed.Target.ProtocolVersionPolicy = "supported"
+	}
 
 	for i := range parsed.Workload.OpMix {
 		parsed.Workload.OpMix[i].Operation = normalizeOperationName(parsed.Workload.OpMix[i].Operation)
@@ -171,10 +233,12 @@ func expandToolsTemplates(opMix []parsedOpMixEntry, tools *parsedToolsConfig) []
 		if op.Operation == "tools/call" && op.ToolName == "" {
 			for _, tmpl := range tools.Templates {
 				expanded = append(expanded, parsedOpMixEntry{
-					Operation: "tools/call",
-					Weight:    tmpl.Weight,
-					ToolName:  tmpl.ToolName,
-					Arguments: tmpl.Arguments,
+					Operation:      "tools/call",
+					Weight:         tmpl.Weight,
+					ToolName:       tmpl.ToolName,
+					Arguments:      tmpl.Arguments,
+					InputResponses: op.InputResponses,
+					RequestState:   op.RequestState,
 				})
 			}
 		} else {
@@ -199,6 +263,14 @@ func normalizeOperationName(op string) string {
 		return "prompts/list"
 	case "prompts_get":
 		return "prompts/get"
+	case "subscriptions_listen":
+		return "subscriptions/listen"
+	case "tasks_get":
+		return "tasks/get"
+	case "tasks_update":
+		return "tasks/update"
+	case "tasks_cancel":
+		return "tasks/cancel"
 	case "initialize":
 		return "initialize"
 	case "ping":
@@ -247,19 +319,96 @@ func buildRedirectPolicy(policy *parsedRedirectPolicy) *types.RedirectPolicyConf
 	}
 }
 
+func buildTimeoutConfig(timeouts *parsedTimeouts) *types.TimeoutConfig {
+	if timeouts == nil {
+		return nil
+	}
+	return &types.TimeoutConfig{
+		ConnectTimeoutMs:     timeouts.ConnectTimeoutMs,
+		RequestTimeoutMs:     timeouts.RequestTimeoutMs,
+		StreamStallTimeoutMs: timeouts.StreamStallTimeoutMs,
+	}
+}
+
+func buildTLSConfig(tlsConfig *parsedTLS) *types.TLSConfig {
+	if tlsConfig == nil {
+		return nil
+	}
+	return &types.TLSConfig{
+		Verify:      tlsConfig.Verify,
+		CABundleRef: tlsConfig.CABundleRef,
+	}
+}
+
 func buildAuthConfig(auth *parsedAuth) *types.AuthConfig {
 	if auth == nil || auth.Type == "" || auth.Type == "none" {
 		return nil
 	}
 	return &types.AuthConfig{
-		Type:   auth.Type,
-		Tokens: auth.Tokens,
+		Type:             auth.Type,
+		Tokens:           auth.Tokens,
+		BearerTokenRef:   auth.BearerTokenRef,
+		APIKeyHeaderName: auth.APIKeyHeaderName,
+		APIKeyRef:        auth.APIKeyRef,
 	}
+}
+
+func buildLoadConfig(load parsedLoad) types.LoadConfig {
+	return types.LoadConfig{TargetRPS: load.TargetRPS}
+}
+
+func buildWorkloadConfig(workload parsedWorkload) types.WorkloadConfig {
+	return types.WorkloadConfig{
+		OpMix:         convertOpMix(workload.OpMix),
+		InFlightPerVU: workload.InFlightPerVU,
+		ThinkTime: types.ThinkTimeConfig{
+			Mode:     workload.ThinkTime.Mode,
+			BaseMs:   workload.ThinkTime.BaseMs,
+			JitterMs: workload.ThinkTime.JitterMs,
+		},
+		UserJourney: buildUserJourneyConfig(workload.UserJourney),
+	}
+}
+
+func buildUserJourneyConfig(journey *parsedUserJourney) *types.UserJourneyConfig {
+	if journey == nil {
+		return nil
+	}
+	result := &types.UserJourneyConfig{}
+	if journey.StartupSequence != nil {
+		result.StartupSequence = &types.StartupSequenceConfig{RunToolsListOnStart: journey.StartupSequence.RunToolsListOnStart}
+	}
+	if journey.PeriodicOps != nil {
+		result.PeriodicOps = &types.PeriodicOpsConfig{
+			ToolsListIntervalMs:  journey.PeriodicOps.ToolsListIntervalMs,
+			ToolsListAfterErrors: journey.PeriodicOps.ToolsListAfterErrors,
+		}
+	}
+	if journey.ReconnectPolicy != nil {
+		result.ReconnectPolicy = &types.ReconnectPolicyConfig{
+			Enabled:        journey.ReconnectPolicy.Enabled,
+			InitialDelayMs: journey.ReconnectPolicy.InitialDelayMs,
+			MaxDelayMs:     journey.ReconnectPolicy.MaxDelayMs,
+			Multiplier:     journey.ReconnectPolicy.Multiplier,
+			JitterFraction: journey.ReconnectPolicy.JitterFraction,
+			MaxRetries:     journey.ReconnectPolicy.MaxRetries,
+		}
+	}
+	return result
 }
 
 func findStageByName(config *parsedRunConfig, stageName StageName) *parsedStage {
 	for i := range config.Stages {
 		if config.Stages[i].Stage == string(stageName) && config.Stages[i].Enabled {
+			return &config.Stages[i]
+		}
+	}
+	return nil
+}
+
+func findStageByID(config *parsedRunConfig, stageID string) *parsedStage {
+	for i := range config.Stages {
+		if config.Stages[i].StageID == stageID && config.Stages[i].Enabled {
 			return &config.Stages[i]
 		}
 	}
@@ -291,12 +440,16 @@ func convertOpMix(entries []parsedOpMixEntry) []types.OpMixEntry {
 	result := make([]types.OpMixEntry, len(entries))
 	for i, e := range entries {
 		result[i] = types.OpMixEntry{
-			Operation:  e.Operation,
-			Weight:     e.Weight,
-			ToolName:   e.ToolName,
-			Arguments:  e.Arguments,
-			URI:        e.URI,
-			PromptName: e.PromptName,
+			Operation:      e.Operation,
+			Weight:         e.Weight,
+			ToolName:       e.ToolName,
+			Arguments:      e.Arguments,
+			URI:            e.URI,
+			PromptName:     e.PromptName,
+			TaskID:         e.TaskID,
+			InputResponses: e.InputResponses,
+			RequestState:   e.RequestState,
+			Notifications:  e.Notifications,
 		}
 	}
 	return result

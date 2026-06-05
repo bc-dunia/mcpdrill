@@ -15,13 +15,17 @@ import (
 type OperationType string
 
 const (
-	OpToolsList     OperationType = "tools/list"
-	OpToolsCall     OperationType = "tools/call"
-	OpPing          OperationType = "ping"
-	OpResourcesList OperationType = "resources/list"
-	OpResourcesRead OperationType = "resources/read"
-	OpPromptsList   OperationType = "prompts/list"
-	OpPromptsGet    OperationType = "prompts/get"
+	OpToolsList           OperationType = "tools/list"
+	OpToolsCall           OperationType = "tools/call"
+	OpPing                OperationType = "ping"
+	OpResourcesList       OperationType = "resources/list"
+	OpResourcesRead       OperationType = "resources/read"
+	OpPromptsList         OperationType = "prompts/list"
+	OpPromptsGet          OperationType = "prompts/get"
+	OpSubscriptionsListen OperationType = "subscriptions/listen"
+	OpTasksGet            OperationType = "tasks/get"
+	OpTasksUpdate         OperationType = "tasks/update"
+	OpTasksCancel         OperationType = "tasks/cancel"
 )
 
 // OperationWeight represents a weighted operation in the mix.
@@ -43,6 +47,11 @@ type OperationWeight struct {
 
 	// PromptName is the prompt name (only for prompts/get operations).
 	PromptName string `json:"prompt_name,omitempty"`
+
+	TaskID         string                 `json:"task_id,omitempty"`
+	InputResponses map[string]interface{} `json:"input_responses,omitempty"`
+	RequestState   string                 `json:"request_state,omitempty"`
+	Notifications  map[string]interface{} `json:"notifications,omitempty"`
 }
 
 // OperationMix represents the weighted distribution of operations.

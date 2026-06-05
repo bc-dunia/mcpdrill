@@ -17,6 +17,8 @@ interface ToolArgumentsEditorProps {
   onSavePreset?: (preset: Omit<ArgumentPreset, 'id' | 'createdAt'>) => void;
   targetUrl?: string;
   headers?: Record<string, string>;
+  protocolVersion?: string;
+  protocolVersionPolicy?: string;
 }
 
 function ToolArgumentsEditorComponent({
@@ -28,6 +30,8 @@ function ToolArgumentsEditorComponent({
   onSavePreset,
   targetUrl,
   headers,
+  protocolVersion,
+  protocolVersionPolicy,
 }: ToolArgumentsEditorProps) {
   const [mode, setMode] = useState<'form' | 'json'>('form');
   const [jsonText, setJsonText] = useState('');
@@ -157,6 +161,8 @@ function ToolArgumentsEditorComponent({
       toolName={toolName}
       value={value}
       headers={headers}
+      protocolVersion={protocolVersion}
+      protocolVersionPolicy={protocolVersionPolicy}
       isValid={isValid}
     >
       <div className="tool-args-editor" role="region" aria-label="Tool Arguments Configuration">

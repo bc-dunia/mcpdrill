@@ -10,6 +10,8 @@ interface Props {
   onChange: (config: WorkloadConfigType) => void;
   targetUrl?: string;
   headers?: Record<string, string>;
+  protocolVersion?: string;
+  protocolVersionPolicy?: string;
   fetchedTools?: FetchedTool[];
   onToolsFetched?: (tools: FetchedTool[]) => void;
 }
@@ -74,9 +76,37 @@ const OPERATIONS: OperationInfo[] = [
     icon: 'edit',
     help: 'Fetches a specific prompt template by name with arguments.',
   },
+  {
+    value: 'subscriptions/listen',
+    label: 'Listen Subscriptions',
+    description: 'Open notification stream',
+    icon: 'activity',
+    help: 'Opens a 2026 MCP subscriptions/listen stream for list/resource change notifications.',
+  },
+  {
+    value: 'tasks/get',
+    label: 'Get Task',
+    description: 'Poll task status',
+    icon: 'activity',
+    help: 'Polls a 2026 MCP Tasks extension task by task ID.',
+  },
+  {
+    value: 'tasks/update',
+    label: 'Update Task',
+    description: 'Submit task input',
+    icon: 'edit',
+    help: 'Submits input responses to a 2026 MCP Tasks extension task.',
+  },
+  {
+    value: 'tasks/cancel',
+    label: 'Cancel Task',
+    description: 'Cancel task',
+    icon: 'activity',
+    help: 'Requests cancellation of a 2026 MCP Tasks extension task.',
+  },
 ];
 
-export function WorkloadConfig({ config, onChange, targetUrl, headers, fetchedTools, onToolsFetched }: Props) {
+export function WorkloadConfig({ config, onChange, targetUrl, headers, protocolVersion, protocolVersionPolicy, fetchedTools, onToolsFetched }: Props) {
   const [expandedToolConfig, setExpandedToolConfig] = useState<number | null>(null);
   const [localTools, setLocalTools] = useState<FetchedTool[]>(fetchedTools || []);
 
@@ -104,8 +134,22 @@ export function WorkloadConfig({ config, onChange, targetUrl, headers, fetchedTo
   const updateOperation = useCallback((index: number, updates: Partial<OpMixEntry>) => {
     const newOpMix = [...config.op_mix];
     newOpMix[index] = { ...newOpMix[index], ...updates };
-    onChange({ op_mix: newOpMix });
-  }, [config.op_mix, onChange]);
+    onChange({ ...config, op_mix: newOpMix });
+  }, [config, onChange]);
+
+  const updateObjectFromJSON = useCallback((index: number, field: 'input_responses' | 'notifications', value: string) => {
+    if (!value.trim()) {
+      updateOperation(index, { [field]: undefined });
+      return;
+    }
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        updateOperation(index, { [field]: parsed });
+      }
+    } catch {
+    }
+  }, [updateOperation]);
 
   const addOperation = useCallback(() => {
     const usedOps = new Set(config.op_mix.map(op => op.operation));
@@ -114,19 +158,21 @@ export function WorkloadConfig({ config, onChange, targetUrl, headers, fetchedTo
     
     if (availableOp) {
       onChange({
+        ...config,
         op_mix: [...config.op_mix, { operation: availableOp.value, weight: 1 }],
       });
     } else if (toolsCallOp && !toolsCallOp.disabled) {
       onChange({
+        ...config,
         op_mix: [...config.op_mix, { operation: 'tools/call', weight: 1 }],
       });
     }
-  }, [config.op_mix, onChange]);
+  }, [config, onChange]);
 
   const removeOperation = useCallback((index: number) => {
     const newOpMix = config.op_mix.filter((_, i) => i !== index);
-    onChange({ op_mix: newOpMix });
-  }, [config.op_mix, onChange]);
+    onChange({ ...config, op_mix: newOpMix });
+  }, [config, onChange]);
 
   const getPercentage = useCallback((weight: number): string => {
     if (totalWeight === 0) return '0%';
@@ -277,6 +323,8 @@ export function WorkloadConfig({ config, onChange, targetUrl, headers, fetchedTo
                         tools={localTools}
                         onToolsFetched={handleToolsFetched}
                         headers={headers}
+                        protocolVersion={protocolVersion}
+                        protocolVersionPolicy={protocolVersionPolicy}
                       />
                     </div>
                   )}
@@ -290,9 +338,36 @@ export function WorkloadConfig({ config, onChange, targetUrl, headers, fetchedTo
                         onChange={(args) => updateOperation(index, { arguments: args })}
                         targetUrl={targetUrl}
                         headers={headers}
+                        protocolVersion={protocolVersion}
+                        protocolVersionPolicy={protocolVersionPolicy}
                       />
                     </div>
                   )}
+
+                  <div className="field-row">
+                    <label htmlFor={`${opId}-tool-input-responses`}>Input Responses JSON</label>
+                    <input
+                      id={`${opId}-tool-input-responses`}
+                      type="text"
+                      value={op.input_responses ? JSON.stringify(op.input_responses) : ''}
+                      onChange={e => updateObjectFromJSON(index, 'input_responses', e.target.value)}
+                      placeholder='{"request-1":{"type":"text","text":"answer"}}'
+                      className="input"
+                    />
+                    <span className="field-hint">Optional MCP 2026 MRTR responses for retrying a tool call after input_required</span>
+                  </div>
+                  <div className="field-row">
+                    <label htmlFor={`${opId}-tool-request-state`}>Request State</label>
+                    <input
+                      id={`${opId}-tool-request-state`}
+                      type="text"
+                      value={op.request_state || ''}
+                      onChange={e => updateOperation(index, { request_state: e.target.value || undefined })}
+                      placeholder="Opaque requestState returned by the server"
+                      className="input"
+                    />
+                    <span className="field-hint">Echo the opaque requestState from an input_required result when retrying</span>
+                  </div>
                 </div>
               )}
 
@@ -310,6 +385,30 @@ export function WorkloadConfig({ config, onChange, targetUrl, headers, fetchedTo
                     />
                     <span className="field-hint">The URI of the resource to read</span>
                   </div>
+                  <div className="field-row">
+                    <label htmlFor={`${opId}-resource-input-responses`}>Input Responses JSON</label>
+                    <input
+                      id={`${opId}-resource-input-responses`}
+                      type="text"
+                      value={op.input_responses ? JSON.stringify(op.input_responses) : ''}
+                      onChange={e => updateObjectFromJSON(index, 'input_responses', e.target.value)}
+                      placeholder='{"request-1":{"type":"text","text":"answer"}}'
+                      className="input"
+                    />
+                    <span className="field-hint">Optional MCP 2026 MRTR responses for retrying a resource read</span>
+                  </div>
+                  <div className="field-row">
+                    <label htmlFor={`${opId}-resource-request-state`}>Request State</label>
+                    <input
+                      id={`${opId}-resource-request-state`}
+                      type="text"
+                      value={op.request_state || ''}
+                      onChange={e => updateOperation(index, { request_state: e.target.value || undefined })}
+                      placeholder="Opaque requestState returned by the server"
+                      className="input"
+                    />
+                    <span className="field-hint">Echo the opaque requestState from an input_required result when retrying</span>
+                  </div>
                 </div>
               )}
 
@@ -326,6 +425,78 @@ export function WorkloadConfig({ config, onChange, targetUrl, headers, fetchedTo
                       className="input"
                     />
                     <span className="field-hint">The name of the prompt template to retrieve</span>
+                  </div>
+                  <div className="field-row">
+                    <label htmlFor={`${opId}-prompt-input-responses`}>Input Responses JSON</label>
+                    <input
+                      id={`${opId}-prompt-input-responses`}
+                      type="text"
+                      value={op.input_responses ? JSON.stringify(op.input_responses) : ''}
+                      onChange={e => updateObjectFromJSON(index, 'input_responses', e.target.value)}
+                      placeholder='{"request-1":{"type":"text","text":"answer"}}'
+                      className="input"
+                    />
+                    <span className="field-hint">Optional MCP 2026 MRTR responses for retrying a prompt get</span>
+                  </div>
+                  <div className="field-row">
+                    <label htmlFor={`${opId}-prompt-request-state`}>Request State</label>
+                    <input
+                      id={`${opId}-prompt-request-state`}
+                      type="text"
+                      value={op.request_state || ''}
+                      onChange={e => updateOperation(index, { request_state: e.target.value || undefined })}
+                      placeholder="Opaque requestState returned by the server"
+                      className="input"
+                    />
+                    <span className="field-hint">Echo the opaque requestState from an input_required result when retrying</span>
+                  </div>
+                </div>
+              )}
+
+              {(op.operation === 'tasks/get' || op.operation === 'tasks/update' || op.operation === 'tasks/cancel') && (
+                <div className="operation-extra">
+                  <div className="field-row">
+                    <label htmlFor={`${opId}-task-id`}>Task ID</label>
+                    <input
+                      id={`${opId}-task-id`}
+                      type="text"
+                      value={op.task_id || ''}
+                      onChange={e => updateOperation(index, { task_id: e.target.value })}
+                      placeholder="e.g., task-123"
+                      className="input"
+                    />
+                    <span className="field-hint">The 2026 MCP task ID to poll, update, or cancel</span>
+                  </div>
+                  {op.operation === 'tasks/update' && (
+                    <div className="field-row">
+                      <label htmlFor={`${opId}-input-responses`}>Input Responses JSON</label>
+                      <input
+                        id={`${opId}-input-responses`}
+                        type="text"
+                        value={op.input_responses ? JSON.stringify(op.input_responses) : ''}
+                        onChange={e => updateObjectFromJSON(index, 'input_responses', e.target.value)}
+                        placeholder='{"request-1":{"type":"text","text":"answer"}}'
+                        className="input"
+                      />
+                      <span className="field-hint">Responses keyed by the server-provided input request ID</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {op.operation === 'subscriptions/listen' && (
+                <div className="operation-extra">
+                  <div className="field-row">
+                    <label htmlFor={`${opId}-notifications`}>Notifications JSON</label>
+                    <input
+                      id={`${opId}-notifications`}
+                      type="text"
+                      value={op.notifications ? JSON.stringify(op.notifications) : ''}
+                      onChange={e => updateObjectFromJSON(index, 'notifications', e.target.value)}
+                      placeholder='{"toolsListChanged":true}'
+                      className="input"
+                    />
+                    <span className="field-hint">Subscription filters, for example toolsListChanged or taskIds</span>
                   </div>
                 </div>
               )}

@@ -293,6 +293,23 @@ func TestPingOperation_Validate(t *testing.T) {
 	}
 }
 
+func TestTasksUpdateOperation_ValidateRequiresInputResponses(t *testing.T) {
+	op := &TasksUpdateOperation{}
+
+	if err := op.Validate(map[string]interface{}{"task_id": "task-1"}); err == nil {
+		t.Fatal("expected error for missing input_responses")
+	}
+
+	if err := op.Validate(map[string]interface{}{
+		"task_id": "task-1",
+		"input_responses": map[string]interface{}{
+			"request-1": map[string]interface{}{"type": "text", "text": "ok"},
+		},
+	}); err != nil {
+		t.Fatalf("expected valid tasks/update params, got %v", err)
+	}
+}
+
 func TestOperationFunc(t *testing.T) {
 	executeCalled := false
 	validateCalled := false

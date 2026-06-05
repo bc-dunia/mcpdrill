@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/bc-dunia/mcpdrill/internal/transport"
 )
@@ -61,7 +62,11 @@ func (o *ResourcesReadOperation) Execute(ctx context.Context, conn transport.Con
 	}
 
 	readParams := &transport.ResourcesReadParams{
-		URI: uri,
+		URI:            uri,
+		InputResponses: rawResourceMessageMap(params["input_responses"]),
+	}
+	if requestState, ok := params["request_state"].(string); ok {
+		readParams.RequestState = requestState
 	}
 	return conn.ResourcesRead(ctx, readParams)
 }
@@ -84,4 +89,19 @@ func (o *ResourcesReadOperation) Validate(params map[string]interface{}) error {
 	}
 
 	return nil
+}
+
+func rawResourceMessageMap(value interface{}) map[string]json.RawMessage {
+	m, ok := value.(map[string]interface{})
+	if !ok || len(m) == 0 {
+		return nil
+	}
+	result := make(map[string]json.RawMessage, len(m))
+	for k, v := range m {
+		data, err := json.Marshal(v)
+		if err == nil {
+			result[k] = data
+		}
+	}
+	return result
 }

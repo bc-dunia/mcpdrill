@@ -84,8 +84,8 @@ type SessionConfig struct {
 	// Adapter is the transport adapter used to create connections.
 	Adapter transport.Adapter
 
-	// ProtocolVersion is the MCP protocol version to use for initialization.
-	// Empty string means use default (mcp.DefaultProtocolVersion).
+	// ProtocolVersion is the MCP protocol version to use for connection setup.
+	// Empty string is treated as auto-detect.
 	ProtocolVersion string
 
 	// ProtocolVersionPolicy determines how to handle version negotiation.
@@ -300,12 +300,13 @@ var (
 
 // Internal error values for comparison.
 var (
-	errSessionExpired = errorString("session expired")
-	errSessionClosed  = errorString("session closed")
-	errPoolExhausted  = errorString("pool exhausted")
-	errPoolTimeout    = errorString("pool timeout")
-	errManagerClosed  = errorString("manager closed")
-	errInvalidConfig  = errorString("invalid configuration")
+	errSessionExpired             = errorString("session expired")
+	errSessionClosed              = errorString("session closed")
+	errPoolExhausted              = errorString("pool exhausted")
+	errPoolTimeout                = errorString("pool timeout")
+	errManagerClosed              = errorString("manager closed")
+	errInvalidConfig              = errorString("invalid configuration")
+	errModernDiscoveryUnsupported = errorString("transport does not support modern protocol discovery")
 )
 
 // errorString is a simple error type for internal errors.

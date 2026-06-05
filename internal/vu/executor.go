@@ -672,14 +672,31 @@ func buildOperationParams(op *OperationWeight) map[string]interface{} {
 		if len(op.Arguments) > 0 {
 			params["arguments"] = op.Arguments
 		}
+		addInputRetryParams(params, op)
 
 	case OpResourcesRead:
 		params["uri"] = op.URI
+		addInputRetryParams(params, op)
 
 	case OpPromptsGet:
 		params["name"] = op.PromptName
 		if len(op.Arguments) > 0 {
 			params["arguments"] = op.Arguments
+		}
+		addInputRetryParams(params, op)
+
+	case OpTasksGet, OpTasksCancel:
+		params["task_id"] = op.TaskID
+
+	case OpTasksUpdate:
+		params["task_id"] = op.TaskID
+		if len(op.InputResponses) > 0 {
+			params["input_responses"] = op.InputResponses
+		}
+
+	case OpSubscriptionsListen:
+		if len(op.Notifications) > 0 {
+			params["notifications"] = op.Notifications
 		}
 	}
 
@@ -688,6 +705,15 @@ func buildOperationParams(op *OperationWeight) map[string]interface{} {
 	}
 
 	return params
+}
+
+func addInputRetryParams(params map[string]interface{}, op *OperationWeight) {
+	if len(op.InputResponses) > 0 {
+		params["input_responses"] = op.InputResponses
+	}
+	if op.RequestState != "" {
+		params["request_state"] = op.RequestState
+	}
 }
 
 func calculateArgumentSize(args map[string]interface{}) int {
