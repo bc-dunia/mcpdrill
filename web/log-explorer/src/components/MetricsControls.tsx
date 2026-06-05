@@ -120,7 +120,7 @@ export function MetricsControls({
         return;
       }
 
-      const headers = ['timestamp', 'operation', 'tool_name', 'latency_ms', 'ok', 'error_type', 'error_code', 'session_id', 'vu_id'];
+      const headers = ['timestamp', 'operation', 'tool_name', 'latency_ms', 'ok', 'error_type', 'error_code', 'error_message', 'http_status', 'session_id', 'vu_id'];
       const rows = allLogs.map((log) => headers.map(h => {
         const key = h === 'timestamp' ? 'timestamp_ms' : h;
         const val = log[key as keyof OperationLog];

@@ -1,11 +1,16 @@
 package mockserver
 
 import (
+	"bufio"
 	"bytes"
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/bc-dunia/mcpdrill/internal/mcp"
 	"github.com/bc-dunia/mcpdrill/internal/types"
@@ -22,7 +27,7 @@ func TestMockServerModernDiscover(t *testing.T) {
 	srv, cleanup := StartTestServer()
 	defer cleanup()
 
-	resp := postJSONRPC(t, srv.MCPURL(), map[string]interface{}{
+	resp := postModernJSONRPC(t, srv.MCPURL(), map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      "discover-1",
 		"method":  "server/discover",
@@ -93,7 +98,7 @@ func TestMockServerModernTaskOperations(t *testing.T) {
 		{method: "tasks/cancel", params: map[string]interface{}{"taskId": "task-123"}},
 	} {
 		t.Run(tc.method, func(t *testing.T) {
-			resp := postJSONRPC(t, srv.MCPURL(), map[string]interface{}{
+			resp := postModernJSONRPC(t, srv.MCPURL(), map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      tc.method,
 				"method":  tc.method,
@@ -129,7 +134,7 @@ func TestMockServerTasksUpdateRequiresInputResponses(t *testing.T) {
 	srv, cleanup := StartTestServer()
 	defer cleanup()
 
-	resp := postJSONRPC(t, srv.MCPURL(), map[string]interface{}{
+	resp := postModernJSONRPC(t, srv.MCPURL(), map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      "tasks/update",
 		"method":  "tasks/update",
@@ -147,7 +152,7 @@ func TestMockServerSubscriptionsListen(t *testing.T) {
 	srv, cleanup := StartTestServer()
 	defer cleanup()
 
-	resp := postJSONRPC(t, srv.MCPURL(), map[string]interface{}{
+	resp := postModernJSONRPC(t, srv.MCPURL(), map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      "sub-1",
 		"method":  "subscriptions/listen",
@@ -171,31 +176,188 @@ func TestMockServerSubscriptionsListen(t *testing.T) {
 		"method":  "subscriptions/listen",
 		"params": map[string]interface{}{
 			"notifications": map[string]interface{}{"toolsListChanged": true},
+			"_meta": map[string]interface{}{
+				"io.modelcontextprotocol/protocolVersion": mcp.ModernProtocolVersion,
+				"io.modelcontextprotocol/clientInfo":      map[string]interface{}{"name": "mockserver-test", "version": "1.0"},
+				"io.modelcontextprotocol/clientCapabilities": map[string]interface{}{
+					"extensions": map[string]interface{}{"io.modelcontextprotocol/tasks": map[string]interface{}{}},
+				},
+			},
 		},
 	})
-	req, err := http.NewRequest(http.MethodPost, srv.MCPURL(), bytes.NewReader(body))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, srv.MCPURL(), bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", mcp.ModernProtocolVersion)
+	req.Header.Set("Mcp-Method", "subscriptions/listen")
 	httpResp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("post subscription SSE: %v", err)
 	}
 	defer httpResp.Body.Close()
-	sseBody, err := io.ReadAll(httpResp.Body)
+	reader := bufio.NewReader(httpResp.Body)
+	sseLine, err := reader.ReadString('\n')
 	if err != nil {
-		t.Fatalf("read SSE body: %v", err)
+		t.Fatalf("read SSE event line: %v", err)
 	}
-	if bytes.Contains(sseBody, []byte(`"id":"sub-sse"`)) || bytes.Contains(sseBody, []byte(`"result"`)) {
-		t.Fatalf("expected raw notification SSE, got %s", string(sseBody))
+	if _, err := reader.ReadString('\n'); err != nil {
+		t.Fatalf("read SSE event terminator: %v", err)
 	}
-	if !bytes.Contains(sseBody, []byte(`"jsonrpc":"2.0"`)) {
-		t.Fatalf("expected JSON-RPC notification version, got %s", string(sseBody))
+	if strings.Contains(sseLine, `"id":"sub-sse"`) || strings.Contains(sseLine, `"result"`) {
+		t.Fatalf("expected raw notification SSE, got %s", sseLine)
 	}
-	if !bytes.Contains(sseBody, []byte("notifications/subscriptions/acknowledged")) {
-		t.Fatalf("expected subscription acknowledgement SSE, got %s", string(sseBody))
+	if !strings.Contains(sseLine, `"jsonrpc":"2.0"`) {
+		t.Fatalf("expected JSON-RPC notification version, got %s", sseLine)
+	}
+	if !strings.Contains(sseLine, "notifications/subscriptions/acknowledged") {
+		t.Fatalf("expected subscription acknowledgement SSE, got %s", sseLine)
+	}
+}
+
+func TestMockServerModernMetadataValidation(t *testing.T) {
+	srv, cleanup := StartTestServer()
+	defer cleanup()
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "discover-missing-metadata",
+		"method":  "server/discover",
+	})
+	resp, err := http.Post(srv.MCPURL(), "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post server/discover: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	var jsonResp types.JSONRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&jsonResp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if jsonResp.Error == nil || jsonResp.Error.Code != -32001 {
+		t.Fatalf("expected header mismatch JSON-RPC error, got %+v", jsonResp.Error)
+	}
+}
+
+func TestMockServerModernUnsupportedVersionIncludesNegotiationData(t *testing.T) {
+	srv, cleanup := StartTestServer()
+	defer cleanup()
+
+	body := modernPayload(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "unsupported-version",
+		"method":  "server/discover",
+	})
+	data, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost, srv.MCPURL(), bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("MCP-Protocol-Version", "2026-08-01")
+	req.Header.Set("Mcp-Method", "server/discover")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("post server/discover: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	var jsonResp types.JSONRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&jsonResp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if jsonResp.Error == nil || jsonResp.Error.Code != -32004 {
+		t.Fatalf("expected unsupported protocol JSON-RPC error, got %+v", jsonResp.Error)
+	}
+	var details struct {
+		Supported []string `json:"supported"`
+		Requested string   `json:"requested"`
+	}
+	if err := json.Unmarshal(jsonResp.Error.Data, &details); err != nil {
+		t.Fatalf("decode error data: %v", err)
+	}
+	if details.Requested != "2026-08-01" || len(details.Supported) == 0 {
+		t.Fatalf("unexpected error data: %+v", details)
+	}
+}
+
+func TestMockServerModernUnknownMethodReturnsHTTP404(t *testing.T) {
+	srv, cleanup := StartTestServer()
+	defer cleanup()
+
+	body := modernPayload(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "unknown-modern",
+		"method":  "unknown/method",
+	})
+	data, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost, srv.MCPURL(), bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("MCP-Protocol-Version", mcp.ModernProtocolVersion)
+	req.Header.Set("Mcp-Method", "unknown/method")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("post unknown method: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+	var jsonResp types.JSONRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&jsonResp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if jsonResp.Error == nil || jsonResp.Error.Code != -32601 {
+		t.Fatalf("expected method-not-found JSON-RPC error, got %+v", jsonResp.Error)
+	}
+}
+
+func TestMockServerModernRequiresMCPNameForRoutedMethods(t *testing.T) {
+	srv, cleanup := StartTestServer()
+	defer cleanup()
+
+	body := modernPayload(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "call-missing-name-header",
+		"method":  "tools/call",
+		"params": map[string]interface{}{
+			"name":      "fast_echo",
+			"arguments": map[string]interface{}{"message": "hello"},
+		},
+	})
+	data, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost, srv.MCPURL(), bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("MCP-Protocol-Version", mcp.ModernProtocolVersion)
+	req.Header.Set("Mcp-Method", "tools/call")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("post tools/call: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	var jsonResp types.JSONRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&jsonResp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if jsonResp.Error == nil || jsonResp.Error.Code != -32001 {
+		t.Fatalf("expected header mismatch JSON-RPC error, got %+v", jsonResp.Error)
 	}
 }
 
@@ -215,4 +377,92 @@ func postJSONRPC(t *testing.T, url string, payload map[string]interface{}) types
 		t.Fatalf("decode json-rpc: %v", err)
 	}
 	return rpcResp
+}
+
+func postModernJSONRPC(t *testing.T, url string, payload map[string]interface{}) types.JSONRPCResponse {
+	t.Helper()
+	body, err := json.Marshal(modernPayload(payload))
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	method, _ := payload["method"].(string)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("MCP-Protocol-Version", mcp.ModernProtocolVersion)
+	req.Header.Set("Mcp-Method", method)
+	if name := modernRouteName(payload); name != "" {
+		req.Header.Set("Mcp-Name", encodeMCPTestHeaderValue(name))
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("post json-rpc: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		data, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d: %s", resp.StatusCode, string(data))
+	}
+	var jsonResp types.JSONRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&jsonResp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	return jsonResp
+}
+
+func modernRouteName(payload map[string]interface{}) string {
+	method, _ := payload["method"].(string)
+	params, _ := payload["params"].(map[string]interface{})
+	switch method {
+	case "tools/call", "prompts/get":
+		name, _ := params["name"].(string)
+		return name
+	case "resources/read":
+		uri, _ := params["uri"].(string)
+		return uri
+	case "tasks/get", "tasks/update", "tasks/cancel":
+		taskID, _ := params["taskId"].(string)
+		return taskID
+	default:
+		return ""
+	}
+}
+
+func encodeMCPTestHeaderValue(value string) string {
+	if strings.TrimSpace(value) != value {
+		return "=?base64?" + base64.StdEncoding.EncodeToString([]byte(value)) + "?="
+	}
+	for _, r := range value {
+		if r < 0x20 || r > 0x7e {
+			return "=?base64?" + base64.StdEncoding.EncodeToString([]byte(value)) + "?="
+		}
+	}
+	return value
+}
+
+func modernPayload(payload map[string]interface{}) map[string]interface{} {
+	copyPayload := make(map[string]interface{}, len(payload)+1)
+	for key, value := range payload {
+		copyPayload[key] = value
+	}
+	params, _ := copyPayload["params"].(map[string]interface{})
+	if params == nil {
+		params = map[string]interface{}{}
+	}
+	params["_meta"] = map[string]interface{}{
+		"io.modelcontextprotocol/protocolVersion": mcp.ModernProtocolVersion,
+		"io.modelcontextprotocol/clientInfo": map[string]interface{}{
+			"name":    "mockserver-test",
+			"version": "1.0",
+		},
+		"io.modelcontextprotocol/clientCapabilities": map[string]interface{}{
+			"extensions": map[string]interface{}{
+				"io.modelcontextprotocol/tasks": map[string]interface{}{},
+			},
+		},
+	}
+	copyPayload["params"] = params
+	return copyPayload
 }

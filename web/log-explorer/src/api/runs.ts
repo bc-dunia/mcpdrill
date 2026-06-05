@@ -73,6 +73,15 @@ function mapOperation(op: OpMixEntry['operation']): string {
   return mapping[op] || op;
 }
 
+function orderedBearerTokens(auth: RunConfig['target']['auth']): string[] | undefined {
+  const tokens = auth?.tokens?.filter(token => token.trim());
+  if (!tokens || tokens.length === 0) return undefined;
+  const activeIndex = auth?.activeTokenIndex ?? 0;
+  const safeIndex = Math.min(Math.max(0, activeIndex), tokens.length - 1);
+  if (safeIndex === 0) return tokens;
+  return [tokens[safeIndex], ...tokens.slice(0, safeIndex), ...tokens.slice(safeIndex + 1)];
+}
+
 function convertToBackendConfig(config: RunConfig): BackendRunConfig {
   const targetUrl = new URL(config.target.url);
   const hostSuffix = targetUrl.hostname.includes('localhost') 
@@ -96,7 +105,7 @@ function convertToBackendConfig(config: RunConfig): BackendRunConfig {
       protocol_version_policy: config.target.protocol_version_policy || 'supported',
       auth: {
         type: config.target.auth?.type || 'none',
-        tokens: config.target.auth?.tokens,
+        tokens: orderedBearerTokens(config.target.auth),
       },
       identification: {
         run_id_header: {
@@ -228,7 +237,7 @@ function convertToBackendConfig(config: RunConfig): BackendRunConfig {
           duration_ms: stage.duration_ms,
           load: {
             target_vus: stage.load.target_vus,
-            target_rps: stage.load.target_vus * 10,
+            target_rps: stage.load.target_rps ?? null,
           },
           stop_conditions: stopConditions,
         };

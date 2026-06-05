@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -353,17 +354,18 @@ func TestTelemetry_Success(t *testing.T) {
 				StageID:     "stg_000000000001",
 			},
 			{
-				OpID:        "op-2",
-				Operation:   "tools_call",
-				ToolName:    "fetch",
-				LatencyMs:   100,
-				OK:          false,
-				ErrorType:   "timeout",
-				ErrorCode:   "READ_TIMEOUT",
-				TimestampMs: 1234567891,
-				ExecutionID: "exe_00000000000001",
-				Stage:       "preflight",
-				StageID:     "stg_000000000001",
+				OpID:         "op-2",
+				Operation:    "tools_call",
+				ToolName:     "fetch",
+				LatencyMs:    100,
+				OK:           false,
+				ErrorType:    "timeout",
+				ErrorCode:    "READ_TIMEOUT",
+				ErrorMessage: "read timed out",
+				TimestampMs:  1234567891,
+				ExecutionID:  "exe_00000000000001",
+				Stage:        "preflight",
+				StageID:      "stg_000000000001",
 			},
 		},
 		Health: &types.WorkerHealth{
@@ -391,6 +393,46 @@ func TestTelemetry_Success(t *testing.T) {
 
 	if resp.Accepted != 2 {
 		t.Errorf("expected 2 accepted, got %d", resp.Accepted)
+	}
+}
+
+func TestTelemetry_RejectsFailedOperationWithoutErrorMessage(t *testing.T) {
+	server, registry := setupWorkerTestServer(t)
+
+	workerID, token := registerWorkerWithToken(t, server, registry, "worker-1")
+
+	req := TelemetryBatchRequest{
+		RunID: "run_0000000000000001",
+		Operations: []types.OperationOutcome{
+			{
+				OpID:        "op-2",
+				Operation:   "tools_call",
+				ToolName:    "fetch",
+				LatencyMs:   100,
+				OK:          false,
+				ErrorType:   "timeout",
+				ErrorCode:   "READ_TIMEOUT",
+				TimestampMs: 1234567891,
+				ExecutionID: "exe_00000000000001",
+				Stage:       "preflight",
+				StageID:     "stg_000000000001",
+			},
+		},
+	}
+
+	body, _ := json.Marshal(req)
+	httpReq := httptest.NewRequest(http.MethodPost, "/workers/"+string(workerID)+"/telemetry", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-Worker-Token", token)
+	w := httptest.NewRecorder()
+
+	server.handleWorkerTelemetry(w, httpReq, string(workerID))
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "error_message") {
+		t.Fatalf("expected error_message validation detail, got %s", w.Body.String())
 	}
 }
 

@@ -304,11 +304,26 @@ func (s *Server) validateTelemetryCorrelationKeys(req TelemetryBatchRequest, wor
 			opInvalid = append(opInvalid, "stage_id")
 		}
 
+		if !op.OK {
+			if op.ErrorType == "" {
+				opMissing = append(opMissing, "error_type")
+			}
+			if op.ErrorCode == "" {
+				opMissing = append(opMissing, "error_code")
+			}
+			if op.ErrorMessage == "" {
+				opMissing = append(opMissing, "error_message")
+			}
+			if len(op.ErrorMessage) > 4000 {
+				opInvalid = append(opInvalid, "error_message")
+			}
+		}
+
 		if len(opMissing) > 0 {
 			return &ErrorResponse{
 				ErrorType:    ErrorTypeInvalidArgument,
 				ErrorCode:    "INVALID_TELEMETRY",
-				ErrorMessage: "Missing required correlation keys in telemetry",
+				ErrorMessage: "Missing required telemetry fields",
 				Retryable:    false,
 				Details: map[string]interface{}{
 					"operation_index": i,
@@ -321,7 +336,7 @@ func (s *Server) validateTelemetryCorrelationKeys(req TelemetryBatchRequest, wor
 			return &ErrorResponse{
 				ErrorType:    ErrorTypeInvalidArgument,
 				ErrorCode:    "INVALID_TELEMETRY",
-				ErrorMessage: "Invalid correlation key format in telemetry",
+				ErrorMessage: "Invalid telemetry field format",
 				Retryable:    false,
 				Details: map[string]interface{}{
 					"operation_index": i,

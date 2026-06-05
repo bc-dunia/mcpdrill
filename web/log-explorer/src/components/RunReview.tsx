@@ -26,20 +26,20 @@ function isSensitiveHeader(name: string): boolean {
 }
 
 function maskSensitiveData(config: RunConfig): RunConfig {
-  if (!config.target.headers || Object.keys(config.target.headers).length === 0) {
-    return config;
-  }
-  
   return {
     ...config,
     target: {
       ...config.target,
-      headers: Object.fromEntries(
+      headers: config.target.headers ? Object.fromEntries(
         Object.entries(config.target.headers).map(([k, v]) => [
           k,
           isSensitiveHeader(k) ? '••••••••' : v
         ])
-      ),
+      ) : config.target.headers,
+      auth: config.target.auth ? {
+        ...config.target.auth,
+        tokens: config.target.auth.tokens?.map(() => '••••••••'),
+      } : config.target.auth,
     },
   };
 }

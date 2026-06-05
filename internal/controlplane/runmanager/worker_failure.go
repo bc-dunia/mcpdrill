@@ -64,7 +64,7 @@ func getWorkerFailurePolicy(config []byte) WorkerFailurePolicy {
 //
 // Policies:
 //   - fail_fast: Immediately transition run to STOPPING state
-//   - replace_if_possible: Attempt reallocation (stub for now, falls back to fail_fast)
+//   - replace_if_possible: Attempt reallocation, falling back to fail_fast if replacement fails
 //   - best_effort: Log warning and continue with reduced capacity
 func (rm *RunManager) HandleWorkerCapacityLost(runID string, workerID string) error {
 	rm.mu.Lock()

@@ -32,6 +32,7 @@ const (
 	HeaderMCPSessionID       = "Mcp-Session-Id"
 	HeaderLastEventID        = "Last-Event-ID"
 	HeaderAuthorization      = "Authorization"
+	maxMCPHeaderInteger      = int64(9007199254740991)
 
 	ContentTypeJSON = "application/json"
 	ContentTypeSSE  = "text/event-stream"
@@ -635,7 +636,6 @@ func (c *StreamableHTTPConnection) prepareRequest(req *JSONRPCRequest) *JSONRPCR
 func modernClientCapabilities() map[string]interface{} {
 	return map[string]interface{}{
 		"extensions": map[string]interface{}{
-			"io.modelcontextprotocol/tasks":         map[string]interface{}{},
 			"io.modelcontextprotocol/inputRequests": map[string]interface{}{},
 		},
 	}
@@ -944,15 +944,24 @@ func encodeMCPParamHeaderValue(value interface{}, valueType string) (string, boo
 func integerValue(value interface{}) (int64, bool) {
 	switch v := value.(type) {
 	case int:
-		return int64(v), true
+		i := int64(v)
+		return i, isMCPSafeInteger(i)
 	case int64:
-		return v, true
+		return v, isMCPSafeInteger(v)
 	case float64:
+		if v < float64(-maxMCPHeaderInteger) || v > float64(maxMCPHeaderInteger) {
+			return 0, false
+		}
 		if v == float64(int64(v)) {
-			return int64(v), true
+			i := int64(v)
+			return i, isMCPSafeInteger(i)
 		}
 	}
 	return 0, false
+}
+
+func isMCPSafeInteger(value int64) bool {
+	return value >= -maxMCPHeaderInteger && value <= maxMCPHeaderInteger
 }
 
 func needsMCPHeaderBase64(s string) bool {

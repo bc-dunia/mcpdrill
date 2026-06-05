@@ -42,6 +42,7 @@ func ConvertToOutcome(result *vu.OperationResult, a types.WorkerAssignment, work
 		if result.Outcome.Error != nil {
 			outcome.ErrorType = string(result.Outcome.Error.Type)
 			outcome.ErrorCode = string(result.Outcome.Error.Code)
+			outcome.ErrorMessage = result.Outcome.Error.Message
 		}
 		if result.Outcome.HTTPStatus != nil {
 			outcome.HTTPStatus = *result.Outcome.HTTPStatus

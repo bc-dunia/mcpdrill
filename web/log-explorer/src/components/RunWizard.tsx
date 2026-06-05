@@ -52,21 +52,21 @@ function createDefaultConfig(): RunConfig {
         stage: 'preflight',
         enabled: true,
         duration_ms: 10000,
-        load: { target_vus: 1 },
+        load: { target_vus: 1, target_rps: null },
       },
       {
         stage_id: generateStageID(),
         stage: 'baseline',
         enabled: true,
         duration_ms: 30000,
-        load: { target_vus: 5 },
+        load: { target_vus: 5, target_rps: null },
       },
       {
         stage_id: generateStageID(),
         stage: 'ramp',
         enabled: true,
         duration_ms: 60000,
-        load: { target_vus: 20 },
+        load: { target_vus: 20, target_rps: null },
       },
     ],
     workload: {
@@ -175,7 +175,7 @@ export function RunWizard({ onRunStarted }: Props) {
   const [hasRestoredProgress, setHasRestoredProgress] = useState(() => loadWizardProgress() !== null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
   const [discoveredTools, setDiscoveredTools] = useState<FetchedTool[]>([]);
-  const [authConfig, setAuthConfig] = useState<AuthConfig | undefined>(undefined);
+  const [authConfig, setAuthConfig] = useState<AuthConfig | undefined>(() => config.target.auth);
   const { showToast } = useToast();
   
   const [lastSaved, setLastSaved] = useState<number | null>(() => {
@@ -260,8 +260,15 @@ export function RunWizard({ onRunStarted }: Props) {
     setConfig(prev => ({ ...prev, server_telemetry: serverTelemetry }));
   }, []);
 
-  const handleAuthConfigChange = useCallback((config: AuthConfig | undefined) => {
-    setAuthConfig(config);
+  const handleAuthConfigChange = useCallback((auth: AuthConfig | undefined) => {
+    setAuthConfig(auth);
+    setConfig(prev => ({
+      ...prev,
+      target: {
+        ...prev.target,
+        auth,
+      },
+    }));
   }, []);
 
   const handleNext = useCallback(() => {
@@ -352,14 +359,7 @@ export function RunWizard({ onRunStarted }: Props) {
     setError(null);
 
     try {
-      const configWithAuth: RunConfig = {
-        ...config,
-        target: {
-          ...config.target,
-          auth: authConfig,
-        },
-      };
-      const runId = await createRun(configWithAuth);
+      const runId = await createRun(config);
       await startRun(runId);
       clearWizardProgress();
       showToast(`Run ${runId} started successfully!`, 'success');
@@ -496,7 +496,9 @@ export function RunWizard({ onRunStarted }: Props) {
               headers={(() => {
                 const h = { ...config.target.headers };
                 if (authConfig?.type === 'bearer_token' && authConfig.tokens && authConfig.tokens.length > 0) {
-                  h['Authorization'] = `Bearer ${authConfig.tokens[0]}`;
+                  const tokenIndex = authConfig.activeTokenIndex ?? 0;
+                  const safeIndex = Math.min(Math.max(0, tokenIndex), authConfig.tokens.length - 1);
+                  h['Authorization'] = `Bearer ${authConfig.tokens[safeIndex]}`;
                 }
                 return h;
               })()}

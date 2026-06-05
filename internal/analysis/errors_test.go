@@ -285,6 +285,26 @@ func TestExtractSignatures_Grouping(t *testing.T) {
 	}
 }
 
+func TestExtractSignatures_UsesErrorMessageAndHTTPStatus(t *testing.T) {
+	errors := []ErrorLog{
+		{TimestampMs: 1000, Operation: "tools/call", ToolName: "fast_echo", ErrorType: "http", ErrorCode: "HTTP_5XX", ErrorMessage: "target returned 503 for request 123", HTTPStatus: 503},
+		{TimestampMs: 2000, Operation: "tools/call", ToolName: "fast_echo", ErrorType: "http", ErrorCode: "HTTP_5XX", ErrorMessage: "target returned 503 for request 456", HTTPStatus: 503},
+		{TimestampMs: 3000, Operation: "tools/call", ToolName: "fast_echo", ErrorType: "http", ErrorCode: "HTTP_5XX", ErrorMessage: "TLS handshake failed for request 789", HTTPStatus: 503},
+	}
+
+	result := ExtractSignatures(errors, 10)
+
+	if len(result) != 2 {
+		t.Fatalf("ExtractSignatures() = %d signatures, want 2", len(result))
+	}
+	if result[0].Pattern != "HTTP <NUM>: target returned <NUM> for request <NUM>" || result[0].Count != 2 {
+		t.Fatalf("first signature = %+v", result[0])
+	}
+	if result[0].SampleError != "HTTP 503: target returned 503 for request 123" {
+		t.Fatalf("SampleError = %q", result[0].SampleError)
+	}
+}
+
 func TestExtractSignatures_Ranking(t *testing.T) {
 	errors := []ErrorLog{
 		{TimestampMs: 1000, Operation: "op1", ErrorType: "error A"},

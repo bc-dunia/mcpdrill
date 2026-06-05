@@ -53,11 +53,20 @@ export function StageConfig({ stages, onChange }: Props) {
     onChange(newStages);
   };
 
-  const updateLoad = (index: number, targetVUs: number) => {
+  const updateTargetVUs = (index: number, targetVUs: number) => {
     const newStages = [...stages];
     newStages[index] = {
       ...newStages[index],
-      load: { target_vus: targetVUs },
+      load: { ...newStages[index].load, target_vus: targetVUs },
+    };
+    onChange(newStages);
+  };
+
+  const updateTargetRPS = (index: number, targetRPS: number | null) => {
+    const newStages = [...stages];
+    newStages[index] = {
+      ...newStages[index],
+      load: { ...newStages[index].load, target_rps: targetRPS },
     };
     onChange(newStages);
   };
@@ -138,7 +147,7 @@ export function StageConfig({ stages, onChange }: Props) {
                       onChange={e => {
                         const value = parseInt(e.target.value);
                         if (!isNaN(value) && value >= 1 && value <= 1000) {
-                          updateLoad(index, value);
+                          updateTargetVUs(index, value);
                         }
                       }}
                       className="input input-number"
@@ -148,12 +157,41 @@ export function StageConfig({ stages, onChange }: Props) {
                     <span className="input-suffix" id={`stage-vus-${stage.stage_id}-hint`}>VUs</span>
                   </div>
                 </div>
+
+                <div className="stage-field">
+                  <label htmlFor={`stage-rps-${stage.stage_id}`}>Target RPS</label>
+                  <div className="vu-input">
+                    <input
+                      id={`stage-rps-${stage.stage_id}`}
+                      type="number"
+                      min="0"
+                      value={stage.load.target_rps ?? ''}
+                      onChange={e => {
+                        const rawValue = e.target.value;
+                        if (rawValue === '') {
+                          updateTargetRPS(index, null);
+                          return;
+                        }
+                        const value = Number(rawValue);
+                        if (!Number.isNaN(value) && value >= 0) {
+                          updateTargetRPS(index, value);
+                        }
+                      }}
+                      className="input input-number"
+                      disabled={!stage.enabled}
+                      aria-describedby={`stage-rps-${stage.stage_id}-hint`}
+                    />
+                    <span className="input-suffix" id={`stage-rps-${stage.stage_id}-hint`}>req/s</span>
+                  </div>
+                </div>
               </div>
 
               {stage.enabled && (
                 <div className="stage-summary">
                   <span className="summary-badge">
-                    {stage.load.target_vus} VU{stage.load.target_vus !== 1 ? 's' : ''} for {formatDuration(stage.duration_ms)}
+                    {stage.load.target_vus} VU{stage.load.target_vus !== 1 ? 's' : ''}
+                    {stage.load.target_rps != null ? ` at ${stage.load.target_rps} req/s` : ''}
+                    {' '}for {formatDuration(stage.duration_ms)}
                   </span>
                 </div>
               )}

@@ -13,6 +13,8 @@ export interface OperationLog {
   ok: boolean;
   error_type: string;
   error_code: string;
+  error_message?: string;
+  http_status?: number;
   stream?: StreamInfo;
   token_index?: number;
 }
@@ -97,6 +99,7 @@ export interface StreamingStopConditions {
 
 export interface StageLoad {
   target_vus: number;
+  target_rps?: number | null;
 }
 
 export interface StageConfig {

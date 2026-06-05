@@ -126,6 +126,24 @@ func TestMapHTTPStatus(t *testing.T) {
 	}
 }
 
+func TestMapHTTPStatusWithBodyPreservesJSONRPCError(t *testing.T) {
+	body := `{"jsonrpc":"2.0","id":"discover","error":{"code":-32601,"message":"method not found"}}`
+
+	result := MapHTTPStatusWithBody(http.StatusNotFound, body)
+	if result == nil {
+		t.Fatal("expected error")
+	}
+	if result.Type != ErrorTypeJSONRPC {
+		t.Fatalf("Type = %s, want %s", result.Type, ErrorTypeJSONRPC)
+	}
+	if result.Code != CodeJSONRPCMethodNotFound {
+		t.Fatalf("Code = %s, want %s", result.Code, CodeJSONRPCMethodNotFound)
+	}
+	if result.Details["http_status"] != http.StatusNotFound {
+		t.Fatalf("http_status = %v, want %d", result.Details["http_status"], http.StatusNotFound)
+	}
+}
+
 func TestMapJSONRPCError(t *testing.T) {
 	tests := []struct {
 		code         int
@@ -506,8 +524,8 @@ func TestStreamableHTTPModernProtocolRequest(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected extension client capabilities, got %+v", capabilities)
 		}
-		if _, ok := extensions["io.modelcontextprotocol/tasks"]; !ok {
-			t.Fatalf("expected task client capability, got %+v", extensions)
+		if _, ok := extensions["io.modelcontextprotocol/tasks"]; ok {
+			t.Fatalf("expected no task client capability without task-result follow support, got %+v", extensions)
 		}
 		if _, ok := extensions["io.modelcontextprotocol/inputRequests"]; !ok {
 			t.Fatalf("expected input request client capability, got %+v", extensions)
@@ -561,7 +579,7 @@ func TestStreamableHTTPModernMCPParamHeaders(t *testing.T) {
 			json.NewEncoder(w).Encode(JSONRPCResponse{
 				JSONRPC: "2.0",
 				ID:      req.ID,
-				Result:  json.RawMessage(`{"tools":[{"name":"fast_echo","inputSchema":{"type":"object","properties":{"trace":{"type":"string","x-mcp-header":"Trace-Id"},"priority":{"type":"integer","x-mcp-header":"Priority"},"dry_run":{"type":"boolean","x-mcp-header":"Dry-Run"},"unsafe":{"type":"string","x-mcp-header":"Unsafe"}}}}]}`),
+				Result:  json.RawMessage(`{"tools":[{"name":"fast_echo","inputSchema":{"type":"object","properties":{"trace":{"type":"string","x-mcp-header":"Trace-Id"},"priority":{"type":"integer","x-mcp-header":"Priority"},"large":{"type":"integer","x-mcp-header":"Large"},"dry_run":{"type":"boolean","x-mcp-header":"Dry-Run"},"unsafe":{"type":"string","x-mcp-header":"Unsafe"}}}}]}`),
 			})
 		case string(OpToolsCall):
 			if got := r.Header.Get("Mcp-Param-Trace-Id"); got != "abc123" {
@@ -569,6 +587,9 @@ func TestStreamableHTTPModernMCPParamHeaders(t *testing.T) {
 			}
 			if got := r.Header.Get("Mcp-Param-Priority"); got != "7" {
 				t.Fatalf("expected priority header 7, got %q", got)
+			}
+			if got := r.Header.Get("Mcp-Param-Large"); got != "" {
+				t.Fatalf("expected unsafe integer header to be omitted, got %q", got)
 			}
 			if got := r.Header.Get("Mcp-Param-Dry-Run"); got != "true" {
 				t.Fatalf("expected dry-run header true, got %q", got)
@@ -606,6 +627,7 @@ func TestStreamableHTTPModernMCPParamHeaders(t *testing.T) {
 		Arguments: map[string]interface{}{
 			"trace":    "abc123",
 			"priority": 7,
+			"large":    int64(9007199254740992),
 			"dry_run":  true,
 			"unsafe":   " leading",
 		},

@@ -93,6 +93,42 @@ func TestTelemetryStore_PreservesSessionIDInTelemetryData(t *testing.T) {
 	}
 }
 
+func TestTelemetryStore_PreservesFailureDetailsInLogs(t *testing.T) {
+	ts := NewTelemetryStore()
+
+	batch := TelemetryBatchRequest{
+		Operations: []types.OperationOutcome{
+			{
+				OpID:         "op-error",
+				Operation:    "tools_call",
+				LatencyMs:    50,
+				OK:           false,
+				ErrorType:    "http",
+				ErrorCode:    "HTTP_5XX",
+				ErrorMessage: "target returned 503",
+				HTTPStatus:   503,
+				TimestampMs:  1000,
+			},
+		},
+	}
+
+	ts.AddTelemetryBatch("run_0000000000000e112", batch)
+
+	logs, _, err := ts.QueryLogs("run_0000000000000e112", LogFilters{Limit: 10, Offset: 0, Order: "desc"})
+	if err != nil {
+		t.Fatalf("unexpected error querying logs: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected 1 log, got %d", len(logs))
+	}
+	if logs[0].ErrorMessage != "target returned 503" {
+		t.Fatalf("ErrorMessage = %q", logs[0].ErrorMessage)
+	}
+	if logs[0].HTTPStatus != 503 {
+		t.Fatalf("HTTPStatus = %d, want 503", logs[0].HTTPStatus)
+	}
+}
+
 func TestAddTelemetryBatchWithContext_DoesNotMutateInputBatch(t *testing.T) {
 	ts := NewTelemetryStore()
 

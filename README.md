@@ -147,6 +147,7 @@ Results appear in real time in the Web UI dashboard.
 | Feature | Description |
 |---------|-------------|
 | **Virtual Users (VUs)** | Simulate concurrent MCP clients with weighted operation mixes |
+| **MCP Protocol Support** | Supports modern MCP `2026-07-28` plus legacy protocol versions with auto-detection |
 | **Session Modes** | `reuse`, `per_request`, `pool`, `churn` |
 | **Stop Conditions** | Auto-stop on error rate, latency thresholds |
 | **Mock Server** | 27 built-in tools for isolated testing |

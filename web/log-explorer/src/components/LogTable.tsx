@@ -231,6 +231,8 @@ function LogTableComponent({ logs, loading, pagination, onPageChange, onLimitCha
                     <span className="error-info">
                       <code className="error-type">{log.error_type}</code>
                       {log.error_code && <code className="error-code">{log.error_code}</code>}
+                      {log.http_status && <code className="error-code">HTTP {log.http_status}</code>}
+                      {log.error_message && <span className="error-message">{log.error_message}</span>}
                     </span>
                   ) : (
                     <span className="muted">—</span>

@@ -130,22 +130,24 @@ func (ts *TelemetryStore) AddTelemetryBatch(runID string, batch TelemetryBatchRe
 			}
 
 			log := OperationLog{
-				TimestampMs: op.TimestampMs,
-				RunID:       runID,
-				ExecutionID: op.ExecutionID,
-				Stage:       stage,
-				StageID:     op.StageID,
-				WorkerID:    op.WorkerID,
-				VUID:        op.VUID,
-				SessionID:   op.SessionID,
-				Operation:   op.Operation,
-				ToolName:    op.ToolName,
-				LatencyMs:   op.LatencyMs,
-				OK:          op.OK,
-				ErrorType:   op.ErrorType,
-				ErrorCode:   op.ErrorCode,
-				Stream:      streamCopy,
-				TokenIndex:  tokenIndexCopy,
+				TimestampMs:  op.TimestampMs,
+				RunID:        runID,
+				ExecutionID:  op.ExecutionID,
+				Stage:        stage,
+				StageID:      op.StageID,
+				WorkerID:     op.WorkerID,
+				VUID:         op.VUID,
+				SessionID:    op.SessionID,
+				Operation:    op.Operation,
+				ToolName:     op.ToolName,
+				LatencyMs:    op.LatencyMs,
+				OK:           op.OK,
+				ErrorType:    op.ErrorType,
+				ErrorCode:    op.ErrorCode,
+				ErrorMessage: op.ErrorMessage,
+				HTTPStatus:   op.HTTPStatus,
+				Stream:       streamCopy,
+				TokenIndex:   tokenIndexCopy,
 			}
 			rt.logs = append(rt.logs, log)
 			rt.logsSorted = rt.logsSorted && (len(rt.logs) < 2 ||
@@ -448,10 +450,13 @@ func (ts *TelemetryStore) GetErrorLogs(runID string) ([]analysis.ErrorLog, error
 	for _, log := range logs {
 		if !log.OK {
 			errorLogs = append(errorLogs, analysis.ErrorLog{
-				TimestampMs: log.TimestampMs,
-				Operation:   log.Operation,
-				ToolName:    log.ToolName,
-				ErrorType:   log.ErrorType,
+				TimestampMs:  log.TimestampMs,
+				Operation:    log.Operation,
+				ToolName:     log.ToolName,
+				ErrorType:    log.ErrorType,
+				ErrorCode:    log.ErrorCode,
+				ErrorMessage: log.ErrorMessage,
+				HTTPStatus:   log.HTTPStatus,
 			})
 		}
 	}

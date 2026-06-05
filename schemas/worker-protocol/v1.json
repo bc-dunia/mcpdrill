@@ -230,7 +230,7 @@
     "WorkerAssignment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["run_id", "execution_id", "stage", "stage_id", "lease_id", "vu_id_start", "vu_id_end", "duration_ms", "target", "workload", "session_policy"],
+      "required": ["run_id", "execution_id", "stage", "stage_id", "lease_id", "vu_id_start", "vu_id_end", "duration_ms", "load", "target", "workload", "session_policy"],
       "properties": {
         "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
         "execution_id": {"type": "string", "minLength": 1, "maxLength": 128},
@@ -294,6 +294,7 @@
         "ok": {"type": "boolean"},
         "error_type": {"type": "string", "maxLength": 100},
         "error_code": {"type": "string", "maxLength": 200},
+        "error_message": {"type": "string", "maxLength": 4000},
         "http_status": {"type": "integer", "minimum": 100, "maximum": 599},
         "ts_ms": {"type": "integer", "minimum": 0},
         "stream": {"$ref": "#/$defs/StreamInfo"},
@@ -304,7 +305,13 @@
         "vu_id": {"type": "string", "maxLength": 256},
         "session_id": {"type": "string", "maxLength": 256},
         "token_index": {"type": "integer", "minimum": 0}
-      }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"ok": {"const": false}}, "required": ["ok"]},
+          "then": {"required": ["error_type", "error_code", "error_message"]}
+        }
+      ]
     },
     "TelemetryBatchRequest": {
       "type": "object",

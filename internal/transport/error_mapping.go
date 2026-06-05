@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -287,6 +288,10 @@ func MapHTTPStatus(status int) *OperationError {
 }
 
 func MapHTTPStatusWithBody(status int, responseBody string) *OperationError {
+	if jsonrpcErr := mapHTTPBodyJSONRPCError(responseBody); jsonrpcErr != nil {
+		jsonrpcErr.Details["http_status"] = status
+		return jsonrpcErr
+	}
 	switch {
 	case status >= 200 && status < 300:
 		return nil
@@ -368,6 +373,17 @@ func MapHTTPStatusWithBody(status int, responseBody string) *OperationError {
 			Details: map[string]interface{}{"http_status": status},
 		}
 	}
+}
+
+func mapHTTPBodyJSONRPCError(responseBody string) *OperationError {
+	if responseBody == "" {
+		return nil
+	}
+	var resp JSONRPCResponse
+	if err := json.Unmarshal([]byte(responseBody), &resp); err != nil || resp.Error == nil {
+		return nil
+	}
+	return MapJSONRPCError(resp.Error.Code, resp.Error.Message, resp.Error.Data)
 }
 
 func MapJSONRPCError(code int, message string, data []byte) *OperationError {

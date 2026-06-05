@@ -313,22 +313,24 @@ type AckAssignmentsResponse struct {
 // OperationLog represents a single operation log entry with full context.
 // Used for log query API responses.
 type OperationLog struct {
-	TimestampMs int64             `json:"timestamp_ms"`
-	RunID       string            `json:"run_id"`
-	ExecutionID string            `json:"execution_id,omitempty"`
-	Stage       string            `json:"stage,omitempty"`
-	StageID     string            `json:"stage_id,omitempty"`
-	WorkerID    string            `json:"worker_id,omitempty"`
-	VUID        string            `json:"vu_id,omitempty"`
-	SessionID   string            `json:"session_id,omitempty"`
-	Operation   string            `json:"operation"`
-	ToolName    string            `json:"tool_name,omitempty"`
-	LatencyMs   int               `json:"latency_ms"`
-	OK          bool              `json:"ok"`
-	ErrorType   string            `json:"error_type,omitempty"`
-	ErrorCode   string            `json:"error_code,omitempty"`
-	Stream      *types.StreamInfo `json:"stream,omitempty"`
-	TokenIndex  *int              `json:"token_index,omitempty"`
+	TimestampMs  int64             `json:"timestamp_ms"`
+	RunID        string            `json:"run_id"`
+	ExecutionID  string            `json:"execution_id,omitempty"`
+	Stage        string            `json:"stage,omitempty"`
+	StageID      string            `json:"stage_id,omitempty"`
+	WorkerID     string            `json:"worker_id,omitempty"`
+	VUID         string            `json:"vu_id,omitempty"`
+	SessionID    string            `json:"session_id,omitempty"`
+	Operation    string            `json:"operation"`
+	ToolName     string            `json:"tool_name,omitempty"`
+	LatencyMs    int               `json:"latency_ms"`
+	OK           bool              `json:"ok"`
+	ErrorType    string            `json:"error_type,omitempty"`
+	ErrorCode    string            `json:"error_code,omitempty"`
+	ErrorMessage string            `json:"error_message,omitempty"`
+	HTTPStatus   int               `json:"http_status,omitempty"`
+	Stream       *types.StreamInfo `json:"stream,omitempty"`
+	TokenIndex   *int              `json:"token_index,omitempty"`
 }
 
 // LogFilters contains filter parameters for log queries.

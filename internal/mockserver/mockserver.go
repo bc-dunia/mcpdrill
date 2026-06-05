@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -171,6 +172,9 @@ func (s *mockServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 		writeJSONRPCError(w, req.ID, -32600, "invalid jsonrpc version")
 		return
 	}
+	if !validateModernRequestMetadata(w, r, req) {
+		return
+	}
 
 	switch req.Method {
 	case "server/discover":
@@ -246,9 +250,112 @@ func (s *mockServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 		s.handleTasksCancel(w, req)
 		return
 	default:
-		writeJSONRPCError(w, req.ID, -32601, "method not found")
+		writeJSONRPCErrorStatus(w, http.StatusNotFound, req.ID, -32601, "method not found")
 		return
 	}
+}
+
+func validateModernRequestMetadata(w http.ResponseWriter, r *http.Request, req types.JSONRPCRequest) bool {
+	if !isModernMCPRequest(r, req) {
+		return true
+	}
+
+	version := r.Header.Get("MCP-Protocol-Version")
+	if version == "" {
+		writeJSONRPCErrorStatus(w, http.StatusBadRequest, req.ID, -32001, "missing MCP-Protocol-Version header")
+		return false
+	}
+	if version != mcp.ModernProtocolVersion {
+		writeUnsupportedProtocolVersion(w, req.ID, version)
+		return false
+	}
+	if method := r.Header.Get("Mcp-Method"); method == "" || method != req.Method {
+		writeJSONRPCErrorStatus(w, http.StatusBadRequest, req.ID, -32001, "Mcp-Method header mismatch")
+		return false
+	}
+	if routeName := requestRouteName(req); routeName != "" {
+		nameHeader, ok := decodeMCPHeaderValue(r.Header.Get("Mcp-Name"))
+		if !ok || nameHeader != routeName {
+			writeJSONRPCErrorStatus(w, http.StatusBadRequest, req.ID, -32001, "Mcp-Name header mismatch")
+			return false
+		}
+	}
+	metaVersion := requestMetaProtocolVersion(req.Params)
+	if metaVersion == "" {
+		writeJSONRPCErrorStatus(w, http.StatusBadRequest, req.ID, -32001, "missing protocol version metadata")
+		return false
+	}
+	if metaVersion != version {
+		writeJSONRPCErrorStatus(w, http.StatusBadRequest, req.ID, -32001, "protocol version header/body mismatch")
+		return false
+	}
+	return true
+}
+
+func isModernMCPRequest(r *http.Request, req types.JSONRPCRequest) bool {
+	if r.Header.Get("MCP-Protocol-Version") != "" {
+		return true
+	}
+	if requestMetaProtocolVersion(req.Params) != "" {
+		return true
+	}
+	switch req.Method {
+	case "server/discover", "subscriptions/listen", "tasks/get", "tasks/update", "tasks/cancel":
+		return true
+	default:
+		return false
+	}
+}
+
+func requestMetaProtocolVersion(params json.RawMessage) string {
+	if len(params) == 0 {
+		return ""
+	}
+	var parsed struct {
+		Meta map[string]interface{} `json:"_meta"`
+	}
+	if err := json.Unmarshal(params, &parsed); err != nil {
+		return ""
+	}
+	version, _ := parsed.Meta["io.modelcontextprotocol/protocolVersion"].(string)
+	return version
+}
+
+func requestRouteName(req types.JSONRPCRequest) string {
+	if len(req.Params) == 0 {
+		return ""
+	}
+	var params map[string]interface{}
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return ""
+	}
+	switch req.Method {
+	case "tools/call", "prompts/get":
+		name, _ := params["name"].(string)
+		return name
+	case "resources/read":
+		uri, _ := params["uri"].(string)
+		return uri
+	case "tasks/get", "tasks/update", "tasks/cancel":
+		taskID, _ := params["taskId"].(string)
+		return taskID
+	default:
+		return ""
+	}
+}
+
+func decodeMCPHeaderValue(value string) (string, bool) {
+	if value == "" {
+		return "", false
+	}
+	if strings.HasPrefix(value, "=?base64?") && strings.HasSuffix(value, "?=") {
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimSuffix(strings.TrimPrefix(value, "=?base64?"), "?="))
+		if err != nil {
+			return "", false
+		}
+		return string(decoded), true
+	}
+	return value, true
 }
 
 func (s *mockServer) handleToolsCall(w http.ResponseWriter, r *http.Request, req types.JSONRPCRequest) {
@@ -471,6 +578,10 @@ func (s *mockServer) handleSubscriptionsListen(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	writeSSE(w, result)
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+	<-r.Context().Done()
 }
 
 func (s *mockServer) handleTasksGet(w http.ResponseWriter, req types.JSONRPCRequest) {
@@ -717,15 +828,33 @@ func writeJSONRPCResult(w http.ResponseWriter, id interface{}, result interface{
 }
 
 func writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message string) {
+	writeJSONRPCErrorStatus(w, http.StatusOK, id, code, message)
+}
+
+func writeJSONRPCErrorStatus(w http.ResponseWriter, status int, id interface{}, code int, message string) {
+	writeJSONRPCErrorStatusData(w, status, id, code, message, nil)
+}
+
+func writeUnsupportedProtocolVersion(w http.ResponseWriter, id interface{}, requested string) {
+	data, _ := json.Marshal(map[string]interface{}{
+		"supported": []string{mcp.ModernProtocolVersion, mcp.DefaultProtocolVersion},
+		"requested": requested,
+	})
+	writeJSONRPCErrorStatusData(w, http.StatusBadRequest, id, -32004, "unsupported protocol version", data)
+}
+
+func writeJSONRPCErrorStatusData(w http.ResponseWriter, status int, id interface{}, code int, message string, data json.RawMessage) {
 	resp := types.JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Error: &types.JSONRPCError{
 			Code:    code,
 			Message: message,
+			Data:    data,
 		},
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(resp)
 }
 

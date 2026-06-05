@@ -449,15 +449,21 @@ func sendScaleTelemetry(w *scaleTestWorker, baseURL, runID string, numOps int) e
 	operations := make([]map[string]interface{}, numOps)
 	now := time.Now().UnixMilli()
 	for i := 0; i < numOps; i++ {
+		ok := i%10 != 0
 		operations[i] = map[string]interface{}{
 			"op_id":        fmt.Sprintf("op-%d-%d", w.id, i),
 			"operation":    "tools_list",
 			"latency_ms":   50 + (i % 100),
-			"ok":           i%10 != 0,
+			"ok":           ok,
 			"ts_ms":        now + int64(i*10),
 			"execution_id": "exe_00000000000001",
 			"stage":        "preflight",
 			"stage_id":     "stg_000000000001",
+		}
+		if !ok {
+			operations[i]["error_type"] = "simulated"
+			operations[i]["error_code"] = "SCALE_TEST_FAILURE"
+			operations[i]["error_message"] = "simulated scale-test operation failure"
 		}
 	}
 

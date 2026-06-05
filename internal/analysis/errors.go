@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"fmt"
 	"regexp"
 	"sort"
 )
@@ -18,10 +19,13 @@ type ErrorSignature struct {
 
 // ErrorLog represents an error log entry for signature extraction.
 type ErrorLog struct {
-	TimestampMs int64
-	Operation   string
-	ToolName    string
-	ErrorType   string
+	TimestampMs  int64
+	Operation    string
+	ToolName     string
+	ErrorType    string
+	ErrorCode    string
+	ErrorMessage string
+	HTTPStatus   int
 }
 
 // Regex patterns for error normalization.
@@ -71,11 +75,12 @@ func ExtractSignatures(errors []ErrorLog, topN int) []ErrorSignature {
 	signatures := make(map[string]*signatureData)
 
 	for _, err := range errors {
-		if err.ErrorType == "" {
+		source := signatureSource(err)
+		if source == "" {
 			continue
 		}
 
-		pattern := NormalizeError(err.ErrorType)
+		pattern := NormalizeError(source)
 
 		sig, ok := signatures[pattern]
 		if !ok {
@@ -85,7 +90,7 @@ func ExtractSignatures(errors []ErrorLog, topN int) []ErrorSignature {
 				lastSeenMs:  err.TimestampMs,
 				operations:  make(map[string]struct{}),
 				tools:       make(map[string]struct{}),
-				sampleError: err.ErrorType,
+				sampleError: source,
 			}
 			signatures[pattern] = sig
 		}
@@ -147,4 +152,20 @@ func ExtractSignatures(errors []ErrorLog, topN int) []ErrorSignature {
 	}
 
 	return result
+}
+
+func signatureSource(err ErrorLog) string {
+	if err.ErrorMessage != "" {
+		if err.HTTPStatus != 0 {
+			return fmt.Sprintf("HTTP %d: %s", err.HTTPStatus, err.ErrorMessage)
+		}
+		return err.ErrorMessage
+	}
+	if err.ErrorCode != "" {
+		if err.HTTPStatus != 0 {
+			return fmt.Sprintf("HTTP %d: %s", err.HTTPStatus, err.ErrorCode)
+		}
+		return err.ErrorCode
+	}
+	return err.ErrorType
 }
